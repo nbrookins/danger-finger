@@ -5,12 +5,12 @@
 // tags       :
 // file       : finger.jscad
 
-core_width = 6; //min 6? at 5, middle of tunnel needs to shrink, bumber cutouts larger
+core_width = 8; //min 6? at 5, middle of tunnel needs to shrink, bumber cutouts larger
 core_radius = core_width *0.95;
 
-inter_length = 18;
+inter_length = 15;
 
-inner_hinge_inset = 0.65;
+inner_hinge_inset = 0.85;
 inner_hinge_inset_border = 1;
 
 tunnel_height_factor = 2.2;
@@ -56,15 +56,18 @@ function seg_intermediate(){
         cube ({size:[core_width, bumper_inter_length, core_width+inner_hinge_inset*2], center:true}));
 
     trim_bottom = translate ([0,0, -core_width/2 - (core_height-core_radius) - tunnel_height ],
-        union(cube ({size:[core_width-inner_hinge_inset_border*2, inter_length*2, core_width+inner_hinge_inset*2], center:true}) ,
-            cube ({size:[core_width, inter_length*2, core_width], center:true})));
+        union(
+            cube ({size:[core_width-inner_hinge_inset_border*2, inter_length*2, core_width+inner_hinge_inset*2], center:true})
+            ,
+            cube ({size:[core_width, inter_length*2, core_width], center:true})
+            ));
 
     trim_side_offset = core_width/2 + core_radius/2 -0.001;
     trim_side_cube = cube ({size:[core_radius, inter_length*2, core_height*2 ], center:true});
     trim_side = union(translate ([trim_side_offset,0, 0 ], trim_side_cube),
         translate ([-trim_side_offset,0, 0 ], trim_side_cube));
 
-    core = difference(
+    inter_core = difference(
                 union(rect, end_dist, end_prox),
                 trim_bottom, trim_side, trim_top);
 
@@ -91,14 +94,21 @@ function seg_intermediate(){
     cut_len = (inter_length-core_height)/2.5;
     cutout_cube = cube({size:[core_width, cut_len, core_height-inner_hinge_inset*5 ],center: true});
     cutout = union(
-        translate([0,-cut_len/2-tunnel_inset/2,0], cutout_cube),
-        translate([0,cut_len/2+tunnel_inset/2,0], cutout_cube));
+        translate([0,-cut_len/2-tunnel_inset/2,0], cutout_cube)
+        ,
+        translate([0,cut_len/2+tunnel_inset/2,0], cutout_cube)
+        );
 
-    cutout_bot = translate([0,0,-core_height/2+inner_hinge_inset/2],cube({size:[core_width,inter_length-core_height+tunnel_inset, inner_hinge_inset],center:true}));
+    cutout_bot = translate([0,0,-core_height/2+inner_hinge_inset/2],
+        cube({size:[core_width,
+        inter_length-core_height+tunnel_inset, inner_hinge_inset],center:true}));
 
     return difference(
-        core,
-        pins, tunnels, cutout,cutout_bot//, slice
+        inter_core,
+        pins, tunnels
+        //,
+        //cutout,
+    //    cutout_bot//, slice
     );
 
 }
@@ -121,41 +131,90 @@ function bumper_intermediate(){
     end_prox = translate([0, inter_length/2, end_vert_offset],end_cyl);
 
     tunnel_cyl2 = rotate([90,90,0],
-        cylinder({r:tunnel_radius*1.5, h:inter_length*2, fn:128, center:true }));
+        cylinder({r:tunnel_radius*1.5,
+            h:inter_length*2, fn:128, center:true }));
 
     tunnel_lower = translate([0, 0, -(core_height/2 - inner_hinge_inset )],
         tunnel_cyl2);
 
-    tunnel_hull = translate([0,0,tunnel_height+.5],
+    tunnel_hull = translate([0,0,tunnel_height+0.5],
         rotate([90,90,0],
-            cylinder({r: core_width/2-0.3, h: bumper_inter_length, fn: 128, center: true})));
+            cylinder({r: core_width/2-0.3,
+                h: bumper_inter_length, fn: 128, center: true})));
 
-    splt = color("Red",translate( [0,0,-(core_height/2 - inner_hinge_inset +tunnel_radius*2)],
+    splt = color("Red",translate([0, 0, -(core_height/2 - inner_hinge_inset +tunnel_radius*2)],
         cube({size:[split_width, inter_length,2], center:true})));
-    return union(difference(slug, end_dist, end_prox, tunnel_hull, tunnels, tunnel_lower,splt, core));
+
+    hinge_bottom_buffer = core_height / 2.0;
+
+    //todo - duplicate this
+    trim_bottom = union(
+        cube ({size:[core_width, hinge_bottom_buffer, core_width], center:true}),
+        translate ([0, 0, -tunnel_height],
+            cube ({size:[core_width*2, hinge_bottom_buffer, core_width], center:true})));
+
+    trim_bottom1 = translate ([0,
+            -(inter_length/2 - hinge_bottom_buffer/2),
+            -core_width/2 - (core_height/2) +tunnel_height],
+            trim_bottom);
+
+    trim_bottom2 = translate ([0,
+            inter_length/2 - hinge_bottom_buffer/2,
+            -core_width/2 - (core_height/2) +tunnel_height],
+            trim_bottom);
+
+    return difference(slug, trim_bottom1, trim_bottom2,
+            end_dist, end_prox, tunnel_hull, tunnels,
+            tunnel_lower, splt, inter_core);
 }
 
 function seg_distal(){
-
-    end_cyl = translate([0,inter_length/2,0],
-            rotate( [0,90,0],
-                cylinder({r: core_height/2, h: core_width +(hinge_thickness + hinge_clearance)*2, fn: 128, center: true})));
+    core_cyl =  translate([0,inter_length/2,0],
+                    rotate( [0,90,0],
+                    cylinder({r: core_height/2 + hinge_clearance,
+                    h: core_width + hinge_clearance*2, fn: 128, center: true}
+                    )));
 
     hinge_cyl = translate([0,inter_length/2,0],
-            rotate( [0,90,0],
-                difference(cylinder({r: core_height/2, h: core_width +(hinge_thickness + hinge_clearance)*2, fn: 128, center: true}),
-                    end_cyl)));
-    return hinge_cyl;
+                    rotate( [0,90,0],
+                    cylinder({r: core_height/2,
+                    h: core_width + (hinge_thickness + hinge_clearance)*2, fn: 128, center: true}
+                    )));
+
+    hinge_core= translate([0,inter_length/2,0],
+                    rotate( [90,0,0],
+                    cylinder({r: core_radius,
+                    h: core_height/2, fn: 128, center: true}
+                    )));
+
+    distal_length = 8;
+
+    slug =
+    translate([0,inter_length/2 + distal_length/2,0],
+     rotate([90,90,0],
+            intersection(
+                cylinder({r: core_radius, h: distal_length, fn: 128, center: true}),
+                translate([-tunnel_radius*0.75, 0, 0],
+                cylinder({r: core_radius, h: distal_length, fn: 128, center: true})),
+                scale([1.2, 0.8, 1],
+                    cylinder({r: core_radius, h: distal_length, fn: 128, center: true}
+                        )))));
+
+
+    distal = union(hinge_cyl,slug);
+
+    return difference(distal, core_cyl);
 }
 
 function main() {
     inter = color("Gray", seg_intermediate());
     bumper = color("LightGray", bumper_intermediate());
-    distal = color("Gray", seg_distal());
+    distal = color("LightGray", seg_distal());
 
     return union(
+       // color("Red", trim_bottom2),
         inter,
-       // distal,
+        distal,
         bumper
         );
         //*/
