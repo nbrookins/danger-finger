@@ -24,15 +24,31 @@ def assemble():
     #load a configuration, with parameters from cli or env
     ParamParser.parse(finger)
 
-    finger.preview = False
-    finger.part = ["middle"]
+    finger.segments = 36 * 2
 
     #build some pieces
+    mod_preview = None
     for p in finger.part:
-        seg = getattr(finger, p)()#finger.middle()
+        mod_segment = getattr(finger, "part_" + p)()
+        mod_preview = mod_segment if not mod_preview else mod_preview + mod_segment
         #write it to a scad file (still needs to be rendered by openscad)
-        file_out = finger.emit(seg, filename=p)
-        print("OpenSCAD file written to: %s" % file_out)
+        if not finger.preview:
+            finger.emit(mod_segment, filename=p)
+    if finger.preview:
+        finger.emit(mod_preview, filename="preview")
+
+def rcylinder(r, h, rnd=0, center=False):
+    ''' primitive for a cylinder with rounded edges'''
+    if rnd == 0: return cylinder(r=r, h=h, center=center)
+    mod_cyl = translate((0, 0, -h/2 if center else 0))( \
+        rotate_extrude(convexity=1)(offset(r=rnd)(offset(delta=-rnd)(square((r, h)) + square((rnd, h))))))
+    return mod_cyl
+
+def rcube(size, rnd=0, center=True):
+    ''' primitive for a cube with rounded edges'''
+    if rnd == 0: return cube(size, center=center)
+    round_ratio = (1-rnd) * 1.1 + 0.5
+    return cube(size, center=center) * resize((size[0]*round_ratio, 0, 0))(cylinder(h=size[2], d=size[1]*round_ratio, center=center))
 
 
 # *********************************** Helper class ****************************************
@@ -63,36 +79,41 @@ class ConstrainedProperty(object):
 # ********************************** The danger finger *************************************
 class danger_finger:
     ''' The actual finger model '''
-    ALL_PARTS = ["middle"]
+    ALL_PARTS = ["middle", "base", "tip"]
+    # ************************************* control params *****************************************
+
+    preview = ConstrainedProperty(True, None, None, ''' Enable preview mode, emits all segments ''')
+    output_directory = ConstrainedProperty(os.getcwd(), None, None, ''' output_directory for scad code, otherwise current''')
+
     # **************************************** parameters ****************************************
     intermediate_length = ConstrainedProperty(16, 8, 30, ''' length of the intermediate finger segment ''')
-
-    hinge_side_clearance = ConstrainedProperty(.1, -.25, 1, ''' clearance of the flat round side of the hinges ''')
+    intermediate_distal_height = ConstrainedProperty(8, 4, 8, ''' height of the middle section at the distal end.  roughly the height of the hinge circle ''')
+    intermediate_proximal_height = ConstrainedProperty(8, 4, 8, ''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
 
     hinge_proximal_thickness = ConstrainedProperty(2.25, 1, 5, ''' thickness of the hinge tab portion on proximal side  ''')
     hinge_distal_thickness = ConstrainedProperty(2.25, 1, 5, ''' thickness of the hinge tab portion on distal side ''')
-
     hinge_proximal_width = ConstrainedProperty(10.75, 4, 20, ''' width of the proximal knuckle hinge''')
     hinge_distal_width = ConstrainedProperty(10.25, 4, 20, ''' width of the distal knuckle hinge ''')
 
     hinge_inset_border = ConstrainedProperty(1.5, 0, 5, ''' width of teh hinge inset, same as top strut width ''')
-    hinge_inset_depth = ConstrainedProperty(.8, 0, 3, ''' depth of the inset to clear room for tendons ''')
+    hinge_inset_depth = ConstrainedProperty(.5, 0, 3, ''' depth of the inset to clear room for tendons ''')
     hinge_pin_radius = ConstrainedProperty(1.01, 0, 3, ''' radius of the hinge pin/hole ''')
 
-    strut_height_ratio = ConstrainedProperty(.75, .1, 3, ''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
-    strut_round_ratio = ConstrainedProperty(1.2, .5, 2, ''' 2 for no rounding, lower numbers give more. ''')
+    hinge_rounding = ConstrainedProperty(.5, 0, 4, ''' amount of rounding for the outer hinges ''')
+    hinge_side_clearance = ConstrainedProperty(.1, -.25, 1, ''' clearance of the flat round side of the hinges ''')
 
-    intermediate_distal_height = ConstrainedProperty(8, 4, 8, ''' height of the middle section at the distal end.  roughly the height of the hinge circle ''')
-    intermediate_proximal_height = ConstrainedProperty(8, 4, 8, ''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
+    strut_height_ratio = ConstrainedProperty(.75, .1, 3, ''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
+    strut_rounding = ConstrainedProperty(.3, .5, 2, ''' 0 for no rounding, 1 for fullly round ''')
+
+    # ************************************* rare or non-recommended to muss with *************
+
+    hinge_cutouts = ConstrainedProperty(False, None, None, ''' True for extra cutouts on internals of intermediate section ''')
 
     #**************************************** dynamic properties ******************************
     intermediate_proximal_width = property(lambda self: (self.hinge_proximal_width - self.hinge_proximal_thickness*2 - self.hinge_side_clearance*2))
     intermediate_distal_width = property(lambda self: (self.hinge_distal_width - self.hinge_distal_thickness*2 - self.hinge_side_clearance*2))
 
     #*************************************** special properties **********************************
-
-    output_directory = ConstrainedProperty(os.getcwd(), None, None, ''' output_directory for scad code, otherwise current''')
-    preview = ConstrainedProperty(True, None, None, ''' Enable preview mode, emits all segments ''')
 
     _part = []
     @property
@@ -114,28 +135,49 @@ class danger_finger:
 
     #**************************************** finger bits ****************************************
 
-    def middle(self):
+    def part_base(self):
+        ''' Generate the base finger section, closest proximal to remant '''
+        mod_hinge = self.hinge_outer(width=self.hinge_proximal_width, cut_width=self.intermediate_proximal_width + self.hinge_side_clearance*2)
+        return mod_hinge
+
+    def part_tip(self):
+        ''' Generate the base finger section, closest proximal to remant '''
+        distal_offset = self.intermediate_length + self.intermediate_distal_height / 2
+        shift_distal = lambda: translate((0, distal_offset, 0))
+        mod_hinge = self.hinge_outer(width=self.hinge_distal_width, cut_width=self.intermediate_distal_width + self.hinge_side_clearance*2)
+        return shift_distal()(mod_hinge)
+
+    def part_middle(self):
         ''' Generate the middle/intermediate finger section '''
         distal_offset = self.intermediate_length + self.intermediate_distal_height / 2
         shift_distal = lambda: translate((0, distal_offset, 0))
-        mod_dist_hinge, anchor_dtl, anchor_dtr, anchor_db = self.intermediate_hinge(width=self.intermediate_distal_width, radius=self.intermediate_distal_height/2)
-        mod_prox_hinge, anchor_ptl, anchor_ptr, anchor_pb = self.intermediate_hinge(width=self.intermediate_proximal_width, radius=self.intermediate_proximal_height/2)
+        mod_dist_hinge, anchor_dtl, anchor_dtr, anchor_db = self.hinge_inner(width=self.intermediate_distal_width, radius=self.intermediate_distal_height/2, cutout=self.hinge_cutouts)
+        mod_prox_hinge, anchor_ptl, anchor_ptr, anchor_pb = self.hinge_inner(width=self.intermediate_proximal_width, radius=self.intermediate_proximal_height/2, cutout=self.hinge_cutouts)
 
         mod_strut_tl = hull()(shift_distal()(anchor_dtl), anchor_ptl)
         mod_strut_tr = hull()(shift_distal()(anchor_dtr), anchor_ptr)
         mod_strut_b = hull()(shift_distal()(anchor_db), anchor_pb)
-        mod_brace = translate((self.intermediate_distal_height/2 -self.hinge_inset_border*self.strut_height_ratio/2, distal_offset/2, 0))(self.strut(height=self.hinge_inset_border*.5, length=min(self.intermediate_distal_width, self.intermediate_proximal_width)))
+        mod_brace = translate((self.intermediate_distal_height/2 -self.hinge_inset_border*self.strut_height_ratio/2, distal_offset/2, 0))( \
+            self.strut(height=self.hinge_inset_border*.5, length=min(self.intermediate_distal_width, self.intermediate_proximal_width) - self.hinge_inset_border))
 
-        return translate((0, self.intermediate_length + self.intermediate_distal_height / 2, 0))(mod_dist_hinge) + mod_prox_hinge + mod_strut_tl + mod_strut_tr + mod_strut_b + mod_brace
+        return shift_distal()(rotate((180, 0, 0))(mod_dist_hinge)) + mod_prox_hinge + mod_strut_tl + mod_strut_tr + mod_strut_b + mod_brace
 
     #**************************************** Primitives ***************************************
 
-    def intermediate_hinge(self, radius, width):
+    def hinge_outer(self, width, cut_width=0):#, radius, width):
+        ''' create the outer hinges for base or tip segments '''
+        radius = self.intermediate_proximal_height/2
+        mod_pin = self.hinge_pin(length=width + .01)
+        return rcylinder(r=radius, h=width, rnd=self.hinge_rounding, center=True) - cylinder(r=radius+.01, h=cut_width, center=True) - mod_pin
+
+    def hinge_inner(self, radius, width, cutout=False):
         ''' create the hinges at either end of a intermediate/middle segment '''
         st_height = self.hinge_inset_border*self.strut_height_ratio
         st_offset = self.hinge_inset_border/2
 
         mod_hinge = cylinder(h=width, r=radius, center=True)
+        if cutout:
+            mod_hinge -= translate((0, radius, 0))(cube((radius*2, radius, width+.1), center=True))
         mod_inset = self.hinge_inset(radius, width)
         mod_pin = self.hinge_pin(length=width + .01)
 
@@ -159,14 +201,17 @@ class danger_finger:
         ''' create a strut that connects the two middle hinges  '''
         if width == 0: width = self.hinge_inset_border
         if height == 0: height = self.hinge_inset_border
-        return cube((height, width, length), center=True) * resize((height*self.strut_round_ratio, 0, 0))(cylinder(h=length, d=width*1.3, center=True))
+
+        #round_ratio = (1-self.strut_rounding) * 1.1 + 0.5
+        return rcube((height, width, length), rnd=self.strut_rounding, center=True) #cube((height, width, length), center=True) * resize((height*round_ratio, 0, 0))(cylinder(h=length, d=width*round_ratio, center=True))
 
     #************************************* utilities ****************************************
 
     def emit(self, val, filename=None):
         ''' emit the provided model to SCAD code '''
-        print("wirintg to %s" % self.output_directory)
-        return scad_render_to_file(val, out_dir=self.output_directory, file_header=f'$fn = {self.segments};', include_orig_code=True, filepath=(filename + "_gen.scad" if filename else "test.scad"))
+        fn = (filename + "_gen.scad" if filename else "test.scad")
+        print("Writing SCAD output to %s/%s" % (self.output_directory, fn))
+        return scad_render_to_file(val, out_dir=self.output_directory, file_header=f'$fn = {self.segments};', include_orig_code=True, filepath=fn)
 
 
 # boilerplate stuff
@@ -222,7 +267,7 @@ class ParamParser():
             if str(val).startswith(("<f", "<b")): continue
             doc = inspect.getdoc(param[1]) #getattr(config, "_" + param[0], None) if hasattr(config, "_" + param[0]) else inspect.getdoc(param[1])
             parser.add_argument("--%s" % param[0], default=val, help=doc)
-            print("added param %s, %s, \"%s\"" % (param[0], val, doc))
+            #print("added param %s, %s, \"%s\"" % (param[0], val, doc))
 
         params = vars(parser.parse_args())
         for param in params:
