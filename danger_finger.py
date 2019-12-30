@@ -24,8 +24,6 @@ def assemble():
     #load a configuration, with parameters from cli or env
     ParamParser.parse(finger)
 
-    finger.segments = 36 * 2
-
     #build some pieces
     mod_preview = None
     for p in finger.part:
@@ -33,23 +31,9 @@ def assemble():
         mod_preview = mod_segment if not mod_preview else mod_preview + mod_segment
         #write it to a scad file (still needs to be rendered by openscad)
         if not finger.preview:
-            finger.emit(mod_segment, filename=p)
+            finger.emit(mod_segment, filename="dangerfinger_%s_%s_gen.scad" %(VERSION, p))
     if finger.preview:
-        finger.emit(mod_preview, filename="preview")
-
-def rcylinder(r, h, rnd=0, center=False):
-    ''' primitive for a cylinder with rounded edges'''
-    if rnd == 0: return cylinder(r=r, h=h, center=center)
-    mod_cyl = translate((0, 0, -h/2 if center else 0))( \
-        rotate_extrude(convexity=1)(offset(r=rnd)(offset(delta=-rnd)(square((r, h)) + square((rnd, h))))))
-    return mod_cyl
-
-def rcube(size, rnd=0, center=True):
-    ''' primitive for a cube with rounded edges'''
-    if rnd == 0: return cube(size, center=center)
-    round_ratio = (1-rnd) * 1.1 + 0.5
-    return cube(size, center=center) * resize((size[0]*round_ratio, 0, 0))(cylinder(h=size[2], d=size[1]*round_ratio, center=center))
-
+        finger.emit(mod_preview, filename="dangerfinger_%s_preview_gen.scad" % VERSION)
 
 # *********************************** Helper class ****************************************
 class ConstrainedProperty(object):
@@ -90,28 +74,35 @@ class danger_finger:
     intermediate_distal_height = ConstrainedProperty(8, 4, 8, ''' height of the middle section at the distal end.  roughly the height of the hinge circle ''')
     intermediate_proximal_height = ConstrainedProperty(8, 4, 8, ''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
 
-    hinge_proximal_thickness = ConstrainedProperty(2.25, 1, 5, ''' thickness of the hinge tab portion on proximal side  ''')
-    hinge_distal_thickness = ConstrainedProperty(2.25, 1, 5, ''' thickness of the hinge tab portion on distal side ''')
-    hinge_proximal_width = ConstrainedProperty(10.75, 4, 20, ''' width of the proximal knuckle hinge''')
-    hinge_distal_width = ConstrainedProperty(10.25, 4, 20, ''' width of the distal knuckle hinge ''')
+    proximal_length = ConstrainedProperty(16, 8, 30, ''' length of the proximal/tip finger segment ''')
+    distal_length = ConstrainedProperty(16, 8, 30, ''' length of the distal/base finger segment ''')
 
-    hinge_inset_border = ConstrainedProperty(1.5, 0, 5, ''' width of teh hinge inset, same as top strut width ''')
-    hinge_inset_depth = ConstrainedProperty(.5, 0, 3, ''' depth of the inset to clear room for tendons ''')
-    hinge_pin_radius = ConstrainedProperty(1.01, 0, 3, ''' radius of the hinge pin/hole ''')
+    knuckle_proximal_width = ConstrainedProperty(10.75, 4, 20, ''' width of the proximal knuckle hinge''')
+    knuckle_distal_width = ConstrainedProperty(10.25, 4, 20, ''' width of the distal knuckle hinge ''')
 
-    hinge_rounding = ConstrainedProperty(.5, 0, 4, ''' amount of rounding for the outer hinges ''')
-    hinge_side_clearance = ConstrainedProperty(.1, -.25, 1, ''' clearance of the flat round side of the hinges ''')
+    socket_circumference_distal = ConstrainedProperty(55, 20, 160, '''circumference of the socket closest to the base''')
+    socket_circumference_proximal = ConstrainedProperty(62, 20, 160, '''circumference of the socket closest to the hand''')
+
+    knuckle_proximal_thickness = ConstrainedProperty(2.25, 1, 5, ''' thickness of the hinge tab portion on proximal side  ''')
+    knuckle_distal_thickness = ConstrainedProperty(2.25, 1, 5, ''' thickness of the hinge tab portion on distal side ''')
+
+    knuckle_inset_border = ConstrainedProperty(1.5, 0, 5, ''' width of teh hinge inset, same as top strut width ''')
+    knuckle_inset_depth = ConstrainedProperty(.5, 0, 3, ''' depth of the inset to clear room for tendons ''')
+    knuckle_pin_radius = ConstrainedProperty(1.01, 0, 3, ''' radius of the hinge pin/hole ''')
+
+    knuckle_rounding = ConstrainedProperty(.5, 0, 4, ''' amount of rounding for the outer hinges ''')
+    knuckle_side_clearance = ConstrainedProperty(.1, -.25, 1, ''' clearance of the flat round side of the hinges ''')
 
     strut_height_ratio = ConstrainedProperty(.75, .1, 3, ''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
     strut_rounding = ConstrainedProperty(.3, .5, 2, ''' 0 for no rounding, 1 for fullly round ''')
 
     # ************************************* rare or non-recommended to muss with *************
 
-    hinge_cutouts = ConstrainedProperty(False, None, None, ''' True for extra cutouts on internals of intermediate section ''')
+    knuckle_cutouts = ConstrainedProperty(False, None, None, ''' True for extra cutouts on internals of intermediate section ''')
 
     #**************************************** dynamic properties ******************************
-    intermediate_proximal_width = property(lambda self: (self.hinge_proximal_width - self.hinge_proximal_thickness*2 - self.hinge_side_clearance*2))
-    intermediate_distal_width = property(lambda self: (self.hinge_distal_width - self.hinge_distal_thickness*2 - self.hinge_side_clearance*2))
+    intermediate_proximal_width = property(lambda self: (self.knuckle_proximal_width - self.knuckle_proximal_thickness*2 - self.knuckle_side_clearance*2))
+    intermediate_distal_width = property(lambda self: (self.knuckle_distal_width - self.knuckle_distal_thickness*2 - self.knuckle_side_clearance*2))
 
     #*************************************** special properties **********************************
 
@@ -128,93 +119,105 @@ class danger_finger:
     @property
     def segments(self):
         '''number of radii segments, higher is better for detail but slower.  auto sets low (36) for preview and high (108) for print '''
-        return self._segments if self._segments != 0 else 36 if self.preview else 36*3
+        return self._segments if self._segments != 0 else 36 * 2 if self.preview else 36 * 3
     @segments.setter
     def segments(self, val):
         self._segments = val
+
+    distal_offset = property(lambda self: (self.intermediate_length + self.intermediate_distal_height / 2))
+    shift_distal = lambda self: translate((0, self.distal_offset, 0))
 
     #**************************************** finger bits ****************************************
 
     def part_base(self):
         ''' Generate the base finger section, closest proximal to remant '''
-        mod_hinge = self.hinge_outer(width=self.hinge_proximal_width, cut_width=self.intermediate_proximal_width + self.hinge_side_clearance*2)
+        mod_hinge = self.knuckle_outer(width=self.knuckle_proximal_width, cut_width=self.intermediate_proximal_width + self.knuckle_side_clearance*2)
         return mod_hinge
 
     def part_tip(self):
         ''' Generate the base finger section, closest proximal to remant '''
-        distal_offset = self.intermediate_length + self.intermediate_distal_height / 2
-        shift_distal = lambda: translate((0, distal_offset, 0))
-        mod_hinge = self.hinge_outer(width=self.hinge_distal_width, cut_width=self.intermediate_distal_width + self.hinge_side_clearance*2)
-        return shift_distal()(mod_hinge)
+        mod_hinge = self.knuckle_outer(width=self.knuckle_distal_width, cut_width=self.intermediate_distal_width + self.knuckle_side_clearance*2)
+        return self.shift_distal()(mod_hinge)
 
     def part_middle(self):
         ''' Generate the middle/intermediate finger section '''
-        distal_offset = self.intermediate_length + self.intermediate_distal_height / 2
-        shift_distal = lambda: translate((0, distal_offset, 0))
-        mod_dist_hinge, anchor_dtl, anchor_dtr, anchor_db = self.hinge_inner(width=self.intermediate_distal_width, radius=self.intermediate_distal_height/2, cutout=self.hinge_cutouts)
-        mod_prox_hinge, anchor_ptl, anchor_ptr, anchor_pb = self.hinge_inner(width=self.intermediate_proximal_width, radius=self.intermediate_proximal_height/2, cutout=self.hinge_cutouts)
+        mod_dist_hinge, anchor_dtl, anchor_dtr, anchor_db = self.knuckle_inner(width=self.intermediate_distal_width, radius=self.intermediate_distal_height/2, cutout=self.knuckle_cutouts)
+        mod_prox_hinge, anchor_ptl, anchor_ptr, anchor_pb = self.knuckle_inner(width=self.intermediate_proximal_width, radius=self.intermediate_proximal_height/2, cutout=self.knuckle_cutouts)
 
-        mod_strut_tl = hull()(shift_distal()(anchor_dtl), anchor_ptl)
-        mod_strut_tr = hull()(shift_distal()(anchor_dtr), anchor_ptr)
-        mod_strut_b = hull()(shift_distal()(anchor_db), anchor_pb)
-        mod_brace = translate((self.intermediate_distal_height/2 -self.hinge_inset_border*self.strut_height_ratio/2, distal_offset/2, 0))( \
-            self.strut(height=self.hinge_inset_border*.5, length=min(self.intermediate_distal_width, self.intermediate_proximal_width) - self.hinge_inset_border))
+        mod_strut_tl = hull()(self.shift_distal()(anchor_dtl), anchor_ptl)
+        mod_strut_tr = hull()(self.shift_distal()(anchor_dtr), anchor_ptr)
+        mod_strut_b = hull()(self.shift_distal()(anchor_db), anchor_pb)
+        mod_brace = translate((self.intermediate_distal_height/2 -self.knuckle_inset_border*self.strut_height_ratio/2, self.distal_offset/2, 0))( \
+            self.strut(height=self.knuckle_inset_border*.5, length=min(self.intermediate_distal_width, self.intermediate_proximal_width) - self.knuckle_inset_border))
 
-        return shift_distal()(rotate((180, 0, 0))(mod_dist_hinge)) + mod_prox_hinge + mod_strut_tl + mod_strut_tr + mod_strut_b + mod_brace
+        return self.shift_distal()(rotate((180, 0, 0))(mod_dist_hinge)) + mod_prox_hinge + mod_strut_tl + mod_strut_tr + mod_strut_b + mod_brace
 
     #**************************************** Primitives ***************************************
 
-    def hinge_outer(self, width, cut_width=0):#, radius, width):
+    def knuckle_outer(self, width, cut_width=0):#, radius, width):
         ''' create the outer hinges for base or tip segments '''
         radius = self.intermediate_proximal_height/2
-        mod_pin = self.hinge_pin(length=width + .01)
-        return rcylinder(r=radius, h=width, rnd=self.hinge_rounding, center=True) - cylinder(r=radius+.01, h=cut_width, center=True) - mod_pin
+        mod_pin = self.knuckle_pin(length=width + .01)
+        return rcylinder(r=radius, h=width, rnd=self.knuckle_rounding, center=True) - cylinder(r=radius+.01, h=cut_width, center=True) - mod_pin
 
-    def hinge_inner(self, radius, width, cutout=False):
+    def knuckle_inner(self, radius, width, cutout=False):
         ''' create the hinges at either end of a intermediate/middle segment '''
-        st_height = self.hinge_inset_border*self.strut_height_ratio
-        st_offset = self.hinge_inset_border/2
+        st_height = self.knuckle_inset_border*self.strut_height_ratio
+        st_offset = self.knuckle_inset_border/2
 
         mod_hinge = cylinder(h=width, r=radius, center=True)
-        if cutout:
-            mod_hinge -= translate((0, radius, 0))(cube((radius*2, radius, width+.1), center=True))
-        mod_inset = self.hinge_inset(radius, width)
-        mod_pin = self.hinge_pin(length=width + .01)
+        if cutout: mod_hinge -= translate((0, radius, 0))(cube((radius*2, radius, width+.1), center=True))
+        mod_inset = self.knuckle_inset(radius, width)
+        mod_pin = self.knuckle_pin(length=width + .01)
 
         #create anchor points for the struts
         anchor_tl = translate((radius -st_offset*self.strut_height_ratio, 0, width/2 - st_offset))(rotate((90, 0, 0))(self.strut(height=st_height)))
         anchor_tr = translate((radius -st_offset*self.strut_height_ratio, 0, -width/2 + st_offset))(rotate((90, 0, 0))(self.strut(height=st_height)))
-        anchor_b = translate((-radius +st_offset*self.strut_height_ratio + self.hinge_inset_depth, 0, 0))(rotate((90, 0, 0))(self.strut(height=st_height, width=width-(self.hinge_inset_border*2)+width*.05)))
+        anchor_b = translate((-radius +st_offset*self.strut_height_ratio + self.knuckle_inset_depth, 0, 0))(rotate((90, 0, 0))(self.strut(height=st_height, width=width-(self.knuckle_inset_border*2)+width*.05)))
 
         return (mod_hinge - mod_inset - mod_pin, anchor_tl, anchor_tr, anchor_b)
 
-    def hinge_inset(self, radius, width):
+    def knuckle_inset(self, radius, width):
         ''' create negative space for cutting the hinge inset to make room for tendons '''
-        return cylinder(h=width - self.hinge_inset_border * 2, r=radius + .01, center=True) \
-            - cylinder(h=width - self.hinge_inset_border * 2 + .01, r=radius - self.hinge_inset_depth, center=True)
+        return cylinder(h=width - self.knuckle_inset_border * 2, r=radius + .01, center=True) \
+            - cylinder(h=width - self.knuckle_inset_border * 2 + .01, r=radius - self.knuckle_inset_depth, center=True)
 
-    def hinge_pin(self, length=10):
+    def knuckle_pin(self, length=10):
         ''' create a pin for the hinge hole '''
-        return cylinder(h=length, r=self.hinge_pin_radius, center=True)
+        return cylinder(h=length, r=self.knuckle_pin_radius, center=True)
 
     def strut(self, width=0, height=0, length=.01):
         ''' create a strut that connects the two middle hinges  '''
-        if width == 0: width = self.hinge_inset_border
-        if height == 0: height = self.hinge_inset_border
-
-        #round_ratio = (1-self.strut_rounding) * 1.1 + 0.5
-        return rcube((height, width, length), rnd=self.strut_rounding, center=True) #cube((height, width, length), center=True) * resize((height*round_ratio, 0, 0))(cylinder(h=length, d=width*round_ratio, center=True))
+        if width == 0: width = self.knuckle_inset_border
+        if height == 0: height = self.knuckle_inset_border
+        return rcube((height, width, length), rnd=self.strut_rounding, center=True)
 
     #************************************* utilities ****************************************
 
     def emit(self, val, filename=None):
         ''' emit the provided model to SCAD code '''
-        fn = (filename + "_gen.scad" if filename else "test.scad")
-        print("Writing SCAD output to %s/%s" % (self.output_directory, fn))
-        return scad_render_to_file(val, out_dir=self.output_directory, file_header=f'$fn = {self.segments};', include_orig_code=True, filepath=fn)
+        if not filename:
+            return scad_render(val, file_header=f'$fn = {self.segments};')
+        else:
+            print("Writing SCAD output to %s/%s" % (self.output_directory, filename))
+            return scad_render_to_file(val, out_dir=self.output_directory, file_header=f'$fn = {self.segments};', include_orig_code=True, filepath=filename)
 
+# ********************************* Custom SCAD Primitives *****************************
 
-# boilerplate stuff
+def rcylinder(r, h, rnd=0, center=False):
+    ''' primitive for a cylinder with rounded edges'''
+    if rnd == 0: return cylinder(r=r, h=h, center=center)
+    mod_cyl = translate((0, 0, -h/2 if center else 0))( \
+        rotate_extrude(convexity=1)(offset(r=rnd)(offset(delta=-rnd)(square((r, h)) + square((rnd, h))))))
+    return mod_cyl
+
+def rcube(size, rnd=0, center=True):
+    ''' primitive for a cube with rounded edges'''
+    if rnd == 0: return cube(size, center=center)
+    round_ratio = (1-rnd) * 1.1 + 0.5
+    return cube(size, center=center) * resize((size[0]*round_ratio, 0, 0))(cylinder(h=size[2], d=size[1]*round_ratio, center=center))
+
+#********************************* Parameterization system **********************************
 class ParamParser():
     ''' handy class for parsing/loading/saving dynamic configs'''
     @staticmethod
