@@ -43,12 +43,14 @@ def rcube(size, rnd=0, center=True):
 #********************************* Parameterization system **********************************
 class Prop(object):
     ''' a simple property replacement that enforces min and max values'''
-    def __init__(self, val=None, minv=None, maxv=None, doc=None, getter=None):
+    def __init__(self, val=None, minv=None, maxv=None, doc=None, getter=None, setter=None, adv=False):
         self._value = val
         self._min = minv
         self._max = maxv
         self.__doc__ = doc
         self._getter = getter
+        self._setter = setter
+        self._adv = adv
 
     @staticmethod
     def minmax(value, minv=None, maxv=None):
@@ -63,6 +65,8 @@ class Prop(object):
         return self._value
 
     def __set__(self, obj, value):
+        if self._setter:
+            self._value = self._getter(self, value)
         self._value = self.minmax(value, self._min, self._max)
 
 class Params():
