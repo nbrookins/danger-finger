@@ -24,7 +24,7 @@ def assemble():
     finger.preview = True
     finger.segments = 72
     finger.part = ["middle"]
-   # finger.explode = True
+    finger.explode = True
 
     #load a configuration, with parameters from cli or env
     Params.parse(finger)
@@ -32,7 +32,6 @@ def assemble():
     #build some pieces
     mod_list = get_master_model(finger)
     for m in mod_list:
-        print("%s %s" % (m,mod_list[m] ))
         finger.emit(mod_list[m], filename=m)
 
 
