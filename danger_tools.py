@@ -1,7 +1,7 @@
 #!/bin/python
 # pylint: disable=C0302, line-too-long, unused-wildcard-import, wildcard-import, invalid-name, broad-except
 '''
-The danger_finger copyright 2014-2019 Nicholas Brookins and Danger Creations, LLC
+The danger_finger copyright 2014-2020 Nicholas Brookins and Danger Creations, LLC
 http://dangercreations.com/prosthetics :: http://www.thingiverse.com/thing:1340624
 Released under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/
 Source code licensed under Apache 2.0:  https://www.apache.org/licenses/LICENSE-2.0
@@ -145,6 +145,14 @@ class Params():
             Params.save_config(params)
             sys.exit("Exiting.  Remove 'save' param in order to run tool normally")
 
-        #set the params back to the finger
+        #set the params back to the object
         for param in params:
             setattr(config_obj, param[0], param[1])
+
+def iterable(obj):
+    ''' test if object is iterable '''
+    try:
+        iter(obj)
+        return True
+    except TypeError:
+        return False

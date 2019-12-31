@@ -1,7 +1,7 @@
 #!/bin/python
 # pylint: disable=C0302, line-too-long, unused-wildcard-import, wildcard-import, invalid-name, broad-except
 '''
-The danger_finger copyright 2014-2019 Nicholas Brookins and Danger Creations, LLC
+The danger_finger copyright 2014-2020 Nicholas Brookins and Danger Creations, LLC
 http://dangercreations.com/prosthetics :: http://www.thingiverse.com/thing:1340624
 Released under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/
 Source code licensed under Apache 2.0:  https://www.apache.org/licenses/LICENSE-2.0
@@ -30,23 +30,11 @@ def assemble():
     Params.parse(finger)
 
     #build some pieces
-    mod_preview = None
-    for p in finger.part:
-        mod_segment = getattr(finger, "part_" + p)()
-        if finger.explode:
-            if isinstance(mod_segment, (dict, tuple, list)):
-                new_mod = []
-                for s in mod_segment:
-                    new_mod.append(translate(finger.explode_offsets[p][len(new_mod)])(s))
-                mod_segment = new_mod
-            else:
-                mod_segment = translate(finger.explode_offsets[p])(mod_segment)
-        mod_preview = mod_segment if not mod_preview else mod_preview + mod_segment
-        #write it to a scad file (still needs to be rendered by openscad)
-        if not finger.preview:
-            finger.emit(mod_segment, filename="dangerfinger_%s_%s_gen.scad" %(VERSION, p))
-    if finger.preview:
-        finger.emit(mod_preview, filename="dangerfinger_%s_preview_gen.scad" % VERSION)
+    mod_list = get_master_model(finger)
+    for m in mod_list:
+        print("%s %s" % (m,mod_list[m] ))
+        finger.emit(mod_list[m], filename=m)
+
 
 # ********************************** The danger finger *************************************
 class DangerFinger:
@@ -147,6 +135,7 @@ class DangerFinger:
         mod_cut = translate((0, tunnel_length, 0))(bridge[1])
         mod_core = translate((0, self.distal_base_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.knuckle_distal_width/2 -.5, h=0.1)))
         #TODO Tip interface
+        #TODO Tip and base washers
         #TODO tip tendon detents
 
         return self.shift_distal()(mod_hinge + hull()(mod_tunnel+ mod_core) -mod_cut - mod_hinge_cut) - mod_plugs[2]- mod_plugs[3]
@@ -340,6 +329,26 @@ class DangerFinger:
     @segments.setter
     def segments(self, val):
         self._segments = val
+
+def get_master_model(finger):
+    ''' determine which models to emit, and organize by output filename '''
+    mod = {}
+    mod_preview = None
+    for p in finger.part:
+        mod_segment = getattr(finger, "part_" + p)()
+        mod_file = "dangerfinger_%s_%s_gen.scad" % (VERSION, p)
+        if finger.explode:
+            if iterable(mod_segment):
+                new_mod = []
+                for s in mod_segment:
+                    new_mod.append(translate(finger.explode_offsets[p][len(new_mod)])(s))
+                mod_segment = new_mod
+            else:
+                mod_segment = translate(finger.explode_offsets[p])(mod_segment)
+        mod_preview = mod_segment if not mod_preview else mod_preview + mod_segment
+        mod[mod_file] = mod_segment
+        #write it to a scad file (still needs to be rendered by openscad)
+    return mod if not finger.preview else {"dangerfinger_%s_%s_gen.scad" % (VERSION, "preview"): mod_preview}
 
 if __name__ == '__main__':
     assemble()
