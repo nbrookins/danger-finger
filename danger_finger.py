@@ -65,11 +65,10 @@ class DangerFinger:
     intermediate_proximal_height = Prop(val=12.0, minv=4, maxv=8, doc=''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
     intermediate_height = property(lambda self: ({Orient.DISTAL: self.intermediate_distal_height, Orient.PROXIMAL: self.intermediate_proximal_height}))
 
-    proximal_length = Prop(val=16, minv=8, maxv=30, doc=''' length of the proximal/tip finger segment ''')
-    distal_length = Prop(val=16, minv=8, maxv=30, doc=''' length of the distal/base finger segment ''')
-    distal_base_length = Prop(val=6, minv=0, maxv=20, doc=''' length of the distal/base finger segment ''')
-    proximal_base_length = Prop(val=6, minv=0, maxv=20, doc=''' length of the distal/base finger segment ''') #TODO - badly named
-    length = property(lambda self: ({Orient.DISTAL: self.distal_length, Orient.PROXIMAL: self.proximal_length} ))
+    proximal_length = Prop(val=6, minv=8, maxv=30, doc=''' length of the proximal/base finger segment ''')
+    distal_length = Prop(val=24, minv=8, maxv=30, doc=''' length of the distal/tip finger segment ''')
+    distal_base_length = Prop(val=6, minv=0, maxv=20, doc=''' length of the base of the distal/tip finger segment ''')
+    length = property(lambda self: ({Orient.DISTAL: self.distal_length, Orient.PROXIMAL: self.proximal_length}))
 
     knuckle_proximal_width = Prop(val=16.0, minv=4, maxv=20, doc=''' width of the proximal knuckle hinge''')
     knuckle_distal_width = Prop(val=14.5, minv=4, maxv=20, doc=''' width of the distal knuckle hinge ''')
@@ -90,28 +89,28 @@ class DangerFinger:
     linkage_height = Prop(val=4.4, minv=3, maxv=8, doc=''' thickness of the wrist linkage ''')
 
     # ************************************* rare or non-recommended to muss with *************
-    #TODO - find a way to markup advanced properties
-    tunnel_height = Prop(val=2, minv=0, maxv=5, doc=''' height of tendon tunnel ''')
-    tunnel_radius = Prop(val=1, minv=0, maxv=4, doc=''' radius of tendon tunnel rounding ''')
+    tunnel_height = Prop(val=2, minv=0, maxv=5, adv=True, doc=''' height of tendon tunnel ''')
+    tunnel_radius = Prop(val=1, minv=0, maxv=4, adv=True, doc=''' radius of tendon tunnel rounding ''')
 
-    knuckle_inset_border = Prop(val=2.2, minv=0, maxv=5, doc=''' width of teh hinge inset, same as top strut width ''')
-    knuckle_inset_depth = Prop(val=.75, minv=0, maxv=3, doc=''' depth of the inset to clear room for tendons ''')
-    knuckle_pin_radius = Prop(val=1.07, minv=0, maxv=3, doc=''' radius of the hinge pin/hole ''')
-    knuckle_plug_radius = Prop(val=3.0, minv=2, maxv=5, doc=''' radius of the hinge pin cover plug ''') #TO-DO dynamic contraints?, must be less than hinge radius
-    knuckle_plug_thickness = Prop(val=1.1, minv=0.5, maxv=4, doc=''' thickness of the hinge pin cover plug ''')
-    knuckle_plug_ridge = Prop(val=.3, minv=0, maxv=1.5, doc=''' width of the plug holding ridge ''')
-    knuckle_plug_clearance = Prop(val=.1, minv=-.5, maxv=1, doc=''' clearance of the plug ''')
-    knuckle_clearance = Prop(val=.4, minv=-.25, maxv=1, doc=''' clearance of the rounded inner part of the hinges ''')
+    knuckle_inset_border = Prop(val=2.2, minv=0, maxv=5, adv=True, doc=''' width of teh hinge inset, same as top strut width ''')
+    knuckle_inset_depth = Prop(val=.75, minv=0, maxv=3, adv=True, doc=''' depth of the inset to clear room for tendons ''')
+    knuckle_pin_radius = Prop(val=1.07, minv=0, maxv=3, adv=True, doc=''' radius of the hinge pin/hole ''')
+    knuckle_plug_radius = Prop(val=3.0, minv=2, maxv=5, adv=True, doc=''' radius of the hinge pin cover plug ''') #TO-DO dynamic contraints?, must be less than hinge radius
+    knuckle_plug_thickness = Prop(val=1.1, minv=0.5, maxv=4, adv=True, doc=''' thickness of the hinge pin cover plug ''')
+    knuckle_plug_ridge = Prop(val=.3, minv=0, maxv=1.5, adv=True, doc=''' width of the plug holding ridge ''')
+    knuckle_plug_clearance = Prop(val=.1, minv=-.5, maxv=1, adv=True, doc=''' clearance of the plug ''')
+    knuckle_clearance = Prop(val=.4, minv=-.25, maxv=1, adv=True, doc=''' clearance of the rounded inner part of the hinges ''')
 
-    knuckle_rounding = Prop(val=.7, minv=0, maxv=4, doc=''' amount of rounding for the outer hinges ''')
-    knuckle_side_clearance = Prop(val=.2, minv=-.25, maxv=1, doc=''' clearance of the flat circle side of the hinges ''')
+    intermediate_tunnel_length = Prop(val=.4, minv=-.25, maxv=2, adv=True, doc='''0-2 for the length of tunnels toward middle''')
+    knuckle_rounding = Prop(val=.7, minv=0, maxv=4, adv=True, doc=''' amount of rounding for the outer hinges ''')
+    knuckle_side_clearance = Prop(val=.2, minv=-.25, maxv=1, adv=True, doc=''' clearance of the flat circle side of the hinges ''')
 
-    strut_height_ratio = Prop(val=.8, minv=.1, maxv=3, doc=''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
-    strut_rounding = Prop(val=.3, minv=.5, maxv=2, doc=''' 0 for no rounding, 1 for fullly round ''')
+    strut_height_ratio = Prop(val=.8, minv=.1, maxv=3, adv=True, doc=''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
+    strut_rounding = Prop(val=.3, minv=.5, maxv=2, adv=True, doc=''' 0 for no rounding, 1 for fullly round ''')
 
-    socket_interface_length = Prop(val=5, minv=3, maxv=8, doc=''' length of the portion that interfaces socket and base ''')
+    socket_interface_length = Prop(val=5, minv=3, maxv=8, adv=True, doc=''' length of the portion that interfaces socket and base ''')
 
-    knuckle_cutouts = Prop(val=False, doc=''' True for extra cutouts on internals of intermediate section ''')
+    knuckle_cutouts = Prop(val=False, adv=True, doc=''' True for extra cutouts on internals of intermediate section ''')
 
     #**************************************** dynamic properties ******************************
 
@@ -130,8 +129,10 @@ class DangerFinger:
         mod_plugs = self.part_plugs(clearance=False)
         tunnel_length = self.intermediate_height[Orient.PROXIMAL]*.4
         mod_tunnel, mod_cut = self.bridge(length=tunnel_length, width_factor=self.knuckle_inset_border, tunnel_width=self.intermediate_width[Orient.PROXIMAL]+ self.knuckle_side_clearance*2, orient=Orient.PROXIMAL | Orient.OUTER)
-        mod_core = translate((0, -self.proximal_base_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.knuckle_proximal_width/2 + 1, h=0.1)))
+        mod_core = translate((0, -self.proximal_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.knuckle_proximal_width/2 + 1, h=0.1)))
+        #TODO trim hinge sides more better
         #TODO base socket interface
+        #TODO base tendon tunnel
 
         return mod_hinge + hull()(mod_tunnel + mod_core) -mod_cut - mod_hinge_cut - mod_plugs
 
@@ -163,14 +164,13 @@ class DangerFinger:
         mod_brace = self.cross_strut()
 
         #tunnel at each end
-        #TODO - unhardcode .4 factor
-        shift_tun = lambda self, orient: (translate((0, self.intermediate_height[orient]*.4, 0)))
-        bridge_p = self.bridge(length=self.intermediate_height[Orient.PROXIMAL]*.4, width_factor=self.knuckle_inset_border, \
+        shift_tun = lambda self, orient: (translate((0, self.intermediate_height[orient]*self.intermediate_tunnel_length, 0)))
+        bridge_p = self.bridge(length=self.intermediate_height[Orient.PROXIMAL]*self.intermediate_tunnel_length, width_factor=self.knuckle_inset_border, \
             tunnel_width=self.intermediate_width[Orient.PROXIMAL]*.75, orient=Orient.PROXIMAL | Orient.INNER)
         mod_tunnel_p = shift_tun(self, Orient.PROXIMAL)(bridge_p[0])
         #mod_cut_p = shift_tun(self, Orient.PROXIMAL)(bridge_p[1])
 
-        bridge_d = self.bridge(length=self.intermediate_height[Orient.DISTAL]*.4, width_factor=self.knuckle_inset_border, \
+        bridge_d = self.bridge(length=self.intermediate_height[Orient.DISTAL]*self.intermediate_tunnel_length, width_factor=self.knuckle_inset_border, \
             tunnel_width=self.intermediate_width[Orient.DISTAL]*.75, orient=Orient.DISTAL | Orient.INNER)
         mod_tunnel_d = rotate((180, 0, 0))(shift_tun(self, Orient.DISTAL)(bridge_d[0]))
         #mod_cut_d = rotate((180, 0, 0))(shift_tun(self, Orient.DISTAL)(bridge_d[1]))
