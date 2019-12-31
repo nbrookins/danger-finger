@@ -13,6 +13,7 @@ import inspect
 import argparse
 from solid import *
 from solid.utils import *
+from danger_tools import *
 
 VERSION = 4.1
 
@@ -20,7 +21,7 @@ VERSION = 4.1
 def assemble():
     ''' The entry point which loads a finger with proper parameters and outputs SCAD files as configured '''
     #create a finger object
-    finger = danger_finger()
+    finger = DangerFinger()
 
     #sample param overrides for testing - comment out
     finger.preview = True
@@ -28,7 +29,7 @@ def assemble():
     #finger.explode = True
 
     #load a configuration, with parameters from cli or env
-    ParamParser.parse(finger)
+    Params.parse(finger)
 
     #build some pieces
     mod_preview = None
@@ -43,86 +44,62 @@ def assemble():
     if finger.preview:
         finger.emit(mod_preview, filename="dangerfinger_%s_preview_gen.scad" % VERSION)
 
-# *********************************** Helper class ****************************************
-class ConstrainedProperty(object):
-    ''' a simple property replacement that enforces min and max values'''
-    def __init__(self, default, minv, maxv, doc, getter=None):
-        self._value = default
-        self._min = minv
-        self._max = maxv
-        self.__doc__ = doc
-        self._getter = getter
-
-    @staticmethod
-    def minmax(value, minv=None, maxv=None):
-        '''return the value constrained by a min and max, skipped if None/not provided'''
-        value = value if not minv else min(value, minv)
-        value = value if not maxv else max(value, maxv)
-        return value
-
-    def __get__(self, obj, objtype):
-        if self._getter:
-            return self._getter(self)
-        return self._value
-
-    def __set__(self, obj, value):
-        self._value = self.minmax(value, self._min, self._max)
 
 # ********************************** The danger finger *************************************
-class danger_finger:
+class DangerFinger:
     ''' The actual finger model '''
     manifest = ["middle", "base", "tip", "plugs"]
     explode_offsets = {"middle":(0, 15, 0), "base" : (0, 0, 0), "tip":(0, 30, 0), "plugs":(15, 0, 0)}
     # ************************************* control params *****************************************
 
-    preview = ConstrainedProperty(False, None, None, ''' Enable preview mode, emits all segments ''')
-    explode = ConstrainedProperty(False, None, None, ''' Enable explode mode, only for preview ''')
-    output_directory = ConstrainedProperty(os.getcwd(), None, None, ''' output_directory for scad code, otherwise current''')
+    preview = Prop(False, doc=''' Enable preview mode, emits all segments ''')
+    explode = Prop(False, doc=''' Enable explode mode, only for preview ''')
+    output_directory = Prop(os.getcwd(), doc=''' output_directory for scad code, otherwise current''')
 
     # **************************************** parameters ****************************************
-    intermediate_length = ConstrainedProperty(25, 8, 30, ''' length of the intermediate finger segment ''')
-    intermediate_distal_height = ConstrainedProperty(11.0, 4, 8, ''' height of the middle section at the distal end.  roughly the height of the hinge circle ''')
-    intermediate_proximal_height = ConstrainedProperty(12.0, 4, 8, ''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
+    intermediate_length = Prop(25, minv=8, maxv=30, doc=''' length of the intermediate finger segment ''')
+    intermediate_distal_height = Prop(11.0, minv=4, maxv=8, doc=''' height of the middle section at the distal end.  roughly the height of the hinge circle ''')
+    intermediate_proximal_height = Prop(12.0, minv=4, maxv=8, doc=''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
 
-    proximal_length = ConstrainedProperty(16, 8, 30, ''' length of the proximal/tip finger segment ''')
-    distal_length = ConstrainedProperty(16, 8, 30, ''' length of the distal/base finger segment ''')
+    proximal_length = Prop(16, minv=8, maxv=30, doc=''' length of the proximal/tip finger segment ''')
+    distal_length = Prop(16, minv=8, maxv=30, doc=''' length of the distal/base finger segment ''')
 
-    knuckle_proximal_width = ConstrainedProperty(16.0, 4, 20, ''' width of the proximal knuckle hinge''')
-    knuckle_distal_width = ConstrainedProperty(14.5, 4, 20, ''' width of the distal knuckle hinge ''')
+    knuckle_proximal_width = Prop(16.0, minv=4, maxv=20, doc=''' width of the proximal knuckle hinge''')
+    knuckle_distal_width = Prop(14.5, minv=4, maxv=20, doc=''' width of the distal knuckle hinge ''')
 
-    socket_circumference_distal = ConstrainedProperty(55, 20, 160, '''circumference of the socket closest to the base''')
-    socket_circumference_proximal = ConstrainedProperty(62, 20, 160, '''circumference of the socket closest to the hand''')
-    socket_thickness_distal = ConstrainedProperty(2, .5, 4, '''thickness of the socket closest to the base''')
-    socket_thickness_proximal = ConstrainedProperty(1.6, .5, 4, '''thickness of the socket at flare''')
-    socket_clearance = ConstrainedProperty(-.25, -2, 2, '''Clearance between socket and base.  -.5 for Ninja flex and sloopy printing to +.5 for firm tpu and accurate''')
+    socket_circumference_distal = Prop(55, minv=20, maxv=160, doc='''circumference of the socket closest to the base''')
+    socket_circumference_proximal = Prop(62, minv=20, maxv=160, doc='''circumference of the socket closest to the hand''')
+    socket_thickness_distal = Prop(2, minv=.5, maxv=4, doc='''thickness of the socket closest to the base''')
+    socket_thickness_proximal = Prop(1.6, minv=.5, maxv=4, doc='''thickness of the socket at flare''')
+    socket_clearance = Prop(-.25, minv=-2, maxv=2, doc='''Clearance between socket and base.  -.5 for Ninja flex and sloopy printing to +.5 for firm tpu and accurate''')
 
-    knuckle_proximal_thickness = ConstrainedProperty(3.8, 1, 5, ''' thickness of the hinge tab portion on proximal side  ''')
-    knuckle_distal_thickness = ConstrainedProperty(3.4, 1, 5, ''' thickness of the hinge tab portion on distal side ''')
+    knuckle_proximal_thickness = Prop(3.8, minv=1, maxv=5, doc=''' thickness of the hinge tab portion on proximal side  ''')
+    knuckle_distal_thickness = Prop(3.4, minv=1, maxv=5, doc=''' thickness of the hinge tab portion on distal side ''')
 
-    linkage_length = ConstrainedProperty(70, 10, 120, ''' length of the wrist linkage ''')
-    linkage_width = ConstrainedProperty(6.8, 4, 12, ''' width of the wrist linkage ''')
-    linkage_height = ConstrainedProperty(4.4, 3, 8, ''' thickness of the wrist linkage ''')
+    linkage_length = Prop(70, minv=10, maxv=120, doc=''' length of the wrist linkage ''')
+    linkage_width = Prop(6.8, minv=4, maxv=12, doc=''' width of the wrist linkage ''')
+    linkage_height = Prop(4.4, minv=3, maxv=8, doc=''' thickness of the wrist linkage ''')
 
     # ************************************* rare or non-recommended to muss with *************
     #TODO - find a way to markup advanced properties
 
-    knuckle_inset_border = ConstrainedProperty(2.2, 0, 5, ''' width of teh hinge inset, same as top strut width ''')
-    knuckle_inset_depth = ConstrainedProperty(.65, 0, 3, ''' depth of the inset to clear room for tendons ''')
-    knuckle_pin_radius = ConstrainedProperty(1.07, 0, 3, ''' radius of the hinge pin/hole ''')
-    knuckle_plug_radius = ConstrainedProperty(3.0, 2, 5, ''' radius of the hinge pin cover plug ''') #TO-DO dynamic contraints?, must be less than hinge radius
-    knuckle_plug_thickness = ConstrainedProperty(1.1, 0.5, 4, ''' thickness of the hinge pin cover plug ''')
-    knuckle_plug_ridge = ConstrainedProperty(.3, 0, 1.5, ''' width of the plug holding ridge ''')
-    knuckle_plug_clearance = ConstrainedProperty(.1, -.5, 1, ''' clearance of the plug ''')
+    knuckle_inset_border = Prop(2.2, minv=0, maxv=5, doc=''' width of teh hinge inset, same as top strut width ''')
+    knuckle_inset_depth = Prop(.65, minv=0, maxv=3, doc=''' depth of the inset to clear room for tendons ''')
+    knuckle_pin_radius = Prop(1.07, minv=0, maxv=3, doc=''' radius of the hinge pin/hole ''')
+    knuckle_plug_radius = Prop(3.0, minv=2, maxv=5, doc=''' radius of the hinge pin cover plug ''') #TO-DO dynamic contraints?, must be less than hinge radius
+    knuckle_plug_thickness = Prop(1.1, minv=0.5, maxv=4, doc=''' thickness of the hinge pin cover plug ''')
+    knuckle_plug_ridge = Prop(.3, minv=0, maxv=1.5, doc=''' width of the plug holding ridge ''')
+    knuckle_plug_clearance = Prop(.1, minv=-.5, maxv=1, doc=''' clearance of the plug ''')
 
-    knuckle_rounding = ConstrainedProperty(.7, 0, 4, ''' amount of rounding for the outer hinges ''')
-    knuckle_side_clearance = ConstrainedProperty(.1, -.25, 1, ''' clearance of the flat round side of the hinges ''')
+    knuckle_rounding = Prop(.7, minv=0, maxv=4, doc=''' amount of rounding for the outer hinges ''')
+    knuckle_side_clearance = Prop(.1, minv=-.25, maxv=1, doc=''' clearance of the flat round side of the hinges ''')
 
-    strut_height_ratio = ConstrainedProperty(.8, .1, 3, ''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
-    strut_rounding = ConstrainedProperty(.3, .5, 2, ''' 0 for no rounding, 1 for fullly round ''')
+    strut_height_ratio = Prop(.8, minv=.1, maxv=3, doc=''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
+    strut_rounding = Prop(.3, minv=.5, maxv=2, doc=''' 0 for no rounding, 1 for fullly round ''')
 
-    socket_interface_length = ConstrainedProperty(5, 3, 8, ''' length of the portion that interfaces socket and base ''')
+    socket_interface_length = Prop(5, minv=3, maxv=8, doc=''' length of the portion that interfaces socket and base ''')
 
-    knuckle_cutouts = ConstrainedProperty(False, None, None, ''' True for extra cutouts on internals of intermediate section ''')
+    knuckle_cutouts = Prop(False, doc=''' True for extra cutouts on internals of intermediate section ''')
 
     #**************************************** dynamic properties ******************************
 
@@ -282,101 +259,6 @@ class danger_finger:
             print("Writing SCAD output to %s/%s" % (self.output_directory, filename))
             return scad_render_to_file(val, out_dir=self.output_directory, file_header=f'$fn = {self.segments};', include_orig_code=True, filepath=filename)
 
-# ********************************* Custom SCAD Primitives *****************************
-
-def rcylinder(r, h, rnd=0, center=False):
-    ''' primitive for a cylinder with rounded edges'''
-    if rnd == 0: return cylinder(r=r, h=h, center=center)
-    mod_cyl = translate((0, 0, -h/2 if center else 0))( \
-        rotate_extrude(convexity=1)(offset(r=rnd)(offset(delta=-rnd)(square((r, h)) + square((rnd, h))))))
-    return mod_cyl
-
-def rcube(size, rnd=0, center=True):
-    ''' primitive for a cube with rounded edges on 4 sides '''
-    if rnd == 0: return cube(size, center=center)
-    round_ratio = (1-rnd) * 1.1 + 0.5
-    return cube(size, center=center) * resize((size[0]*round_ratio, 0, 0))(cylinder(h=size[2], d=size[1]*round_ratio, center=center))
-
-#********************************* Parameterization system **********************************
-class ParamParser():
-    ''' handy class for parsing/loading/saving dynamic configs'''
-    @staticmethod
-    def open_config(params, args):
-        '''open a config file'''
-        with open(params["open_config"], "r") as file_h:
-            config = dict(json.load(file_h))
-            print("-Loaded config from %s " % params["open_config"])
-            for k in config:
-                if config[k] and k not in args:
-                    params[k] = config[k]
-
-    @staticmethod
-    def save_config(params):
-        '''save a config file'''
-        try:
-            config_file = params["save_config"]
-            print("-Saving config file to: %s " % config_file)
-            del params["save_config"]
-            with open(config_file, "w+") as file_h:
-                json.dump(params, file_h, indent=2)
-        except Exception as err:
-            print("Failed saving config file: %s " % err)
-
-    @staticmethod
-    def parse(finger):
-        """parse command line args"""
-        #lay down all of our potential options
-        parser = argparse.ArgumentParser(
-            prog="danger_finger.py",
-            description='''danger-finger.py v%s (c) 2015-2020 DangerCreations, Inself.
-                code: knick@dangercreations.com''' % VERSION,
-            epilog='''''', add_help=False)
-
-        #do this to distinguish set vs default args
-        args = parser.parse_known_args()
-        arg_list = []
-        for arg in args[1]:
-            if arg.startswith("-"): arg_list.append(arg.replace("-", ""))
-
-        parser.add_argument("-h", "--help", help="Display this help message and exit.", action="store_true")
-        parser.add_argument("-s", "--save_config", help="save config to json file")
-        parser.add_argument("-o", "--open_config", help="open config or checkpoint from json file")
-        parser.add_argument("-v", "--verbose", help="verbose mode", action="store_true")
-
-        # loop through config class and add a parameter option for each attribute, using _ prepended ones for simu-docstrings
-        for param in vars(danger_finger).items():
-            if param[0].startswith("_"): continue
-            val = getattr(finger, param[0])
-            if str(val).startswith(("<f", "<b")): continue
-            doc = inspect.getdoc(param[1]) #getattr(config, "_" + param[0], None) if hasattr(config, "_" + param[0]) else inspect.getdoc(param[1])
-            parser.add_argument("--%s" % param[0], default=val, help=doc)
-            #print("added param %s, %s, \"%s\"" % (param[0], val, doc))
-
-        params = vars(parser.parse_args())
-        for param in params:
-            env = os.environ.get(param)
-            if env:
-                #print("Found matching env var %s, value: %s " % (param, env))
-                if env.startswith("'") and env.endswith("'"):
-                    env = env[1:-1]
-                if isinstance(env, str) and ("false" in env.lower() or "true" in env.lower()):
-                    params[param] = (env.lower() == "true")
-                else:
-                    params[param] = env
-
-        if params["help"]:
-            parser.print_help()
-            sys.exit()
-        if params["open_config"]:
-            params.pop("open_config", None)
-            ParamParser.open_config(params, arg_list)
-        if params["save_config"]:
-            ParamParser.save_config(params)
-            sys.exit("Exiting.  Remove 'save' param in order to run tool normally")
-
-        #set the params back to the finger
-        for param in params:
-            setattr(finger, param[0], param[1])
 
 if __name__ == '__main__':
     assemble()
