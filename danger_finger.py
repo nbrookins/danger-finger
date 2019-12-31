@@ -8,9 +8,6 @@ Source code licensed under Apache 2.0:  https://www.apache.org/licenses/LICENSE-
 '''
 import os
 import sys
-import json
-import inspect
-import argparse
 from solid import *
 from solid.utils import *
 from danger_tools import *
@@ -107,26 +104,6 @@ class DangerFinger:
     intermediate_distal_width = property(lambda self: (self.knuckle_distal_width - self.knuckle_distal_thickness*2 - self.knuckle_side_clearance*2))
     distal_offset = property(lambda self: (self.intermediate_length))#+ self.intermediate_distal_height / 2))
     shift_distal = lambda self: translate((0, self.distal_offset, 0))
-
-    #*************************************** special properties **********************************
-
-    _part = []
-    @property
-    def part(self):
-        ''' select which part to print'''
-        return self.manifest if self.preview else self._part
-    @part.setter
-    def part(self, val):
-        self._part = val
-
-    _segments = 0
-    @property
-    def segments(self):
-        '''number of radii segments, higher is better for detail but slower.  auto sets low (36) for preview and high (108) for print '''
-        return self._segments if self._segments != 0 else 36 * 2 if self.preview else 36 * 3
-    @segments.setter
-    def segments(self, val):
-        self._segments = val
 
     #**************************************** finger bits ****************************************
 
@@ -259,6 +236,25 @@ class DangerFinger:
             print("Writing SCAD output to %s/%s" % (self.output_directory, filename))
             return scad_render_to_file(val, out_dir=self.output_directory, file_header=f'$fn = {self.segments};', include_orig_code=True, filepath=filename)
 
+    #*************************************** special properties **********************************
+
+    _part = []
+    @property
+    def part(self):
+        ''' select which part to print'''
+        return self.manifest if self.preview else self._part
+    @part.setter
+    def part(self, val):
+        self._part = val
+
+    _segments = 0
+    @property
+    def segments(self):
+        '''number of radii segments, higher is better for detail but slower.  auto sets low (36) for preview and high (108) for print '''
+        return self._segments if self._segments != 0 else 36 * 2 if self.preview else 36 * 3
+    @segments.setter
+    def segments(self, val):
+        self._segments = val
 
 if __name__ == '__main__':
     assemble()
