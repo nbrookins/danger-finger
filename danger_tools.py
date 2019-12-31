@@ -10,6 +10,7 @@ import os
 import sys
 import json
 import inspect
+from enum import IntFlag
 import argparse
 from solid import *
 from solid.utils import *
@@ -17,6 +18,14 @@ from solid.utils import *
 VERSION = 4.1
 
 # ********************************* Custom SCAD Primitives *****************************
+
+class Orient(IntFlag):
+    ''' Enum for passing an orientation '''
+    PROXIMAL = 1
+    DISTAL = 2
+    INNER = 4
+    OUTER = 8
+    UNIVERSAL = 16
 
 def rcylinder(r, h, rnd=0, center=False):
     ''' primitive for a cylinder with rounded edges'''
