@@ -52,54 +52,54 @@ class DangerFinger:
     explode_offsets = {"middle":(0, 15, 0), "base" : (0, 0, 0), "tip":(0, 30, 0), "plugs":(15, 0, 0)}
     # ************************************* control params *****************************************
 
-    preview = Prop(False, doc=''' Enable preview mode, emits all segments ''')
-    explode = Prop(False, doc=''' Enable explode mode, only for preview ''')
-    output_directory = Prop(os.getcwd(), doc=''' output_directory for scad code, otherwise current''')
+    preview = Prop(val=False, doc=''' Enable preview mode, emits all segments ''')
+    explode = Prop(val=False, doc=''' Enable explode mode, only for preview ''')
+    output_directory = Prop(val=os.getcwd(), doc=''' output_directory for scad code, otherwise current''')
 
     # **************************************** parameters ****************************************
-    intermediate_length = Prop(25, minv=8, maxv=30, doc=''' length of the intermediate finger segment ''')
-    intermediate_distal_height = Prop(11.0, minv=4, maxv=8, doc=''' height of the middle section at the distal end.  roughly the height of the hinge circle ''')
-    intermediate_proximal_height = Prop(12.0, minv=4, maxv=8, doc=''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
+    intermediate_length = Prop(val=25, minv=8, maxv=30, doc=''' length of the intermediate finger segment ''')
+    intermediate_distal_height = Prop(val=11.0, minv=4, maxv=8, doc=''' height of the middle section at the distal end.  roughly the height of the hinge circle ''')
+    intermediate_proximal_height = Prop(val=12.0, minv=4, maxv=8, doc=''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
 
-    proximal_length = Prop(16, minv=8, maxv=30, doc=''' length of the proximal/tip finger segment ''')
-    distal_length = Prop(16, minv=8, maxv=30, doc=''' length of the distal/base finger segment ''')
+    proximal_length = Prop(val=16, minv=8, maxv=30, doc=''' length of the proximal/tip finger segment ''')
+    distal_length = Prop(val=16, minv=8, maxv=30, doc=''' length of the distal/base finger segment ''')
 
-    knuckle_proximal_width = Prop(16.0, minv=4, maxv=20, doc=''' width of the proximal knuckle hinge''')
-    knuckle_distal_width = Prop(14.5, minv=4, maxv=20, doc=''' width of the distal knuckle hinge ''')
+    knuckle_proximal_width = Prop(val=16.0, minv=4, maxv=20, doc=''' width of the proximal knuckle hinge''')
+    knuckle_distal_width = Prop(val=14.5, minv=4, maxv=20, doc=''' width of the distal knuckle hinge ''')
 
-    socket_circumference_distal = Prop(55, minv=20, maxv=160, doc='''circumference of the socket closest to the base''')
-    socket_circumference_proximal = Prop(62, minv=20, maxv=160, doc='''circumference of the socket closest to the hand''')
-    socket_thickness_distal = Prop(2, minv=.5, maxv=4, doc='''thickness of the socket closest to the base''')
-    socket_thickness_proximal = Prop(1.6, minv=.5, maxv=4, doc='''thickness of the socket at flare''')
-    socket_clearance = Prop(-.25, minv=-2, maxv=2, doc='''Clearance between socket and base.  -.5 for Ninja flex and sloopy printing to +.5 for firm tpu and accurate''')
+    socket_circumference_distal = Prop(val=55, minv=20, maxv=160, doc='''circumference of the socket closest to the base''')
+    socket_circumference_proximal = Prop(val=62, minv=20, maxv=160, doc='''circumference of the socket closest to the hand''')
+    socket_thickness_distal = Prop(val=2, minv=.5, maxv=4, doc='''thickness of the socket closest to the base''')
+    socket_thickness_proximal = Prop(val=1.6, minv=.5, maxv=4, doc='''thickness of the socket at flare''')
+    socket_clearance = Prop(val=-.25, minv=-2, maxv=2, doc='''Clearance between socket and base.  -.5 for Ninja flex and sloopy printing to +.5 for firm tpu and accurate''')
 
-    knuckle_proximal_thickness = Prop(3.8, minv=1, maxv=5, doc=''' thickness of the hinge tab portion on proximal side  ''')
-    knuckle_distal_thickness = Prop(3.4, minv=1, maxv=5, doc=''' thickness of the hinge tab portion on distal side ''')
+    knuckle_proximal_thickness = Prop(val=3.8, minv=1, maxv=5, doc=''' thickness of the hinge tab portion on proximal side  ''')
+    knuckle_distal_thickness = Prop(val=3.4, minv=1, maxv=5, doc=''' thickness of the hinge tab portion on distal side ''')
 
-    linkage_length = Prop(70, minv=10, maxv=120, doc=''' length of the wrist linkage ''')
-    linkage_width = Prop(6.8, minv=4, maxv=12, doc=''' width of the wrist linkage ''')
-    linkage_height = Prop(4.4, minv=3, maxv=8, doc=''' thickness of the wrist linkage ''')
+    linkage_length = Prop(val=70, minv=10, maxv=120, doc=''' length of the wrist linkage ''')
+    linkage_width = Prop(val=6.8, minv=4, maxv=12, doc=''' width of the wrist linkage ''')
+    linkage_height = Prop(val=4.4, minv=3, maxv=8, doc=''' thickness of the wrist linkage ''')
 
     # ************************************* rare or non-recommended to muss with *************
     #TODO - find a way to markup advanced properties
 
-    knuckle_inset_border = Prop(2.2, minv=0, maxv=5, doc=''' width of teh hinge inset, same as top strut width ''')
-    knuckle_inset_depth = Prop(.65, minv=0, maxv=3, doc=''' depth of the inset to clear room for tendons ''')
-    knuckle_pin_radius = Prop(1.07, minv=0, maxv=3, doc=''' radius of the hinge pin/hole ''')
-    knuckle_plug_radius = Prop(3.0, minv=2, maxv=5, doc=''' radius of the hinge pin cover plug ''') #TO-DO dynamic contraints?, must be less than hinge radius
-    knuckle_plug_thickness = Prop(1.1, minv=0.5, maxv=4, doc=''' thickness of the hinge pin cover plug ''')
-    knuckle_plug_ridge = Prop(.3, minv=0, maxv=1.5, doc=''' width of the plug holding ridge ''')
-    knuckle_plug_clearance = Prop(.1, minv=-.5, maxv=1, doc=''' clearance of the plug ''')
+    knuckle_inset_border = Prop(val=2.2, minv=0, maxv=5, doc=''' width of teh hinge inset, same as top strut width ''')
+    knuckle_inset_depth = Prop(val=.65, minv=0, maxv=3, doc=''' depth of the inset to clear room for tendons ''')
+    knuckle_pin_radius = Prop(val=1.07, minv=0, maxv=3, doc=''' radius of the hinge pin/hole ''')
+    knuckle_plug_radius = Prop(val=3.0, minv=2, maxv=5, doc=''' radius of the hinge pin cover plug ''') #TO-DO dynamic contraints?, must be less than hinge radius
+    knuckle_plug_thickness = Prop(val=1.1, minv=0.5, maxv=4, doc=''' thickness of the hinge pin cover plug ''')
+    knuckle_plug_ridge = Prop(val=.3, minv=0, maxv=1.5, doc=''' width of the plug holding ridge ''')
+    knuckle_plug_clearance = Prop(val=.1, minv=-.5, maxv=1, doc=''' clearance of the plug ''')
 
-    knuckle_rounding = Prop(.7, minv=0, maxv=4, doc=''' amount of rounding for the outer hinges ''')
-    knuckle_side_clearance = Prop(.1, minv=-.25, maxv=1, doc=''' clearance of the flat round side of the hinges ''')
+    knuckle_rounding = Prop(val=.7, minv=0, maxv=4, doc=''' amount of rounding for the outer hinges ''')
+    knuckle_side_clearance = Prop(val=.1, minv=-.25, maxv=1, doc=''' clearance of the flat round side of the hinges ''')
 
-    strut_height_ratio = Prop(.8, minv=.1, maxv=3, doc=''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
-    strut_rounding = Prop(.3, minv=.5, maxv=2, doc=''' 0 for no rounding, 1 for fullly round ''')
+    strut_height_ratio = Prop(val=.8, minv=.1, maxv=3, doc=''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
+    strut_rounding = Prop(val=.3, minv=.5, maxv=2, doc=''' 0 for no rounding, 1 for fullly round ''')
 
-    socket_interface_length = Prop(5, minv=3, maxv=8, doc=''' length of the portion that interfaces socket and base ''')
+    socket_interface_length = Prop(val=5, minv=3, maxv=8, doc=''' length of the portion that interfaces socket and base ''')
 
-    knuckle_cutouts = Prop(False, doc=''' True for extra cutouts on internals of intermediate section ''')
+    knuckle_cutouts = Prop(val=False, doc=''' True for extra cutouts on internals of intermediate section ''')
 
     #**************************************** dynamic properties ******************************
 
