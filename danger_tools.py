@@ -106,7 +106,9 @@ class Params():
         #do this to distinguish set vs default args
         args = parser.parse_known_args()
         arg_list = []
+        #print("args %s" % str(args))
         for arg in args[1]:
+            print("arg %s" % arg)
             if arg.startswith("-"): arg_list.append(arg.replace("-", ""))
 
         parser.add_argument("-h", "--help", help="Display this help message and exit.", action="store_true")
@@ -115,15 +117,18 @@ class Params():
         parser.add_argument("-v", "--verbose", help="verbose mode", action="store_true")
 
         # loop through config class and add a parameter option for each attribute, using _ prepended ones for simu-docstrings
-        for param in vars(config_obj).items(): ###
+        for param in vars(type(config_obj)).items(): ###
+            #print (param)
             if param[0].startswith("_"): continue
             val = getattr(config_obj, param[0])
             if str(val).startswith(("<f", "<b")): continue
-            doc = inspect.getdoc(param[1]) #getattr(config, "_" + param[0], None) if hasattr(config, "_" + param[0]) else inspect.getdoc(param[1])
+            doc = inspect.getdoc(param[1])
+            if doc == None: doc = "" #getattr(config, "_" + param[0], None) if hasattr(config, "_" + param[0]) else inspect.getdoc(param[1])
             parser.add_argument("--%s" % param[0], default=val, help=doc)
             #print("added param %s, %s, \"%s\"" % (param[0], val, doc))
 
         params = vars(parser.parse_args())
+        #print("params: %s" % params)
         for param in params:
             env = os.environ.get(param)
             if env:
@@ -146,8 +151,12 @@ class Params():
             sys.exit("Exiting.  Remove 'save' param in order to run tool normally")
 
         #set the params back to the object
+        print(arg_list)
         for param in params:
-            setattr(config_obj, param[0], param[1])
+            #print("%s %s " % (param, params[param]))
+            if param in arg_list:
+                print("Setting %s %s " % (param, params[param]))
+                setattr(config_obj, param, params[param])
 
 def iterable(obj):
     ''' test if object is iterable '''
