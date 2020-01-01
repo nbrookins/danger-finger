@@ -24,7 +24,7 @@ def assemble():
     finger.preview = True
     finger.segments = 72
     finger.part = ["middle"]
-    finger.explode = True
+    #finger.explode = True
 
     #load a configuration, with parameters from cli or env
     Params.parse(finger)
@@ -115,7 +115,7 @@ class DangerFinger:
         mod_hinge, mod_hinge_cut = self.knuckle_outer(orient=Orient.PROXIMAL)
         mod_plugs = self.part_plugs(clearance=False)
         tunnel_length = self.intermediate_height[Orient.PROXIMAL]*.4
-        mod_tunnel, mod_cut = self.bridge(length=tunnel_length, width_factor=self.knuckle_inset_border, tunnel_width=self.intermediate_width[Orient.PROXIMAL]+ self.knuckle_side_clearance*2, orient=Orient.PROXIMAL | Orient.OUTER)
+        mod_tunnel, mod_cut = self.bridge(length=tunnel_length, tunnel_width=self.intermediate_width[Orient.PROXIMAL]+ self.knuckle_side_clearance*2, orient=Orient.PROXIMAL | Orient.OUTER)
         mod_core = translate((0, -self.proximal_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.knuckle_proximal_width/2 + 1, h=0.1)))
         #TODO trim hinge sides more better
         #TODO base socket interface
@@ -129,7 +129,7 @@ class DangerFinger:
         mod_plugs = self.part_plugs(clearance=False)
 
         tunnel_length = self.intermediate_height[Orient.DISTAL]*.4
-        bridge = self.bridge(length=tunnel_length, width_factor=self.knuckle_inset_border, tunnel_width=self.intermediate_width[Orient.DISTAL] + self.knuckle_side_clearance*2, orient=Orient.DISTAL | Orient.OUTER)
+        bridge = self.bridge(length=tunnel_length, tunnel_width=self.intermediate_width[Orient.DISTAL] + self.knuckle_side_clearance*2, orient=Orient.DISTAL | Orient.OUTER)
         mod_tunnel = translate((0, tunnel_length, 0))(bridge[0])
         mod_cut = translate((0, tunnel_length, 0))(bridge[1])
         mod_core = translate((0, self.distal_base_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.knuckle_distal_width/2 -.5, h=0.1)))
@@ -153,12 +153,12 @@ class DangerFinger:
 
         #tunnel at each end
         shift_tun = lambda self, orient: (translate((0, self.intermediate_height[orient]*self.intermediate_tunnel_length, 0)))
-        bridge_p = self.bridge(length=self.intermediate_height[Orient.PROXIMAL]*self.intermediate_tunnel_length, width_factor=self.knuckle_inset_border, \
+        bridge_p = self.bridge(length=self.intermediate_height[Orient.PROXIMAL]*self.intermediate_tunnel_length, \
             tunnel_width=self.intermediate_width[Orient.PROXIMAL]*.75, orient=Orient.PROXIMAL | Orient.INNER)
         mod_tunnel_p = shift_tun(self, Orient.PROXIMAL)(bridge_p[0])
         #mod_cut_p = shift_tun(self, Orient.PROXIMAL)(bridge_p[1])
 
-        bridge_d = self.bridge(length=self.intermediate_height[Orient.DISTAL]*self.intermediate_tunnel_length, width_factor=self.knuckle_inset_border, \
+        bridge_d = self.bridge(length=self.intermediate_height[Orient.DISTAL]*self.intermediate_tunnel_length, \
             tunnel_width=self.intermediate_width[Orient.DISTAL]*.75, orient=Orient.DISTAL | Orient.INNER)
         mod_tunnel_d = rotate((180, 0, 0))(shift_tun(self, Orient.DISTAL)(bridge_d[0]))
         #mod_cut_d = rotate((180, 0, 0))(shift_tun(self, Orient.DISTAL)(bridge_d[1]))
@@ -191,7 +191,7 @@ class DangerFinger:
 
     #**************************************** Primitives ***************************************
 
-    def bridge(self, length, orient, tunnel_width, width_factor):
+    def bridge(self, length, orient, tunnel_width):
         ''' tendon tunnel for external hinges'''
         #assemble lots of variables, changing by orientation
         orient_lat = Orient.PROXIMAL if orient & Orient.PROXIMAL else Orient.DISTAL
@@ -202,17 +202,19 @@ class DangerFinger:
         tunnel_height = h_factor + self.tunnel_height*.4 #hokey
 
         #generate our anchor points
-        t_anchor_end = rotate((90, 0, 0))(cylinder(r=self.tunnel_radius, h=.01))
+        t_anchor_end = rotate((90, 0, 0))(cylinder(r=self.tunnel_radius , h=.01)) #TODO rounding is not parametric
 
-        t_top_l_in = translate((height_top, 0, self.get_tunnel_width(orient, width_factor, top=True, inside=True)))(t_anchor_end)
-        t_top_r_in = translate((height_top, 0, -self.get_tunnel_width(orient, width_factor, top=True, inside=True)))(t_anchor_end)
-        t_top_l_out = translate((height_top, -length, self.get_tunnel_width(orient, width_factor, top=True, inside=False)))(t_anchor_end)
-        t_top_r_out = translate((height_top, -length, -self.get_tunnel_width(orient, width_factor, top=True, inside=False)))(t_anchor_end)
+        #TODO - hardcoded -.5, here and next method
+        t_top_l_in = translate((height_top + (-.5 if orient == (Orient.DISTAL | Orient.OUTER) else 0), 0, self.get_tunnel_width(orient, top=True, inside=True)))(t_anchor_end)
+        t_top_r_in = translate((height_top + (-.5 if orient == (Orient.DISTAL | Orient.OUTER) else 0), 0, -self.get_tunnel_width(orient, top=True, inside=True)))(t_anchor_end)
 
-        t_anchor_l_in = translate((height_bottom, 0, self.get_tunnel_width(orient, width_factor, top=False, inside=True)))(t_anchor_end)
-        t_anchor_r_in = translate((height_bottom, 0, -self.get_tunnel_width(orient, width_factor, top=False, inside=True)))(t_anchor_end)
-        t_anchor_l_out = translate((height_bottom, -length, self.get_tunnel_width(orient, width_factor, top=False, inside=False)))(t_anchor_end)
-        t_anchor_r_out = translate((height_bottom, -length, -self.get_tunnel_width(orient, width_factor, top=False, inside=False)))(t_anchor_end)
+        t_top_l_out = translate((height_top, -length, self.get_tunnel_width(orient, top=True, inside=False)))(t_anchor_end)
+        t_top_r_out = translate((height_top, -length, -self.get_tunnel_width(orient, top=True, inside=False)))(t_anchor_end)
+
+        t_anchor_l_in = translate((height_bottom, 0, self.get_tunnel_width(orient, top=False, inside=True)))(t_anchor_end)
+        t_anchor_r_in = translate((height_bottom, 0, -self.get_tunnel_width(orient, top=False, inside=True)))(t_anchor_end)
+        t_anchor_l_out = translate((height_bottom, -length, self.get_tunnel_width(orient, top=False, inside=False)))(t_anchor_end)
+        t_anchor_r_out = translate((height_bottom, -length, -self.get_tunnel_width(orient, top=False, inside=False)))(t_anchor_end)
 
         #hull them together, and cut the middle
         mod_tunnel = hull()(t_top_l_in, t_top_l_out, t_top_r_in, t_top_r_out, t_anchor_l_in, t_anchor_l_out, t_anchor_r_in, t_anchor_r_out)
@@ -222,15 +224,19 @@ class DangerFinger:
 
         return mod_tunnel - mod_cut, mod_cut
 
-    def get_tunnel_width(self, orient, width_factor, top=False, inside=False):
+    def get_tunnel_width(self, orient, top=False, inside=False):
         ''' calculate tunnel widths for a variety of orientations '''
         orient_lat = Orient.PROXIMAL if orient & Orient.PROXIMAL else Orient.DISTAL
         orient_part = Orient.INNER if orient & Orient.INNER else Orient.OUTER
 
         width_top_in = (self.intermediate_width[orient_lat] / 2) - (self.tunnel_radius + 0.5 if (orient_part == Orient.INNER) else 0)
-        width_top_out = (self.intermediate_width[orient_lat] / 2) - (self.tunnel_radius -.01 if (orient_part == Orient.INNER) else 0) - (self.tunnel_radius -.01 if (orient_lat == Orient.DISTAL and inside) else 0)
+        #TODO -1 hack
+        width_top_out = (self.intermediate_width[orient_lat] / 2) - (self.tunnel_radius -.01 if (orient_part == Orient.INNER) else -1) \
+            - (self.tunnel_radius -.01 if (orient_lat == Orient.DISTAL and inside) else 0)
+
         width_bottom_in = self.knuckle_width[orient_lat] / 4 - self.tunnel_radius
-        width_bottom_out = self.knuckle_width[orient_lat] / 2 - width_factor/2 - (self.tunnel_radius -.01 if (orient_lat == Orient.DISTAL and inside) else 0)
+        width_bottom_out = self.knuckle_width[orient_lat] / 2 - self.knuckle_inset_border/2 \
+            - (self.tunnel_radius -.01 if (orient_lat == Orient.DISTAL and inside) else 0)
 
         if orient & Orient.OUTER: return width_top_out if top else width_bottom_out
         return (width_top_in if top else width_bottom_in) if inside else (width_top_out if top else width_bottom_out if orient & Orient.OUTER else width_bottom_in)
