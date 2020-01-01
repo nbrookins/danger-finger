@@ -24,7 +24,7 @@ def assemble():
     finger.preview = True
     finger.segments = 72
     finger.part = ["middle"]
-    #finger.explode = True
+    finger.explode = True
 
     #load a configuration, with parameters from cli or env
     Params.parse(finger)
@@ -219,7 +219,7 @@ class DangerFinger:
         #hull them together, and cut the middle
         mod_tunnel = hull()(t_top_l_in, t_top_l_out, t_top_r_in, t_top_r_out, t_anchor_l_in, t_anchor_l_out, t_anchor_r_in, t_anchor_r_out)
         mod_cut = hull()(
-            translate((0, 2, 0))(rcylinder(r=tunnel_height-self.tunnel_radius/4, h=tunnel_width, rnd=1.2, center=True)),
+            translate((0, 2, 0))(rcylinder(r=tunnel_height-self.tunnel_radius/4 - (1 if orient == (Orient.DISTAL | Orient.OUTER) else 0), h=tunnel_width, rnd=1.5, center=True)),
             translate((0, -6, 0))(rcylinder(r=tunnel_height-self.tunnel_radius/4, h=tunnel_width, rnd=1.2, center=True)))
 
         return mod_tunnel - mod_cut, mod_cut
