@@ -123,7 +123,7 @@ class Params():
             val = getattr(config_obj, param[0])
             if str(val).startswith(("<f", "<b")): continue
             doc = inspect.getdoc(param[1])
-            if doc == None: doc = "" #getattr(config, "_" + param[0], None) if hasattr(config, "_" + param[0]) else inspect.getdoc(param[1])
+            if doc is None: doc = "" #getattr(config, "_" + param[0], None) if hasattr(config, "_" + param[0]) else inspect.getdoc(param[1])
             parser.add_argument("--%s" % param[0], default=val, help=doc)
             #print("added param %s, %s, \"%s\"" % (param[0], val, doc))
 
@@ -151,7 +151,7 @@ class Params():
             sys.exit("Exiting.  Remove 'save' param in order to run tool normally")
 
         #set the params back to the object
-        print(arg_list)
+        #print(arg_list)
         for param in params:
             #print("%s %s " % (param, params[param]))
             if param in arg_list:
