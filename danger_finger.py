@@ -202,7 +202,7 @@ class DangerFinger:
         tunnel_height = h_factor + self.tunnel_height*.4 #hokey
 
         #generate our anchor points
-        t_anchor_end = rotate((90, 0, 0))(cylinder(r=self.tunnel_radius , h=.01)) #TODO rounding is not parametric
+        t_anchor_end = rotate((90, 0, 0))(cylinder(r=self.tunnel_radius +0, h=.01)) #TODO rounding is not parametric
 
         #TODO - hardcoded -.5, here and next method
         t_top_l_in = translate((height_top + (-.5 if orient == (Orient.DISTAL | Orient.OUTER) else 0), 0, self.get_tunnel_width(orient, top=True, inside=True)))(t_anchor_end)
