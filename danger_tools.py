@@ -10,7 +10,7 @@ import os
 import sys
 import json
 import inspect
-from enum import IntFlag
+from enum import IntFlag, Flag
 import argparse
 from solid import *
 from solid.utils import *
@@ -26,6 +26,17 @@ class Orient(IntFlag):
     INNER = 4
     OUTER = 8
     UNIVERSAL = 16
+
+class RenderQuality(Flag):
+    ''' Enum for passing an orientation '''
+    AUTO = 0
+    ULTRAHIGH = 5
+    HIGH = 10
+    EXTRAMEDIUM = 13
+    MEDIUM = 15
+    SUBMEDIUM = 17
+    FAST = 20
+    ULTRAFAST = 25
 
 def rcylinder(r, h, rnd=0, center=False):
     ''' primitive for a cylinder with rounded edges'''
@@ -55,18 +66,21 @@ class Prop(object):
     @staticmethod
     def minmax(value, minv=None, maxv=None):
         '''return the value constrained by a min and max, skipped if None/not provided'''
-        value = value if not minv else min(value, minv)
-        value = value if not maxv else max(value, maxv)
+        try:
+            value = value if not minv else min(value, minv)
+            value = value if not maxv else max(value, maxv)
+        except Exception as _e:
+            pass
         return value
 
     def __get__(self, obj, objtype):
-        if self._getter:
+        if self._getter is not None:
             return self._getter(self)
         return self._value
 
     def __set__(self, obj, value):
-        if self._setter:
-            self._value = self._getter(self, value)
+        if self._setter is not None:
+            self._value = self._setter(self, value)
         self._value = self.minmax(value, self._min, self._max)
 
 class Params():
@@ -161,7 +175,12 @@ class Params():
 def iterable(obj):
     ''' test if object is iterable '''
     try:
+        if isinstance(obj, str): return False
         iter(obj)
         return True
     except TypeError:
         return False
+
+def diff(val1, val2):
+    ''' get difference between numbers '''
+    return max(val1, val2)- min(val1, val2)
