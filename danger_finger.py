@@ -26,7 +26,7 @@ def assemble():
     finger.part = ["middle"]
     finger.explode = True
    # finger.explode_animate = True
-    finger.render_quality = RenderQuality.SUBMEDIUM #RenderQuality.MEDIUM #RenderQuality.ULTRAHIGH
+    finger.render_quality = RenderQuality.MEDIUM # FAST HIGH MEDIUM ULTRAHIGH SUBMEDIUM
 
     #load a configuration, with parameters from cli or env
     Params.parse(finger)
@@ -40,6 +40,7 @@ def assemble():
 # ********************************** The danger finger *************************************
 class DangerFinger:
     ''' The actual finger model '''
+    #TODO - make this an enum
     manifest = ["middle", "base", "tip", "plugs"]
 
     # ************************************* control params *****************************************
@@ -142,13 +143,13 @@ class DangerFinger:
 
         mod_core = translate((0, -self.proximal_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.knuckle_proximal_width/2 + 1, h=0.1)))
         trim_offset = tunnel_width + self.knuckle_proximal_thickness -.01
-        mod_sidetrim = hull()(translate((0, 0, trim_offset))(mod_hinge_cut), translate((0, -self.proximal_length, trim_offset))(mod_hinge_cut)) \
+        mod_side_trim = hull()(translate((0, 0, trim_offset))(mod_hinge_cut), translate((0, -self.proximal_length, trim_offset))(mod_hinge_cut)) \
             + hull()(translate((0, 0, -trim_offset))(mod_hinge_cut), translate((0, -self.proximal_length, -trim_offset))(mod_hinge_cut))
 
         #TODO base socket interface
         #TODO base tendon tunnel
 
-        return mod_hinge + hull()(mod_tunnel + mod_core) - mod_bridge_cut - mod_plugs - mod_hinge_cut + mod_washers - mod_sidetrim
+        return mod_hinge + hull()(mod_tunnel + mod_core) - mod_bridge_cut - mod_plugs - mod_hinge_cut + mod_washers - mod_side_trim
 
     def part_tip(self):
         ''' Generate the base finger section, closest proximal to remant '''
@@ -156,14 +157,15 @@ class DangerFinger:
         mod_plugs = self.part_plugs(clearance=False)
 
         tunnel_length = self.intermediate_height[Orient.DISTAL]*.4
-        bridge = self.bridge(length=tunnel_length, tunnel_width=self.intermediate_width[Orient.DISTAL] + self.knuckle_side_clearance*2, orient=Orient.DISTAL | Orient.OUTER)
+        bridge = self.bridge(length=tunnel_length, tunnel_width=self.knuckle_inner_width[Orient.DISTAL], orient=Orient.DISTAL | Orient.OUTER)
         mod_tunnel = translate((0, tunnel_length, 0))(bridge[0])
         mod_cut = translate((0, tunnel_length, 0))(bridge[1])
-        mod_core = translate((0, self.distal_base_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.knuckle_distal_width/2 -.5, h=0.1)))
+        mod_bottom_trim = translate((-self.knuckle_plug_radius -self.intermediate_distal_height/2, self.distal_base_length-.25, 0))(cube((self.intermediate_distal_height, 1, self.knuckle_width[Orient.DISTAL]), center=True))
+        mod_core = translate((0, self.distal_base_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.knuckle_distal_width/2 -.5, h=0.1))) - mod_bottom_trim
         #TODO Tip interface
         #TODO tip tendon detents
 
-        return self.shift_distal()(mod_hinge + hull()(mod_tunnel+ mod_core) -mod_cut - mod_hinge_cut) - mod_plugs[2]- mod_plugs[3] + self.shift_distal()(mod_washers)
+        return self.shift_distal()(mod_hinge + hull()(mod_tunnel+ mod_core) -mod_cut - mod_hinge_cut) - mod_plugs[2]- mod_plugs[3] + self.shift_distal()(mod_washers) #+ self.shift_distal()(mod_bottom_trim)
 
     def part_middle(self):
         ''' Generate the middle/intermediate finger section '''
@@ -277,20 +279,15 @@ class DangerFinger:
         ''' create the outer hinges for base or tip segments '''
         radius = self.intermediate_height[orient]/2
         width = self.knuckle_width[orient]
-        #cut_width = self.intermediate_width[orient] + self.knuckle_side_clearance*2 #if cut_width == -1 else cut_width
         mod_pin = self.knuckle_pin(length=width + .01)
         mod_washers = self.knuckle_washers(orient) - mod_pin
-
-        mod_cut = cylinder(r=radius+self.knuckle_clearance, h=self.knuckle_inner_width[orient], center=True)#hull()(translate((0, 10, 0))(cylinder(r=radius+self.knuckle_clearance, h=self.knuckle_inner_width[orient], center=True)) \
-            #+ translate((0, -10, 0))(cylinder(r=radius+self.knuckle_clearance, h=self.knuckle_inner_width[orient], center=True))) - mod_washers
-
+        mod_cut = cylinder(r=radius+self.knuckle_clearance, h=self.knuckle_inner_width[orient], center=True)
         mod_main = rcylinder(r=radius, h=width, rnd=self.knuckle_rounding, center=True)
         return (mod_main + mod_washers) - mod_pin - mod_cut, mod_cut, mod_washers
 
     def knuckle_washers(self, orient):
         ''' the little built-in washers to reduce hinge friction '''
         r = self.knuckle_washer_radius + self.knuckle_pin_radius
-        #cut_width = self.intermediate_width[orient] + self.knuckle_side_clearance*2 if cut_width == -1 else cut_width
         return cylinder(r=r, h=self.knuckle_width[orient] - self.knuckle_plug_thickness*2, center=True) - cylinder(r=r+1, h=self.knuckle_inner_width[orient] - self.knuckle_washer_thickness, center=True)
 
     def knuckle_inner(self, orient, cutout=False):
