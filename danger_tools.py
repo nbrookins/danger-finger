@@ -38,6 +38,20 @@ class RenderQuality(Flag):
     FAST = 20
     ULTRAFAST = 25
 
+class FingerPart(IntFlag):
+    ''' Enum for passing an orientation '''
+    ALL = 0
+    SOCKET = 2
+    BASE = 4
+    MIDDLE = 8
+    TIP = 16
+    TIPCOVER = 32
+    LINKAGE = 64
+    PLUGS = 128
+    BUMPER = 256
+    SOFT = BUMPER | PLUGS | SOCKET | TIPCOVER
+    HARD = BASE | TIP | MIDDLE | LINKAGE
+
 def rcylinder(r, h, rnd=0, center=False):
     ''' primitive for a cylinder with rounded edges'''
     if rnd == 0: return cylinder(r=r, h=h, center=center)
