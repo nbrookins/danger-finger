@@ -24,7 +24,7 @@ def assemble():
     #sample param overrides for testing - comment out
     finger.preview = True
     finger.part = [FingerPart.BASE]
- # finger.explode = True
+    finger.explode = True
    # finger.explode_animate = True
     finger.render_quality = RenderQuality.HIGH # FAST HIGH MEDIUM ULTRAHIGH SUBMEDIUM
 
@@ -278,7 +278,7 @@ class DangerFinger:
         anchor = rotate((90, 0, 0))(cylinder(r=r, h=.01))
         if rnd:
             sr = r/2
-            anchor = translate((sr/2 * -.5 if not top else 0, -sr/2, -sr/2))(sphere(r=sr))
+            anchor = translate((sr/2 * -.5 if not top else 0, -sr/2, 0))(sphere(r=sr)) #sr/4 * (1*1.5  if not shift and inside else -.5)
         return translate(dim)(anchor)
 
     def knuckle_outer(self, orient):#, cut_width=-1):#, radius, width):
@@ -407,7 +407,7 @@ class DangerFinger:
     _explode_factor = 1
     def _animate_explosion(self, _time: Optional[float] = 0) -> OpenSCADObject:
         ''' test'''
-        self._explode_factor = _time
+        self._explode_factor = max(_time -.3, 0)
         #print(self._explode_factor)
         mod = self.render_models()
         return mod[list(mod.keys())[0]]
@@ -430,10 +430,10 @@ class DangerFinger:
         return new_offs
 
     _explode_offsets = {
-        "middle":(0, 15, 0),
+        "middle":(0, 20, 0),
         "base" : (0, 0, 0),
-        "tip":(0, 30, 0),
-        "plugs":((0, 0, -5), (0, 0, 5), (0, 30, -5), (0, 30, 5))}
+        "tip":(0, 40, 0),
+        "plugs":((0, 0, -8), (0, 0, 8), (0, 40, -8), (0, 40, 8))}
 
     _part = []
     @property
