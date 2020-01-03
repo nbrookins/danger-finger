@@ -8,6 +8,7 @@ Source code licensed under Apache 2.0:  https://www.apache.org/licenses/LICENSE-
 '''
 import os
 import sys
+import math
 from solid import *
 from solid.utils import *
 from solid.solidpython import OpenSCADObject
@@ -26,7 +27,7 @@ def assemble():
     finger.part = [FingerPart.BASE]
     finger.explode = True
    # finger.explode_animate = True
-    finger.render_quality = RenderQuality.HIGH # FAST HIGH MEDIUM ULTRAHIGH SUBMEDIUM
+    finger.render_quality = RenderQuality.MEDIUM # FAST HIGH MEDIUM ULTRAHIGH SUBMEDIUM
 
     #load a configuration, with parameters from cli or env
     Params.parse(finger)
@@ -55,26 +56,20 @@ class DangerFinger:
     intermediate_length = Prop(val=25, minv=8, maxv=30, doc=''' length of the intermediate finger segment ''')
     intermediate_distal_height = Prop(val=11.0, minv=4, maxv=8, doc=''' height of the middle section at the distal end.  roughly the height of the hinge circle ''')
     intermediate_proximal_height = Prop(val=13.0, minv=4, maxv=8, doc=''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
-    intermediate_height = property(lambda self: ({Orient.DISTAL: self.intermediate_distal_height, Orient.PROXIMAL: self.intermediate_proximal_height}))
 
     proximal_length = Prop(val=7, minv=8, maxv=30, doc=''' length of the proximal/base finger segment ''') #TODO - min auto of knuckle radius
     distal_length = Prop(val=24, minv=8, maxv=30, doc=''' length of the distal/tip finger segment ''')
     distal_base_length = Prop(val=6, minv=0, maxv=20, doc=''' length of the base of the distal/tip finger segment ''')
-    length = property(lambda self: ({Orient.DISTAL: self.distal_length, Orient.PROXIMAL: self.proximal_length}))
 
     knuckle_proximal_width = Prop(val=16.5, minv=4, maxv=20, doc=''' width of the proximal knuckle hinge''')
     knuckle_distal_width = Prop(val=14.5, minv=4, maxv=20, doc=''' width of the distal knuckle hinge ''')
-    knuckle_width = property(lambda self: ({Orient.DISTAL: self.knuckle_distal_width, Orient.PROXIMAL: self.knuckle_proximal_width}))
 
+    socket_depth = Prop(val=27, minv=5, maxv=60, doc=''' length of the portion that interfaces socket and base ''')
     socket_circumference_distal = Prop(val=55, minv=20, maxv=160, doc='''circumference of the socket closest to the base''')
     socket_circumference_proximal = Prop(val=62, minv=20, maxv=160, doc='''circumference of the socket closest to the hand''')
+    socket_flare_top = Prop(val=5, minv=0, maxv=20, doc=''' length of the portion that interfaces socket and base ''')
     socket_thickness_distal = Prop(val=2, minv=.5, maxv=4, doc='''thickness of the socket closest to the base''')
     socket_thickness_proximal = Prop(val=1.6, minv=.5, maxv=4, doc='''thickness of the socket at flare''')
-    socket_clearance = Prop(val=-.25, minv=-2, maxv=2, doc='''Clearance between socket and base.  -.5 for Ninja flex and sloopy printing to +.5 for firm tpu and accurate''')
-
-    knuckle_proximal_thickness = Prop(val=3.8, minv=1, maxv=5, doc=''' thickness of the hinge tab portion on proximal side  ''')
-    knuckle_distal_thickness = Prop(val=3.4, minv=1, maxv=5, doc=''' thickness of the hinge tab portion on distal side ''')
-    knuckle_thickness = property(lambda self: ({Orient.DISTAL: self.knuckle_distal_thickness, Orient.PROXIMAL: self.knuckle_proximal_thickness}))
 
     linkage_length = Prop(val=70, minv=10, maxv=120, doc=''' length of the wrist linkage ''')
     linkage_width = Prop(val=6.8, minv=4, maxv=12, doc=''' width of the wrist linkage ''')
@@ -84,9 +79,12 @@ class DangerFinger:
     tunnel_height = Prop(val=1.7, minv=0, maxv=5, adv=True, doc=''' height of tendon tunnel ''')
     tunnel_inner_height = Prop(val=.65, minv=0, maxv=4.5, adv=True, doc=''' height of tendon tunnel ''')
     tunnel_radius = Prop(val=1.2, minv=0, maxv=4, adv=True, doc=''' radius of tendon tunnel rounding ''')
-    tunnel_inner_slant = Prop(val=0.5, minv=0, maxv=4, adv=True, doc=''' inward slant of middle tunnels ''')
+    tunnel_inner_slant = Prop(val=0.35, minv=0, maxv=4, adv=True, doc=''' inward slant of middle tunnels ''')
     tunnel_outer_flare = Prop(val=0.0, minv=0, maxv=5, adv=True, doc=''' outward slant of outer tunnels ''')
 
+    knuckle_proximal_thickness = Prop(val=3.8, minv=1, maxv=5, adv=True, doc=''' thickness of the hinge tab portion on proximal side  ''')
+    knuckle_distal_thickness = Prop(val=3.4, minv=1, maxv=5, adv=True, doc=''' thickness of the hinge tab portion on distal side ''')
+    knuckle_thickness = property(lambda self: ({Orient.DISTAL: self.knuckle_distal_thickness, Orient.PROXIMAL: self.knuckle_proximal_thickness}))
     knuckle_inset_border = Prop(val=2.2, minv=0, maxv=5, adv=True, doc=''' width of teh hinge inset, same as top strut width ''')
     knuckle_inset_depth = Prop(val=.75, minv=0, maxv=3, adv=True, doc=''' depth of the inset to clear room for tendons ''')
     knuckle_pin_radius = Prop(val=1.07, minv=0, maxv=3, adv=True, doc=''' radius of the hinge pin/hole ''')
@@ -95,23 +93,25 @@ class DangerFinger:
     knuckle_plug_ridge = Prop(val=.3, minv=0, maxv=1.5, adv=True, doc=''' width of the plug holding ridge ''')
     knuckle_plug_clearance = Prop(val=.1, minv=-.5, maxv=1, adv=True, doc=''' clearance of the plug ''')
     knuckle_clearance = Prop(val=.4, minv=-.25, maxv=1, adv=True, doc=''' clearance of the rounded inner part of the hinges ''')
+    knuckle_side_clearance = Prop(val=.2, minv=-.25, maxv=1, adv=True, doc=''' clearance of the flat circle side of the hinges ''')
+    knuckle_rounding = Prop(val=.7, minv=0, maxv=4, adv=True, doc=''' amount of rounding for the outer hinges ''')
+    knuckle_cutouts = Prop(val=False, adv=True, doc=''' True for extra cutouts on internals of intermediate section ''')
+    knuckle_washer_radius = Prop(val=.6, minv=0, maxv=4, adv=True, doc=''' radius of the washers for lowering hinge friction ''')
+    knuckle_washer_thickness = Prop(val=.5, minv=0, maxv=4, adv=True, doc=''' thickness of the washers for lowering hinge friction ''')
+    knuckle_brace_height_factor = Prop(val=.3, minv=0, maxv=2, adv=True, doc='''ratio of brace height vs regular struts, e.g. .5 for half the height''')
+
+    socket_scallop_ratio_left = Prop(val=.2, minv=0, maxv=.8, adv=True, doc='''circumference of the socket closest to the base''')
+    socket_scallop_ratio_right = Prop(val=.2, minv=0, maxv=.8, adv=True, doc='''circumference of the socket closest to the base''')
+    socket_vertical_clearance = Prop(val=1, minv=-4, maxv=4, adv=True, doc='''Clearance between socket and base. extra is ok, as it gets hidden inside the socket, and the taper ensures a firm fit''')
+    socket_interface_length = Prop(val=5, minv=3, maxv=8, adv=True, doc=''' length of the portion that interfaces socket and base ''')
+    socket_interface_radius = Prop(val=1, minv=3, maxv=8, adv=True, doc=''' length of the portion that interfaces socket and base ''')
 
     intermediate_tunnel_length = Prop(val=.4, minv=-.25, maxv=2, adv=True, doc='''0-2 for the length of tunnels toward middle''')
-    knuckle_rounding = Prop(val=.7, minv=0, maxv=4, adv=True, doc=''' amount of rounding for the outer hinges ''')
+
     tunnel_inner_rounding = Prop(val=1.2, minv=0, maxv=4, adv=True, doc=''' amount of rounding for the inner tunnel ''')
-    knuckle_side_clearance = Prop(val=.2, minv=-.25, maxv=1, adv=True, doc=''' clearance of the flat circle side of the hinges ''')
 
     strut_height_ratio = Prop(val=.8, minv=.1, maxv=3, adv=True, doc=''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
     strut_rounding = Prop(val=.4, minv=.5, maxv=2, adv=True, doc=''' 0 for no rounding, 1 for fullly round ''')
-
-    socket_interface_length = Prop(val=5, minv=3, maxv=8, adv=True, doc=''' length of the portion that interfaces socket and base ''')
-
-    knuckle_cutouts = Prop(val=False, adv=True, doc=''' True for extra cutouts on internals of intermediate section ''')
-
-    knuckle_washer_radius = Prop(val=.6, minv=0, maxv=4, adv=True, doc=''' radius of the washers for lowering hinge friction ''')
-    knuckle_washer_thickness = Prop(val=.5, minv=0, maxv=4, adv=True, doc=''' thickness of the washers for lowering hinge friction ''')
-
-
 
     #**************************************** dynamic properties ******************************
 
@@ -124,18 +124,22 @@ class DangerFinger:
         Orient.PROXIMAL: self.intermediate_height[Orient.PROXIMAL] / 2 + self.tunnel_inner_height}))
     knuckle_inner_width = property(lambda self: ({Orient.PROXIMAL: self.intermediate_width[Orient.PROXIMAL] + self.knuckle_side_clearance*2, \
          Orient.DISTAL: self.intermediate_width[Orient.DISTAL] + self.knuckle_side_clearance*2}))
-
-    distal_offset = property(lambda self: (self.intermediate_length))#+ self.intermediate_distal_height / 2))
+    intermediate_height = property(lambda self: ({Orient.DISTAL: self.intermediate_distal_height, Orient.PROXIMAL: self.intermediate_proximal_height}))
+    length = property(lambda self: ({Orient.DISTAL: self.distal_length, Orient.PROXIMAL: self.proximal_length}))
+    knuckle_width = property(lambda self: ({Orient.DISTAL: self.knuckle_distal_width, Orient.PROXIMAL: self.knuckle_proximal_width}))
+    socket_radius = property(lambda self: ({Orient.DISTAL: self.socket_circumference_distal / math.pi / 2, Orient.PROXIMAL: self.socket_circumference_proximal / math.pi / 2}))
+    distal_offset = property(lambda self: (self.intermediate_length))
     shift_distal = lambda self: translate((0, self.distal_offset, 0))
 
     #**************************************** finger bits ****************************************
+
 
     def part_base(self):
         ''' Generate the base finger section, closest proximal to remant '''
         mod_hinge, mod_hinge_cut, mod_washers = self.knuckle_outer(orient=Orient.PROXIMAL)
         mod_plugs = self.part_plugs(clearance=False)
-        tunnel_length = self.intermediate_height[Orient.PROXIMAL]*.4
-        tunnel_width = self.intermediate_width[Orient.PROXIMAL]+ self.knuckle_side_clearance*2
+        tunnel_length = self.intermediate_height[Orient.PROXIMAL] * .4
+        tunnel_width = self.intermediate_width[Orient.PROXIMAL] + self.knuckle_side_clearance*2
         mod_tunnel, mod_bridge_cut = self.bridge(length=tunnel_length, tunnel_width=tunnel_width, orient=Orient.PROXIMAL | Orient.OUTER)
 
         mod_core = translate((0, -self.proximal_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.knuckle_proximal_width/2 + 1, h=0.1)))
@@ -143,10 +147,14 @@ class DangerFinger:
         mod_side_trim = hull()(translate((0, 0, trim_offset))(mod_hinge_cut), translate((0, -self.proximal_length, trim_offset))(mod_hinge_cut)) \
             + hull()(translate((0, 0, -trim_offset))(mod_hinge_cut), translate((0, -self.proximal_length, -trim_offset))(mod_hinge_cut))
 
-        #TODO base socket interface
+        mod_socket_interface = self.socket_interface(Orient.INNER)
         #TODO base tendon tunnel
 
         return mod_hinge + hull()(mod_tunnel + mod_core) - mod_bridge_cut - mod_plugs - mod_hinge_cut + mod_washers - mod_side_trim
+
+    def socket_interface(self, orient):
+        #TODO base socket interface
+        return cylinder(r1=self.socket_radius[Orient.PROXIMAL], r2=self.socket_radius[Orient.DISTAL])
 
     def part_tip(self):
         ''' Generate the base finger section, closest proximal to remant '''
@@ -162,7 +170,7 @@ class DangerFinger:
         #TODO Tip interface
         #TODO tip tendon detents
 
-        return self.shift_distal()(mod_hinge + hull()(mod_tunnel+ mod_core) -mod_cut - mod_hinge_cut) - mod_plugs[2]- mod_plugs[3] + self.shift_distal()(mod_washers) #+ self.shift_distal()(mod_bottom_trim)
+        return self.shift_distal()(mod_hinge + hull()(mod_tunnel+ mod_core) -mod_cut - mod_hinge_cut) - mod_plugs[2]- mod_plugs[3] + self.shift_distal()(mod_washers)
 
     def part_middle(self):
         ''' Generate the middle/intermediate finger section '''
@@ -186,16 +194,14 @@ class DangerFinger:
         bridge_d = self.bridge(length=self.intermediate_height[Orient.DISTAL]*self.intermediate_tunnel_length, \
             tunnel_width=self.tunnel_inner_width[Orient.DISTAL], orient=Orient.DISTAL | Orient.INNER)
         mod_tunnel_d = rotate((180, 0, 0))(shift_tun(self, Orient.DISTAL)(bridge_d[0]))
-        _mod_cut_d = rotate((180, 0, 0))(shift_tun(self, Orient.DISTAL)(bridge_d[1])) #translate((0, self.intermediate_height[Orient.DISTAL]*self.intermediate_tunnel_length, 0))(bridge_d[1])#rotate((180, 0, 0))(
+        _mod_cut_d = rotate((180, 0, 0))(shift_tun(self, Orient.DISTAL)(bridge_d[1]))
 
-        #trim_offset = self.tunnel_inner_width[Orient.DISTAL]
         trim_c_d = cylinder(r=self.intermediate_height[Orient.DISTAL]/2 + self.knuckle_side_clearance*1, h=4, center=True)
         trim_c_p = cylinder(r=self.intermediate_height[Orient.PROXIMAL]/2 + self.knuckle_side_clearance*1, h=4, center=True)
-        mod_side_trim_d = translate((0, 0, self.intermediate_width[Orient.DISTAL]/2+1.99))(trim_c_d) + translate((0, 0, -self.intermediate_width[Orient.DISTAL]/2-1.99))(trim_c_d) #\
-        mod_side_trim_p = translate((0, 0, self.intermediate_width[Orient.PROXIMAL]/2+1.99))(trim_c_p) + translate((0, 0, -self.intermediate_width[Orient.PROXIMAL]/2-1.99))(trim_c_p) #\
-            #+ hull()(translate((0, 0, -trim_offset))(mod_hinge_cut), translate((0, -self.proximal_length, -trim_offset))(mod_hinge_cut))
+        mod_side_trim_d = translate((0, 0, self.intermediate_width[Orient.DISTAL]/2+1.99))(trim_c_d) + translate((0, 0, -self.intermediate_width[Orient.DISTAL]/2-1.99))(trim_c_d)
+        mod_side_trim_p = translate((0, 0, self.intermediate_width[Orient.PROXIMAL]/2+1.99))(trim_c_p) + translate((0, 0, -self.intermediate_width[Orient.PROXIMAL]/2-1.99))(trim_c_p)
 
-        return self.shift_distal()(mod_dist_hinge + mod_tunnel_d) + mod_prox_hinge + mod_strut_tl + mod_strut_tr + mod_strut_b + mod_brace + mod_tunnel_p - self.shift_distal()(mod_side_trim_d) - mod_side_trim_p#+ self.shift_distal()(color(Red)(_mod_cut_d))  + _mod_cut_p
+        return (self.shift_distal()(mod_dist_hinge + mod_tunnel_d) + mod_prox_hinge + mod_strut_tl + mod_strut_tr + mod_strut_b + mod_brace + mod_tunnel_p) - (self.shift_distal()(mod_side_trim_d), mod_side_trim_p)
 
     def part_plugs(self, clearance=True):
         ''' plug covers for the knuckle pins'''
@@ -229,7 +235,8 @@ class DangerFinger:
 
         mod_cut = hull()(
             translate((0, 2 + (length if orient == (Orient.DISTAL | Orient.INNER) else 0), 0))(
-                rcylinder(h=tunnel_width, rnd=self.tunnel_inner_rounding, center=True, r=self.tunnel_inner_cutheight[orient_lat] - (1.75 if orient == (Orient.DISTAL | Orient.OUTER) else 0))), #TODO - unhardcode this later
+                rcylinder(h=tunnel_width, rnd=self.tunnel_inner_rounding, center=True, \
+                    r=self.tunnel_inner_cutheight[orient_lat] - (1.75 if orient == (Orient.DISTAL | Orient.OUTER) else 0))), #TODO - unhardcode this later
             translate((0, -10 + (length if orient == (Orient.DISTAL | Orient.INNER) else 0), 0))(
                 rcylinder(r=self.tunnel_inner_cutheight[orient_lat], h=tunnel_width, rnd=self.tunnel_inner_rounding, center=True)))
 
@@ -239,7 +246,6 @@ class DangerFinger:
         ''' calculate tunnel widths for a variety of orientations. a mess of logic, but it's gotta go somewhere '''
         orient_lat = Orient.PROXIMAL if orient & Orient.PROXIMAL else Orient.DISTAL
         orient_part = Orient.INNER if orient & Orient.INNER else Orient.OUTER
-
         r = self.tunnel_radius
 
         top_inner_slant = self.strut_rounding + self.tunnel_inner_slant
@@ -247,41 +253,32 @@ class DangerFinger:
         width_top_out = (self.intermediate_width[orient_lat] / 2) - (-.01 if (orient_part == Orient.INNER) else -self.tunnel_outer_flare) \
             + (.01 if (orient_lat == Orient.DISTAL and inside) else 0)
 
-        width_bottom_in = self.intermediate_width[orient_lat] / 2 #self.knuckle_width[orient_lat] / 4
-        if orient_part == Orient.OUTER:
-            width_bottom_out = self.knuckle_width[orient_lat] / 2  + (.01 if (orient_lat == Orient.DISTAL and inside) else 0)
-        else: #INNER
-            width_bottom_out = self.intermediate_width[orient_lat] / 2  + (1 if (inside) else 0)
+        width_bottom_in = self.intermediate_width[orient_lat] / 2
+        width_bottom_out = self.knuckle_width[orient_lat] / 2  + (.01 if (orient_lat == Orient.DISTAL and inside) else 0)
 
-        if orient & Orient.OUTER:
-            #TODO - unhardcode this based on tip width, when defined
+        if orient & Orient.OUTER:            #TODO - unhardcode this based on tip width, when defined
             width = width_bottom_out if not top else width_top_out -1 if orient_lat == Orient.DISTAL and inside else width_top_out
-        else:
-            if inside: #inside middle
-                width = (width_top_in if top else width_bottom_in - self.strut_rounding) #inner bottom slant inward
-            else: #outside middle
-                width = (width_top_out if top else width_bottom_in)
+        elif orient & Orient.INNER and inside: #inside middle
+            width = (width_top_in if top else width_bottom_in - self.strut_rounding/2) #inner bottom slant inward
+        else: #outside middle
+            width = (width_top_out if top else width_bottom_in)
         width -= r
         if shift: width = -width
 
         height_top = self.intermediate_height[orient_lat] / 2 + self.tunnel_height
-        height_bottom = self.intermediate_height[orient_lat] / 2
-        if orient_part == Orient.INNER and inside:
-            height_bottom += r #adjust to not stick uot from struts
-        #TODO - unhard code this based on tip height, not yet defined
-        height = (height_top + (-.5 if inside and orient == (Orient.DISTAL | Orient.OUTER) else 0)) if top else height_bottom
-        height -= r
+        height_bottom = self.intermediate_height[orient_lat] / 2 + (0 if orient_part == Orient.INNER and inside else 0)#adjust to not stick out from struts
+        #TODO - slant down for bridge at end of tip.  unhard code this based on tip height, not yet defined
+        height = (height_top -r + (-.5 if inside and orient == (Orient.DISTAL | Orient.OUTER) else 0)) if top else height_bottom
 
         length = 0 if inside else -length
 
         dim = (height, length, width)
         anchor = rotate((90, 0, 0))(cylinder(r=r, h=.01))
         if rnd:
-            sr = r/2
-            anchor = translate((sr/2 * -.5 if not top else 0, -sr/2, 0))(sphere(r=sr)) #sr/4 * (1*1.5  if not shift and inside else -.5)
+            anchor = translate((r/4 * -.5 if not top else r/8, -r/3, r/2*(-1 if shift else 1)))(sphere(r=r/2))
         return translate(dim)(anchor)
 
-    def knuckle_outer(self, orient):#, cut_width=-1):#, radius, width):
+    def knuckle_outer(self, orient):
         ''' create the outer hinges for base or tip segments '''
         radius = self.intermediate_height[orient]/2
         width = self.knuckle_width[orient]
@@ -342,12 +339,11 @@ class DangerFinger:
             translate((0, 0, h2/2-0.01))(cylinder(r=r+self.knuckle_plug_ridge, h=h, center=True))
         return rotate((0, 0, 90))(mod_plug)
 
-    knuckle_brace_factor = .3
     def cross_strut(self):
         ''' center cross strut'''
         brace_length = min(self.intermediate_distal_width, self.intermediate_proximal_width) - self.knuckle_inset_border
         x_shift = self.intermediate_distal_height/2 -self.knuckle_inset_border/2
-        h = self.knuckle_inset_border*self.knuckle_brace_factor
+        h = self.knuckle_inset_border*self.knuckle_brace_height_factor
         mod_brace = translate((.5, self.distal_offset/2, 0))(
             hull()(translate((x_shift, 0, 0))(self.strut(height=h, length=brace_length)) + \
             translate((x_shift, 0, 0))(self.strut(height=h, length=brace_length+ self.knuckle_inset_border*.8))))
@@ -358,13 +354,13 @@ class DangerFinger:
     #TODO Socket texture
 
     #TODO Tip Cover
-    #TODO Tip Cover fingernail (ugh..
+    #TODO Tip Cover fingernail (ugh..)
     #TODO Tip Cover fingerprints
 
     #TODO Linkage
     #TODO Linkage Hook
 
-    #TODO Bumper?
+    #TODO Bumper
     #************************************* utilities ****************************************
 
     def emit_scad(self, val, filename=None):
@@ -385,30 +381,22 @@ class DangerFinger:
         mod_preview = None
         for pv in self.part:
             p = str.lower(str(pv.name) if isinstance(pv, FingerPart) else str(pv))
-            if not hasattr(self, "part_%s" % p): continue
-            mod_segment = getattr(self, "part_%s" % p)()
+            part_name = "part_%s" % p
+            if not hasattr(self, part_name): continue
             mod_file = file_template % (VERSION, p)
-            if self.explode:
-                if iterable(mod_segment):
-                    new_mod = []
-                    for s in mod_segment:
-                        offs = self.explode_offsets[p][len(new_mod)]
-                        new_mod.append(translate(offs)(s))
-                    mod_segment = new_mod
-                else:
-                    offs = self.explode_offsets[p]
-                    #print("offset %s" % str(offs))
-                    mod_segment = translate(offs)(mod_segment)
+            mod_segment = getattr(self, part_name)()
+            if self.explode and iterable(mod_segment):
+                mod_segment = [translate(self.explode_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
+            elif self.explode:
+                mod_segment = translate(self.explode_offsets[p])(mod_segment)
             mod_preview = mod_segment if not mod_preview else mod_preview + mod_segment
             mod[mod_file] = mod_segment
-            #write it to a scad file (still needs to be rendered by openscad)
         return mod if not self.preview else {file_template % (VERSION, "preview"): mod_preview} #TODO - implement FingerPart.ALL for preview
 
     _explode_factor = 1
     def _animate_explosion(self, _time: Optional[float] = 0) -> OpenSCADObject:
-        ''' test'''
+        ''' special callback function for openscad animation'''
         self._explode_factor = max(_time -.3, 0)
-        #print(self._explode_factor)
         mod = self.render_models()
         return mod[list(mod.keys())[0]]
 
@@ -429,10 +417,9 @@ class DangerFinger:
                 new_offs[o] = new_sub
         return new_offs
 
-    _explode_offsets = {
-        "middle":(0, 20, 0),
-        "base" : (0, 0, 0),
-        "tip":(0, 40, 0),
+    _explode_offsets = { #TODO - make these parametric
+        "middle":(0, 20, 0), "base" : (0, 0, 0), "tip":(0, 40, 0),
+        "socket":(0, -20, 0), "linkage" : (10, -30, 0), "tipcover" : (0, 50, 0),
         "plugs":((0, 0, -8), (0, 0, 8), (0, 40, -8), (0, 40, 8))}
 
     _part = []
