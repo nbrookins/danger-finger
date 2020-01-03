@@ -1,2 +1,7 @@
 .stl
 *_gen.scad
+objectdb
+*.pyc
+config.py
+__pycache__
+.vscode
