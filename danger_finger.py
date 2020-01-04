@@ -63,6 +63,8 @@ class DangerFinger:
 
     knuckle_proximal_width = Prop(val=16.5, minv=4, maxv=20, doc=''' width of the proximal knuckle hinge''')
     knuckle_distal_width = Prop(val=14.5, minv=4, maxv=20, doc=''' width of the distal knuckle hinge ''')
+    tip_circumference = 36
+    tip_radius = property(lambda self: self.tip_circumference/math.pi/2)
 
     socket_depth = Prop(val=27, minv=5, maxv=60, doc=''' length of the portion that interfaces socket and base ''')
     socket_circumference_distal = Prop(val=55, minv=20, maxv=160, doc='''circumference of the socket closest to the base''')
@@ -157,7 +159,6 @@ class DangerFinger:
         mod_hole = self.tendon_hole()
         mod_elastic = self.elastic_hole()
 
-
         return mod_hinge + hull()(mod_tunnel + mod_core) - mod_bridge_cut  - mod_plugs - mod_hinge_cut + mod_washers - mod_side_trim + mod_socket_interface - mod_hole - mod_elastic
 
     def part_tip(self):
@@ -168,13 +169,13 @@ class DangerFinger:
         tunnel_length = self.intermediate_height[Orient.DISTAL]*.4
         bridge = self.bridge(length=tunnel_length, tunnel_width=self.knuckle_inner_width[Orient.DISTAL], orient=Orient.DISTAL | Orient.OUTER)
         mod_tunnel = translate((0, tunnel_length, 0))(bridge[0])
-        mod_cut = translate((0, tunnel_length, 0))(bridge[1])
+        #mod_tunnel_cut = translate((0, tunnel_length, 0))(bridge[1])
         mod_bottom_trim = translate((-self.knuckle_plug_radius -self.intermediate_distal_height/2, self.distal_base_length-.25, 0))(cube((self.intermediate_distal_height, 1, self.knuckle_width[Orient.DISTAL]), center=True))
-        mod_core = translate((0, self.distal_base_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.knuckle_distal_width/2 -.5, h=0.1))) - mod_bottom_trim
-        #TODO Tip interface
+        mod_core = translate((0, self.distal_base_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.tip_radius, h=0.1))) - mod_bottom_trim
+        mod_interface = self.tip_interface()
         #TODO tip tendon detents
 
-        return self.shift_distal()(mod_hinge + hull()(mod_tunnel+ mod_core) -mod_cut - mod_hinge_cut) - mod_plugs[2]- mod_plugs[3] + self.shift_distal()(mod_washers)
+        return self.shift_distal()(mod_hinge + hull()(mod_tunnel+ mod_core) - mod_hinge_cut + mod_interface) - mod_plugs[2]- mod_plugs[3] + self.shift_distal()(mod_washers)  #-mod_cut
 
     def part_middle(self):
         ''' Generate the middle/intermediate finger section '''
@@ -219,6 +220,17 @@ class DangerFinger:
         return mod_plug_pl, mod_plug_pr, mod_plug_dl, mod_plug_dr
 
     #**************************************** Primitives ***************************************
+    tipcover_thickness = .75
+    tip_interface_post_radius = property(lambda self: (self.tip_radius - self.tipcover_thickness- self.tip_interface_ridge_radius))# - self.tip_interface_ridge_radius - self.tipcover_thickness))
+    tip_interface_clearance = .15
+    tip_interface_ridge_radius = .875
+    tip_interface_ridge_height = 1.5
+    tip_interface_post_height = 1.5
+    def tip_interface(self):
+        ''' the snap-on interface section to the soft tip cover'''
+        mod_core = cylinder(r=self.tip_interface_post_radius, h=self.tip_interface_post_height) + \
+            translate((0, 0, -self.tip_interface_post_height-.01))(cylinder(r=self.tip_interface_ridge_radius+self.tip_interface_post_radius, h=self.tip_interface_ridge_height))
+        return translate((0, self.distal_base_length + self.tip_interface_post_height - .01, 0))(rotate((90, 0, 0))(mod_core))
 
     def tendon_hole(self):
         ''' return a tendon tube for cutting from the base'''
@@ -252,7 +264,11 @@ class DangerFinger:
         t_anchor_r_in = self.bridge_anchor(orient, length, top=False, inside=True, shift=True, rnd=True)
         t_anchor_l_out = self.bridge_anchor(orient, length, top=False, inside=False, rnd=(orient&Orient.OUTER))
         t_anchor_r_out = self.bridge_anchor(orient, length, top=False, inside=False, shift=True, rnd=(orient&Orient.OUTER))
-        anchors = (t_top_l_in, t_top_l_out, t_top_r_in, t_top_r_out, t_anchor_l_in, t_anchor_l_out, t_anchor_r_in, t_anchor_r_out)
+        anchors = ()
+        if orient != Orient.OUTER | Orient.PROXIMAL:
+            anchors += (t_anchor_l_out, t_anchor_r_out, t_top_r_out, t_top_l_out)
+        if orient != Orient.OUTER | Orient.DISTAL:
+            anchors += (t_anchor_l_in, t_anchor_r_in, t_top_l_in, t_top_r_in)
         #hull them together, and cut the middle
         mod_tunnel = hull()(anchors)
 
@@ -279,22 +295,20 @@ class DangerFinger:
         width_bottom_in = self.intermediate_width[orient_lat] / 2
         width_bottom_out = self.knuckle_width[orient_lat] / 2  + (.01 if (orient_lat == Orient.DISTAL and inside) else 0)
 
+        height_top = self.intermediate_height[orient_lat] / 2 + self.tunnel_height
+        height_bottom = self.intermediate_height[orient_lat] / 2 + (0 if orient_part == Orient.INNER and inside else 0)#adjust to not stick out from struts
+        #TODO - slant down for bridge at end of tip.  unhard code this based on tip height, not yet defined
+        height = (height_top -r) if top else height_bottom
+
         if orient & Orient.OUTER:            #TODO - unhardcode this based on tip width, when defined
-            width = width_bottom_out - (self.tunnel_outer_slant if inside or (not inside and orient_lat == Orient.DISTAL) else 0) if not top else \
+            width = width_bottom_out - ((self.tunnel_outer_slant) if inside or (not inside and orient_lat == Orient.DISTAL) else 0) if not top else \
                 (width_top_out -1 if orient_lat == Orient.DISTAL and inside else width_top_out)
-            #if orient_lat == Orient.PROXIMAL and not inside:
-            #    width -= 2
         elif orient & Orient.INNER and inside: #inside middle
             width = (width_top_in if top else width_bottom_in - self.strut_rounding/2) #inner bottom slant inward
         else: #outside middle
             width = (width_top_out if top else width_bottom_in)
         width -= r
         if shift: width = -width
-
-        height_top = self.intermediate_height[orient_lat] / 2 + self.tunnel_height
-        height_bottom = self.intermediate_height[orient_lat] / 2 + (0 if orient_part == Orient.INNER and inside else 0)#adjust to not stick out from struts
-        #TODO - slant down for bridge at end of tip.  unhard code this based on tip height, not yet defined
-        height = (height_top -r + (-.5 if inside and orient == (Orient.DISTAL | Orient.OUTER) else 0)) if top else height_bottom
 
         length = 0 if inside else -length
 
