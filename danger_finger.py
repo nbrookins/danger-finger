@@ -116,6 +116,12 @@ class DangerFinger:
     tendon_hole_radius = Prop(val=0.8, minv=0, maxv=5, adv=True, doc=''' ''')
     tendon_hole_width = Prop(val=2.0, minv=0, maxv=5, adv=True, doc=''' ''')
 
+    tipcover_thickness = Prop(val=.75, minv=0, maxv=5, adv=True, doc=''' ''')
+    tip_interface_clearance = Prop(val=.15, minv=0, maxv=5, adv=True, doc=''' ''')
+    tip_interface_ridge_radius = Prop(val=.875, minv=0, maxv=5, adv=True, doc=''' ''')
+    tip_interface_ridge_height = Prop(val=1.5, minv=0, maxv=5, adv=True, doc=''' ''')
+    tip_interface_post_height = Prop(val=1.5, minv=0, maxv=5, adv=True, doc=''' ''')
+
     strut_height_ratio = Prop(val=.8, minv=.1, maxv=3, adv=True, doc=''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
     strut_rounding = Prop(val=.4, minv=.5, maxv=2, adv=True, doc=''' 0 for no rounding, 1 for fullly round ''')
 
@@ -124,6 +130,7 @@ class DangerFinger:
     intermediate_proximal_width = property(lambda self: (self.knuckle_proximal_width - self.knuckle_proximal_thickness*2 - self.knuckle_side_clearance*2))
     intermediate_distal_width = property(lambda self: (self.knuckle_distal_width - self.knuckle_distal_thickness*2 - self.knuckle_side_clearance*2))
     intermediate_width = property(lambda self: ({Orient.DISTAL: self.intermediate_distal_width, Orient.PROXIMAL: self.intermediate_proximal_width}))
+    tip_interface_post_radius = property(lambda self: (self.tip_radius - self.tipcover_thickness- self.tip_interface_ridge_radius))# - self.tip_interface_ridge_radius - self.tipcover_thickness))
     tunnel_inner_width = property(lambda self: ({Orient.DISTAL: self.intermediate_width[Orient.DISTAL]- self.knuckle_inset_border*2 + self.tunnel_radius/2, \
         Orient.PROXIMAL: self.intermediate_width[Orient.PROXIMAL]- self.knuckle_inset_border*2 + self.tunnel_radius/2}))
     tunnel_inner_cutheight = property(lambda self: ({Orient.DISTAL: self.intermediate_height[Orient.DISTAL] / 2 + self.tunnel_inner_height, \
@@ -169,7 +176,7 @@ class DangerFinger:
         tunnel_length = self.intermediate_height[Orient.DISTAL]*.4
         bridge = self.bridge(length=tunnel_length, tunnel_width=self.knuckle_inner_width[Orient.DISTAL], orient=Orient.DISTAL | Orient.OUTER)
         mod_tunnel = translate((0, tunnel_length, 0))(bridge[0])
-        #mod_tunnel_cut = translate((0, tunnel_length, 0))(bridge[1])
+
         mod_bottom_trim = translate((-self.knuckle_plug_radius -self.intermediate_distal_height/2, self.distal_base_length-.25, 0))(cube((self.intermediate_distal_height, 1, self.knuckle_width[Orient.DISTAL]), center=True))
         mod_core = translate((0, self.distal_base_length, 0))(rotate((90, 0, 0))(rcylinder(r=self.tip_radius, h=0.1))) - mod_bottom_trim
         mod_interface = self.tip_interface()
@@ -220,12 +227,7 @@ class DangerFinger:
         return mod_plug_pl, mod_plug_pr, mod_plug_dl, mod_plug_dr
 
     #**************************************** Primitives ***************************************
-    tipcover_thickness = .75
-    tip_interface_post_radius = property(lambda self: (self.tip_radius - self.tipcover_thickness- self.tip_interface_ridge_radius))# - self.tip_interface_ridge_radius - self.tipcover_thickness))
-    tip_interface_clearance = .15
-    tip_interface_ridge_radius = .875
-    tip_interface_ridge_height = 1.5
-    tip_interface_post_height = 1.5
+
     def tip_interface(self):
         ''' the snap-on interface section to the soft tip cover'''
         mod_core = cylinder(r=self.tip_interface_post_radius, h=self.tip_interface_post_height) + \
