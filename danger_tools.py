@@ -12,10 +12,11 @@ import json
 import inspect
 from enum import IntFlag, Flag
 import argparse
-from solid import *
-from solid.utils import *
+#from solid import *
+import solid
+#import solid.utils# import *
 
-VERSION = 4.1
+VERSION = 4.2
 
 # ********************************* Custom SCAD Primitives *****************************
 
@@ -52,18 +53,54 @@ class FingerPart(IntFlag):
     SOFT = BUMPER | PLUGS | SOCKET | TIPCOVER
     HARD = BASE | TIP | MIDDLE | LINKAGE
 
-def rcylinder(r, h, rnd=0, center=False):
+def rcylinder(r, h, rnd=0, center=False, rotate=(), translate=(), resize=()):
     ''' primitive for a cylinder with rounded edges'''
-    if rnd == 0: return cylinder(r=r, h=h, center=center)
-    mod_cyl = translate((0, 0, -h/2 if center else 0))( \
-        rotate_extrude(convexity=1)(offset(r=rnd)(offset(delta=-rnd)(square((r, h)) + square((rnd, h))))))
+    if rnd == 0: return cylinder(r=r, h=h, rotate=rotate, translate=translate, center=center)
+    mod_cyl = solid.translate((0, 0, -h/2 if center else 0))( \
+        solid.rotate_extrude(convexity=1)(solid.offset(r=rnd)(solid.offset(delta=-rnd)(solid.square((r, h)) + solid.square((rnd, h))))))
+    if resize != (): mod_cyl = solid.resize(resize)(mod_cyl)
     return mod_cyl
 
-def rcube(size, rnd=0, center=True):
+def rcube(size, rnd=0, center=True, rotate=(), translate=(), resize=()):
     ''' primitive for a cube with rounded edges on 4 sides '''
-    if rnd == 0: return cube(size, center=center)
+    if rnd == 0: return solid.cube(size, center=center)
     round_ratio = (1-rnd) * 1.1 + 0.5
-    return cube(size, center=center) * resize((size[0]*round_ratio, 0, 0))(cylinder(h=size[2], d=size[1]*round_ratio, center=center))
+    c = cube(size, center=center, rotate=rotate, translate=translate) * cylinder(h=size[2], r=size[1]*round_ratio*2, center=center, rotate=rotate, translate=translate, resize=(size[0]*round_ratio, 0, 0))
+    if resize != (): c = solid.resize(resize)(c)
+    return c
+
+def cylinder(r=0, h=0, r1=0, r2=0, center=False, rotate=(), translate=(), resize=()):
+    ''' cylender with built-in translate and rotate '''
+    cyl = solid.cylinder(r1=r1, r2=r2, h=h, center=center) if r1 > 0 and r2 > 0 else solid.cylinder(r=r, h=h, center=center)
+    if rotate != (): cyl = solid.rotate(rotate)(cyl)
+    if translate != (): cyl = solid.translate(translate)(cyl)
+
+    if resize != (): cyl = solid.resize(resize)(cyl)
+    return cyl
+
+def cube(size, center=False, rotate=(), translate=(), resize=()):
+    ''' cylender with built-in translate and rotate '''
+    c = solid.cube(size=size, center=center)
+    if rotate != (): c = solid.rotate(rotate)(c)
+    if translate != (): c = solid.translate(translate)(c)
+    if resize != (): c = solid.resize(resize)(c)
+    return c
+
+def _rotate(self, rotate):
+    ''' built-in rotate '''
+    return solid.rotate(rotate)(self)
+
+def _resize(self, resize):
+    ''' built-in resize '''
+    return solid.resize(resize)(self)
+
+def _translate(self, translate):
+    ''' built-in translate '''
+    return solid.translate(translate)(self)
+solid.OpenSCADObject.translate = _translate
+solid.OpenSCADObject.rotate = _rotate
+solid.OpenSCADObject.resize = _resize
+
 
 #********************************* Parameterization system **********************************
 class Prop(object):
@@ -81,8 +118,10 @@ class Prop(object):
     def minmax(value, minv=None, maxv=None):
         '''return the value constrained by a min and max, skipped if None/not provided'''
         try:
-            value = value if not minv else min(value, minv)
-            value = value if not maxv else max(value, maxv)
+            #print(value, minv, maxv)
+            value = value if not minv else max(value, minv)
+            value = value if not maxv else min(value, maxv)
+            #print(value)
         except Exception as _e:
             pass
         return value
