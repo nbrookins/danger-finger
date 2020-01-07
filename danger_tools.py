@@ -41,7 +41,6 @@ class RenderQuality(Flag):
 
 class FingerPart(IntFlag):
     ''' Enum for passing an orientation '''
-    ALL = 0
     SOCKET = 2
     BASE = 4
     MIDDLE = 8
@@ -52,8 +51,9 @@ class FingerPart(IntFlag):
     BUMPER = 256
     SOFT = BUMPER | PLUGS | SOCKET | TIPCOVER
     HARD = BASE | TIP | MIDDLE | LINKAGE
+    ALL = SOFT | HARD
 
-def rcylinder(r, h, rnd=0, center=False, rotate=(), translate=(), resize=()):
+def rcylinder(r, h, rnd=0, center=False, rotate=(0, 0, 0), translate=(0, 0, 0), resize=(0, 0, 0)):
     ''' primitive for a cylinder with rounded edges'''
     if rnd == 0: return cylinder(r=r, h=h, rotate=rotate, translate=translate, center=center)
     mod_cyl = solid.translate((0, 0, -h/2 if center else 0))( \
@@ -61,45 +61,28 @@ def rcylinder(r, h, rnd=0, center=False, rotate=(), translate=(), resize=()):
     if resize != (): mod_cyl = solid.resize(resize)(mod_cyl)
     return mod_cyl
 
-def rcube(size, rnd=0, center=True, rotate=(), translate=(), resize=()):
+def rcube(size, rnd=0, center=True, rotate=(0, 0, 0), translate=(0, 0, 0), resize=(0, 0, 0)):
     ''' primitive for a cube with rounded edges on 4 sides '''
     if rnd == 0: return solid.cube(size, center=center)
     round_ratio = (1-rnd) * 1.1 + 0.5
-    c = cube(size, center=center, rotate=rotate, translate=translate) * cylinder(h=size[2], r=size[1]*round_ratio*2, center=center, rotate=rotate, translate=translate, resize=(size[0]*round_ratio, 0, 0))
-    if resize != (): c = solid.resize(resize)(c)
-    return c
+    c = solid.cube(size, center=center) * solid.resize((size[0]*round_ratio, 0, 0))(solid.cylinder(h=size[2], d=size[1]*round_ratio, center=center)) #TODO fix
+    return solid.resize(resize)(c.rotate(rotate).translate(translate))
 
-def cylinder(r=0, h=0, r1=0, r2=0, center=False, rotate=(), translate=(), resize=()):
+def cylinder(r=0, h=0, r1=0, r2=0, center=False, rotate=(0, 0, 0), translate=(0, 0, 0), resize=(0, 0, 0)):
     ''' cylender with built-in translate and rotate '''
     cyl = solid.cylinder(r1=r1, r2=r2, h=h, center=center) if r1 > 0 and r2 > 0 else solid.cylinder(r=r, h=h, center=center)
-    if rotate != (): cyl = solid.rotate(rotate)(cyl)
-    if translate != (): cyl = solid.translate(translate)(cyl)
-
-    if resize != (): cyl = solid.resize(resize)(cyl)
+    cyl = solid.resize(resize)(solid.translate(translate)(solid.rotate(rotate)(cyl)))
     return cyl
 
-def cube(size, center=False, rotate=(), translate=(), resize=()):
+def cube(size, center=False, rotate=(0, 0, 0), translate=(0, 0, 0), resize=(0, 0, 0)):
     ''' cylender with built-in translate and rotate '''
     c = solid.cube(size=size, center=center)
-    if rotate != (): c = solid.rotate(rotate)(c)
-    if translate != (): c = solid.translate(translate)(c)
-    if resize != (): c = solid.resize(resize)(c)
+    c = solid.resize(resize)(solid.translate(translate)(solid.rotate(rotate)(c)))
     return c
 
-def _rotate(self, rotate):
-    ''' built-in rotate '''
-    return solid.rotate(rotate)(self)
-
-def _resize(self, resize):
-    ''' built-in resize '''
-    return solid.resize(resize)(self)
-
-def _translate(self, translate):
-    ''' built-in translate '''
-    return solid.translate(translate)(self)
-solid.OpenSCADObject.translate = _translate
-solid.OpenSCADObject.rotate = _rotate
-solid.OpenSCADObject.resize = _resize
+solid.OpenSCADObject.translate = (lambda self, t: solid.translate(t)(self))
+solid.OpenSCADObject.rotate = (lambda self, t: solid.rotate(t)(self))
+solid.OpenSCADObject.resize = (lambda self, t: solid.resize(t)(self))
 
 
 #********************************* Parameterization system **********************************
