@@ -23,18 +23,19 @@ def assemble():
     finger = DangerFinger()
 
     #sample param overrides for quick testing - comment out
-    # finger.preview = True
-    finger.render = True
-    finger.part = FingerPart.BASE | FingerPart.MIDDLE | FingerPart.TIP
-    #finger.render_quality = RenderQuality.EXTRAMEDIUM # EXTRAMEDIUM FAST HIGH MEDIUM ULTRAHIGH SUBMEDIUM
-    finger.render_quality = RenderQuality.ULTRAHIGH # FAST EXTRAMEDIUM HIGH MEDIUM ULTRAHIGH SUBMEDIUM
-    finger.preview_explode = True
+    finger.preview = True
+    #finger.preview_explode = True
     #finger.preview_cut = True
+    finger.preview_rotate = 30
+    #TODO 2 - make preview rotate parametric with a max rotatoe lookup per part
+    #finger.animate_explode = True
+    #finger.animate_rotate = True
 
+    finger.part = FingerPart.BASE | FingerPart.MIDDLE | FingerPart.TIP
+    #finger.render = True
+    finger.render_quality = RenderQuality.EXTRAMEDIUM # EXTRAMEDIUM FAST HIGH MEDIUM ULTRAHIGH SUBMEDIUM
+    #finger.render_quality = RenderQuality.ULTRAHIGH # FAST EXTRAMEDIUM HIGH MEDIUM ULTRAHIGH SUBMEDIUM
     finger.render_threads = 8
-   # finger.rotate = 30
-    #finger.explode_animate = True
-    #finger.rotate_animate = True
 
     #load a configuration, with parameters from cli or env
     Params.parse(finger)
@@ -51,15 +52,16 @@ class DangerFinger:
     # ************************************* control params *****************************************
 
     preview = Prop(val=False, doc=''' Enable preview mode, emits all segments ''')
-    render_quality = Prop(val=RenderQuality.AUTO, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, value: (value))
-    preview_explode = Prop(val=False, doc=''' Enable explode mode, only for preview ''')
-    emit = Prop(val=True, doc=''' emit SCAD ''')
-    render = Prop(val=False, doc=''' render to STL ''')
     preview_cut = Prop(val=False, doc=''' cut the preview for inset view ''')
-    render_threads = Prop(val=2, minv=1, maxv=64, doc=''' render to STL ''')
+    preview_explode = Prop(val=False, doc=''' Enable explode mode, only for preview ''')
+    preview_rotate = Prop(val=0, minv=0, maxv=120, doc=''' rotate the finger ''')
     animate_explode = Prop(val=False, doc=''' Enable explode animation, only for preview ''')
     animate_rotate = Prop(val=False, doc=''' Enable rotate animation, only for preview ''')
-    preview_rotate = Prop(val=0, minv=0, maxv=120, doc=''' rotate the finger ''')
+
+    emit = Prop(val=True, doc=''' emit SCAD ''')
+    render = Prop(val=False, doc=''' render to STL ''')
+    render_quality = Prop(val=RenderQuality.AUTO, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, value: (value))
+    render_threads = Prop(val=2, minv=1, maxv=64, doc=''' render to STL ''')
     output_directory = Prop(val=os.getcwd(), doc=''' output_directory for scad code, otherwise current''')
 
     # **************************************** parameters ****************************************
@@ -497,8 +499,7 @@ class DangerFinger:
         file_template = "dangerfinger_%s_%s_gen.scad"
         mod = {}
         mod_preview = None
-        for pv in FingerPart:#.self.part:
-            #print(pv)
+        for pv in FingerPart:
             if not self.part & pv: continue
             p = str.lower(str(pv.name) if isinstance(pv, FingerPart) else str(pv))
             part_name = "part_%s" % p
@@ -511,14 +512,17 @@ class DangerFinger:
                 if self.preview_rotate != 0: mod_segment = [rotate(self.rotate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
                 if self.preview_explode: mod_segment = [translate(self.explode_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
                 mod_segment = [translate(self.translate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
+                if not self.preview: #rotate for print mode
+                    mod_segment = [rotate(self.print_rotate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
             else:
                 if self.preview_cut: mod_segment = mod_segment - self.cut_model()
                 if self.preview_explode: mod_segment = mod_segment.translate(self.explode_offsets[p])
-                r = max(self._rotate_offsets[p], key=lambda v: v)
-                if r != 0: mod_segment = mod_segment.rotate(self.rotate_offsets[p])
-                if r > 2: mod_segment = mod_segment.rotate(self.rotate_offsets[p])
+                r = max(self._rotate_offsets[p], key=lambda v: v) if self.preview_rotate != 0 else 0
+                if r != 0: mod_segment = mod_segment.rotate(self.rotate_offsets[p]) #rotate before translate
                 mod_segment = mod_segment.translate(self.translate_offsets[p])
-                if r > 1: mod_segment = mod_segment.rotate(self.rotate_offsets[p])
+                if r > 1: mod_segment = mod_segment.rotate(self.rotate_offsets[p]) #rotate after translate
+                if not self.preview: #rotate for print mode
+                    mod_segment = mod_segment.rotate(self.print_rotate_offsets[p])
 
             mod_preview = mod_segment if not mod_preview else mod_preview + mod_segment
             mod[mod_file] = mod_segment
@@ -551,12 +555,20 @@ class DangerFinger:
         "linkage" : (0, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
 
     @property
+    def print_rotate_offsets(self):
+        ''' amount rotate in print mode'''
+        return self._prop_offset(self._print_rotate_offsets, self.distal_offset)
+    _print_rotate_offsets = {
+        "middle":(0, -90, 0), "base" : (90, 0, 0), "tip":(-90, 0, 0), "socket":(0, 0, 0),
+        "linkage" : (0, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
+
+    @property
     def rotate_offsets(self):
-        ''' amount to expand during rotate'''
+        ''' amount to rotate'''
         return self._prop_offset(self._rotate_offsets, self._animate_factor * self.preview_rotate, func=lambda v: min(v, 1))
     _rotate_offsets = {
-        "middle":(0, 0, 1), "base" : (0, 0, 0), "tip":(0, 0, 3), "socket":(0, 0, 0),
-        "linkage" : (0, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 3), (0, 0, 3))}
+        "middle":(0, 0, 1), "base" : (0, 0, 0), "tip":(0, 0, 2), "socket":(0, 0, 0),
+        "linkage" : (0, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 2), (0, 0, 2))}
 
     def _prop_offset(self, offs, f, func=lambda v: v):
         ''' calculate offsets by facot for animation, etc '''
