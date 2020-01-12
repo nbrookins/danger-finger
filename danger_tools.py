@@ -9,12 +9,14 @@ Source code licensed under Apache 2.0:  https://www.apache.org/licenses/LICENSE-
 import os
 import sys
 import json
+import time
+import asyncio
 import inspect
+import subprocess
+import platform
 from enum import IntFlag, Flag
 import argparse
-#from solid import *
 import solid
-#import solid.utils# import *
 
 VERSION = 4.2
 
@@ -53,37 +55,37 @@ class FingerPart(IntFlag):
     HARD = BASE | TIP | MIDDLE | LINKAGE
     ALL = SOFT | HARD
 
-def rcylinder(r, h, rnd=0, center=False, rotate=(0, 0, 0), translate=(0, 0, 0), resize=(0, 0, 0)):
+def rcylinder(r, h, rnd=0, center=False):
     ''' primitive for a cylinder with rounded edges'''
-    if rnd == 0: return cylinder(r=r, h=h, rotate=rotate, translate=translate, center=center)
+    if rnd == 0: return solid.cylinder(r=r, h=h, center=center)
     mod_cyl = solid.translate((0, 0, -h/2 if center else 0))( \
         solid.rotate_extrude(convexity=1)(solid.offset(r=rnd)(solid.offset(delta=-rnd)(solid.square((r, h)) + solid.square((rnd, h))))))
-    if resize != (): mod_cyl = solid.resize(resize)(mod_cyl)
     return mod_cyl
 
-def rcube(size, rnd=0, center=True, rotate=(0, 0, 0), translate=(0, 0, 0), resize=(0, 0, 0)):
+def rcube(size, rnd=0, center=True):
     ''' primitive for a cube with rounded edges on 4 sides '''
     if rnd == 0: return solid.cube(size, center=center)
     round_ratio = (1-rnd) * 1.1 + 0.5
-    c = solid.cube(size, center=center) * solid.resize((size[0]*round_ratio, 0, 0))(solid.cylinder(h=size[2], d=size[1]*round_ratio, center=center)) #TODO fix
-    return solid.resize(resize)(c.rotate(rotate).translate(translate))
-
-def cylinder(r=0, h=0, r1=0, r2=0, center=False, rotate=(0, 0, 0), translate=(0, 0, 0), resize=(0, 0, 0)):
-    ''' cylender with built-in translate and rotate '''
-    cyl = solid.cylinder(r1=r1, r2=r2, h=h, center=center) if r1 > 0 and r2 > 0 else solid.cylinder(r=r, h=h, center=center)
-    cyl = solid.resize(resize)(solid.translate(translate)(solid.rotate(rotate)(cyl)))
-    return cyl
-
-def cube(size, center=False, rotate=(0, 0, 0), translate=(0, 0, 0), resize=(0, 0, 0)):
-    ''' cylender with built-in translate and rotate '''
-    c = solid.cube(size=size, center=center)
-    c = solid.resize(resize)(solid.translate(translate)(solid.rotate(rotate)(c)))
+    #TODO fix rounded cube for detent use-case
+    c = solid.cube(size, center=center) * solid.resize((size[0]*round_ratio, 0, 0))(solid.cylinder(h=size[2], d=size[1]*round_ratio, center=center))
     return c
 
 solid.OpenSCADObject.translate = (lambda self, t: solid.translate(t)(self))
 solid.OpenSCADObject.rotate = (lambda self, t: solid.rotate(t)(self))
 solid.OpenSCADObject.resize = (lambda self, t: solid.resize(t)(self))
 
+def iterable(obj):
+    ''' test if object is iterable '''
+    try:
+        if isinstance(obj, str): return False
+        iter(obj)
+        return True
+    except TypeError:
+        return False
+
+def diff(val1, val2):
+    ''' get difference between numbers '''
+    return max(val1, val2)- min(val1, val2)
 
 #********************************* Parameterization system **********************************
 class Prop(object):
@@ -118,6 +120,72 @@ class Prop(object):
         if self._setter is not None:
             self._value = self._setter(self, value)
         self._value = self.minmax(value, self._min, self._max)
+
+class Borg:
+    '''This is a very elegant singleton'''
+    _shared_state = {}
+    def __init__(self):
+        self.__dict__ = self._shared_state
+
+class Renderer(Borg):
+    '''This class will render an OpenSCAD object to STL
+    This class needs to know the path to the openscad command-line tool.
+    You can set the path with the OPENSCAD_EXEC environment variable, or with the 'openscad_exec'
+    keyword in the constructor.  If these are omitted, the class makes an attempt at finding the executable itself.
+    '''
+    def __init__(self, **kw):
+        Borg.__init__(self)
+        self.openscad_exec = None
+        self.openscad_tmp_dir = None
+        if 'OPENSCAD_EXEC' in os.environ: self.openscad_exec = os.environ['OPENSCAD_EXEC']
+        if 'OPENSCAD_TMP_DIR' in os.environ: self.openscad_tmp_dir = os.environ['OPENSCAD_TMP_DIR']
+        if 'openscad_exec' in kw: self.openscad_exec = kw['openscad_exec']
+        if self.openscad_exec is None:
+            self._try_detect_openscad_exec()
+        if self.openscad_exec is None:
+            raise Exception('openscad exec not found!')
+
+    def _try_executable(self, executable_path):
+        if os.path.isfile(executable_path):
+            self.openscad_exec = executable_path
+
+    def _try_detect_openscad_exec(self):
+        self.openscad_exec = None
+        platfm = platform.system()
+        if platfm == 'Linux':
+            self._try_executable('/usr/bin/openscad')
+            if self.openscad_exec is None:
+                self._try_executable('/usr/local/bin/openscad')
+        elif platfm == 'Darwin':
+            self._try_executable('/Applications/OpenSCAD.app/Contents/MacOS/OpenSCAD')
+        elif platfm == 'Windows':
+            self._try_executable(os.path.join(os.environ.get('Programfiles(x86)', 'C:'), 'OpenSCAD\\openscad.exe'))
+            self._try_executable(os.path.join(os.environ.get('Programfiles', 'C:'), 'OpenSCAD\\openscad.exe'))
+
+    def scad_to_stl(self, scad_filename, stl_filename):#, **kw):
+        '''render a scad file'''
+        try:
+            # now run openscad to generate stl:
+            cmd = [self.openscad_exec, '-o', stl_filename, scad_filename]
+            out = subprocess.check_output(cmd)
+            if out != b'': print(out)
+            #if return_code < 0:
+            #    raise Exception('openscad command line returned code {}'.format(return_code))
+        except Exception as e:
+            raise e
+
+    def scad_parallel_to_stl(self, scad_filenames, max_concurrent_tasks=4):
+        ''' run up to max concurrent tasks to render a list of scad files in parallel '''
+        start = time.time()
+
+        commands = [[self.openscad_exec, '-o', scad_filename + ".stl", scad_filename] for scad_filename in scad_filenames]
+        tasks = [AsyncSubprocess().run_command(*command) for command in commands]
+        results = AsyncSubprocess().run_asyncio_commands(tasks, max_concurrent_tasks=max_concurrent_tasks)
+
+        end = time.time()
+        rounded_end = "{0:.4f}".format(round(end - start, 4))
+        print("Rendered STL in %s seconds" % (rounded_end), flush=True)
+        return results
 
 class Params():
     ''' handy class for parsing/loading/saving dynamic configs'''
@@ -208,15 +276,81 @@ class Params():
                 print("Setting %s %s " % (param, params[param]))
                 setattr(config_obj, param, params[param])
 
-def iterable(obj):
-    ''' test if object is iterable '''
-    try:
-        if isinstance(obj, str): return False
-        iter(obj)
-        return True
-    except TypeError:
-        return False
+class UnbufferedStdOut(object):
+    '''Override to allow unbufferred std out to work with | tee'''
+    def __init__(self, stream):
+        self.stream = stream
+    def write(self, data):
+        '''override'''
+        self.stream.write(data)
+        self.stream.flush()
+    def writelines(self, datas):
+        '''override'''
+        self.stream.writelines(datas)
+        self.stream.flush()
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
 
-def diff(val1, val2):
-    ''' get difference between numbers '''
-    return max(val1, val2)- min(val1, val2)
+class AsyncSubprocess(Borg):
+    '''Async and await  using subprocesses '''
+
+    async def run_command(self, *args):
+        """Run command in subprocess.   http://asyncio.readthedocs.io/en/latest/subprocess.html"""
+        print("Starting task: %s" % str(args), flush=True) #process.pid
+        start = time.time()
+        # Create subprocess
+        process = await asyncio.create_subprocess_exec(args[0], \
+            *args[1:], stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+
+        # Wait for the subprocess to finish
+        stdout, stderr = await process.communicate()
+        elapsed = time.time() - start
+
+        result = stdout.decode().strip()
+        error = stderr.decode().strip() if stderr is not None else None
+        print("%s %s, pid=%s, %s sec, result: %s %s"% (("Done:" if process.returncode == 0 else "Failed:"), args, process.pid, elapsed, result, error))
+
+        # Return stdout
+        return result, error
+
+    async def run_command_shell(self, command):
+        """Run command in subprocess (shell).
+            This can be used if you wish to execute e.g. "copy"
+            on Windows, which can only be executed in the shell. """
+        # Create subprocess
+        process = await asyncio.create_subprocess_shell(command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        print("Started task:", command, "(pid = " + str(process.pid) + ")", flush=True)
+        # Wait for the subprocess to finish
+        stdout, stderr = await process.communicate()
+        print("Completed task:" if process.returncode == 0 else "Failed:", command, "(pid = " + str(process.pid) + ")", flush=True)
+
+        result = stdout.decode().strip()
+        error = stderr.decode().strip() if stderr is not None else None
+        return result, error
+
+    @staticmethod
+    def make_chunks(l, n):
+        """Yield successive n-sized chunks from l.   Taken from https://stackoverflow.com/a/312464"""
+        for i in range(0, len(l), n):
+            yield l[i : i + n]
+
+    def run_asyncio_commands(self, tasks, max_concurrent_tasks=4):
+        """Run tasks asynchronously using asyncio and return results.
+        If max_concurrent_tasks are set to 0, no limit is applied.
+            https://docs.python.org/3/library/asyncio-eventloops.html#windows"""
+        all_results = []
+        chunks = [tasks] if max_concurrent_tasks == 0 else self.make_chunks(l=tasks, n=int(max_concurrent_tasks))
+
+        if asyncio.get_event_loop().is_closed():
+            asyncio.set_event_loop(asyncio.new_event_loop())
+        if platform.system() == "Windows":
+            asyncio.set_event_loop(asyncio.ProactorEventLoop())
+        loop = asyncio.get_event_loop()
+
+        for tasks_in_chunk in chunks:
+            commands = asyncio.gather(*tasks_in_chunk)  # Unpack list using *
+            results = loop.run_until_complete(commands)
+            all_results += results
+
+        loop.close()
+        return all_results
