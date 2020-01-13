@@ -27,7 +27,6 @@ def assemble():
     #finger.preview_explode = True
     #finger.preview_cut = True
     finger.preview_rotate = 30
-    #TODO 2 - make preview rotate parametric with a max rotatoe lookup per part
     #finger.animate_explode = True
     #finger.animate_rotate = True
 
@@ -135,6 +134,7 @@ class DangerFinger:
     tip_interface_ridge_radius = Prop(val=.875, minv=0, maxv=5, adv=True, doc=''' ''')
     tip_interface_ridge_height = Prop(val=1.5, minv=0, maxv=5, adv=True, doc=''' ''')
     tip_interface_post_height = Prop(val=1.5, minv=0, maxv=5, adv=True, doc=''' ''')
+    tip_detent_height = 3.2
 
     strut_height_ratio = Prop(val=.85, minv=.1, maxv=3, adv=True, doc=''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
     strut_rounding = Prop(val=.4, minv=.5, maxv=2, adv=True, doc=''' 0 for no rounding, 1 for fullly round ''')
@@ -158,6 +158,7 @@ class DangerFinger:
     socket_radius = property(lambda self: ({Orient.DISTAL: self.socket_circumference_distal / math.pi / 2, Orient.PROXIMAL: self.socket_circumference_proximal / math.pi / 2}))
     socket_thickness = property(lambda self: ({Orient.DISTAL: self.socket_thickness_distal, Orient.PROXIMAL: self.socket_thickness_proximal}))
     distal_offset = property(lambda self: (self.intermediate_length))
+    socket_interface_radius = property(lambda self: {Orient.DISTAL: self.socket_radius[Orient.DISTAL] - self.socket_interface_radius_offset, Orient.PROXIMAL: self.socket_radius[Orient.DISTAL] - self.socket_interface_radius_offset + self.socket_interface_flare_radius})
     shift_distal = lambda self: translate((0, self.distal_offset, 0))
 
     #**************************************** finger bits ****************************************
@@ -204,13 +205,13 @@ class DangerFinger:
         mod_core = rcylinder(r=self.tip_radius, h=0.1).rotate((90, 0, 0)).translate((0, self.distal_base_length, 0)) - mod_bottom_trim
         mod_interface = self.tip_interface()
 
-        mod_tip_hole = cylinder(r=self.tip_interface_post_radius-2, h=20, center=True).rotate((90, 0, 0)).translate((0, self.intermediate_distal_height, 0))
+        mod_tip_hole = cylinder(r=self.tip_interface_post_radius-2.2, h=20, center=True).rotate((90, 0, 0)).translate((0, self.intermediate_distal_height, 0))
         mod_top_detent = self.tip_detent()
         radius = self.intermediate_height[Orient.DISTAL]/2
         mod_extra = cylinder(r=radius+self.knuckle_clearance, h=self.knuckle_inner_width[Orient.DISTAL], center=True)
         mod_main = hull()(mod_core + mod_hinge) + hull()(mod_tunnel + mod_core)
 
-        #TODO 1 Hacky hard coded!
+        #TODO 1 Hacky hard coded, paired to the 10 in bridge
         return (mod_main + mod_interface + mod_top_detent - mod_plug_cut - mod_tip_hole - mod_hinge_cut - bridge[1][1].translate((0, 9.0, 0))) - mod_extra.translate((-1, 0, 0)) + mod_washers
 
     def part_middle(self):
@@ -257,10 +258,9 @@ class DangerFinger:
 
     #**************************************** Primitives ***************************************
 
-    tip_detent_height = 3.2
     def tip_detent(self):
         ''' create tendon detents '''
-        hole_offset = self.tip_interface_post_radius-2 + .75
+        hole_offset = self.tip_interface_post_radius-2 + .5
         shift = self.distal_base_length + self.tip_detent_height/2 - .1 + self.tip_interface_post_height + self.tip_interface_ridge_height
         mod = cube(size=(1.4, self.tip_detent_height, 2.4), center=True) - cube(size=(1.5, self.tip_detent_height, .4), center=True).translate((0, .5, 0))
         return mod.translate((-hole_offset, shift, 0)) + mod.translate((hole_offset, shift, 0))
@@ -283,10 +283,9 @@ class DangerFinger:
     def elastic_hole(self):
         ''' generate twin holes in base for elastic tendon '''
         r = self.tendon_hole_radius
-        l = (self.proximal_length + 3 + self.intermediate_proximal_height/2) #TODO 1 - add base length (3)?
+        l = (self.proximal_length + self.socket_interface_length + self.intermediate_proximal_height/2)
         sr = self.socket_radius[Orient.DISTAL] - self.socket_interface_radius_offset + r
-        anchor = translate((sr/2, 0, 0))( \
-                resize((0, 0, self.tendon_hole_width))(rotate((90, 0, 0))(cylinder(r=r, h=0.1, center=True))))
+        anchor = translate((sr/2, 0, 0))(resize((0, 0, self.tendon_hole_width))(rotate((90, 0, 0))(cylinder(r=r, h=0.1, center=True))))
         a1 = anchor.translate((0, -l, self.tendon_hole_width * 1.2))
         a2 = anchor.translate((0, -l, -self.tendon_hole_width * 1.2))
         return hull()(anchor, a1), hull()(anchor, a2)
@@ -411,8 +410,6 @@ class DangerFinger:
         if height == 0: height = self.knuckle_inset_border
         return rcube((height, width, length), rnd=self.strut_rounding, center=True)
 
-    socket_interface_radius = property(lambda self: {Orient.DISTAL: self.socket_radius[Orient.DISTAL] - self.socket_interface_radius_offset, Orient.PROXIMAL: self.socket_radius[Orient.DISTAL] - self.socket_interface_radius_offset + self.socket_interface_flare_radius})
-
     def socket_interface(self, orient):
         ''' build an interface for the socket.  orient determines whether is for base or socket(cutout) with clearance'''
         socket_interface_base = .5
@@ -508,16 +505,16 @@ class DangerFinger:
             mod_file = file_template % (VERSION, p)
             mod_segment = getattr(self, part_name)()
             if iterable(mod_segment):
-                if self.preview_cut: mod_segment = [x - self.cut_model() for i, x in enumerate(mod_segment, 0)]
-                if self.preview_rotate != 0: mod_segment = [rotate(self.rotate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
-                if self.preview_explode: mod_segment = [translate(self.explode_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
+                if self.preview and self.preview_cut: mod_segment = [x - self.cut_model() for i, x in enumerate(mod_segment, 0)]
+                if self.preview and self.preview_rotate != 0: mod_segment = [rotate(self.rotate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
+                if self.preview and self.preview_explode: mod_segment = [translate(self.explode_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
                 mod_segment = [translate(self.translate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
                 if not self.preview: #rotate for print mode
                     mod_segment = [rotate(self.print_rotate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
             else:
-                if self.preview_cut: mod_segment = mod_segment - self.cut_model()
-                if self.preview_explode: mod_segment = mod_segment.translate(self.explode_offsets[p])
-                r = max(self._rotate_offsets[p], key=lambda v: v) if self.preview_rotate != 0 else 0
+                if self.preview and self.preview_cut: mod_segment = mod_segment - self.cut_model()
+                if self.preview and self.preview_explode: mod_segment = mod_segment.translate(self.explode_offsets[p])
+                r = max(self._rotate_offsets[p], key=lambda v: v) if self.preview and self.preview_rotate != 0 else 0
                 if r != 0: mod_segment = mod_segment.rotate(self.rotate_offsets[p]) #rotate before translate
                 mod_segment = mod_segment.translate(self.translate_offsets[p])
                 if r > 1: mod_segment = mod_segment.rotate(self.rotate_offsets[p]) #rotate after translate
@@ -542,32 +539,28 @@ class DangerFinger:
     def explode_offsets(self):
         ''' amount to expand during explode'''
         return self._prop_offset(self._explode_offsets, self._animate_factor)
-    _explode_offsets = { #TODO 1 - make these parametric
-        "middle":(0, 20, 0), "base" : (0, 0, 0), "tip":(0, 40, 0), "socket":(0, -20, 0),
+    _explode_offsets = {"middle":(0, 20, 0), "base" : (0, 0, 0), "tip":(0, 40, 0), "socket":(0, -20, 0), \
         "linkage" : (10, -30, 0), "tipcover" : (0, 50, 0), "plugs":((0, 0, -8), (0, 0, 8), (0, 40, -8), (0, 40, 20))}
 
     @property
     def translate_offsets(self):
         ''' amount to expand during explode'''
         return self._prop_offset(self._translate_offsets, self.distal_offset)
-    _translate_offsets = {
-        "middle":(0, 0, 0), "base" : (0, 0, 0), "tip":(0, 1, 0), "socket":(0, 0, 0),
+    _translate_offsets = {"middle":(0, 0, 0), "base" : (0, 0, 0), "tip":(0, 1, 0), "socket":(0, 0, 0), \
         "linkage" : (0, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
 
     @property
     def print_rotate_offsets(self):
         ''' amount rotate in print mode'''
         return self._prop_offset(self._print_rotate_offsets, self.distal_offset)
-    _print_rotate_offsets = {
-        "middle":(0, -90, 0), "base" : (90, 0, 0), "tip":(-90, 0, 0), "socket":(0, 0, 0),
+    _print_rotate_offsets = {"middle":(0, -90, 0), "base" : (90, 0, 0), "tip":(-90, 0, 0), "socket":(0, 0, 0), \
         "linkage" : (0, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
 
     @property
     def rotate_offsets(self):
         ''' amount to rotate'''
         return self._prop_offset(self._rotate_offsets, self._animate_factor * self.preview_rotate, func=lambda v: min(v, 1))
-    _rotate_offsets = {
-        "middle":(0, 0, 1), "base" : (0, 0, 0), "tip":(0, 0, 2), "socket":(0, 0, 0),
+    _rotate_offsets = {"middle":(0, 0, 1), "base" : (0, 0, 0), "tip":(0, 0, 2), "socket":(0, 0, 0), \
         "linkage" : (0, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 2), (0, 0, 2))}
 
     def _prop_offset(self, offs, f, func=lambda v: v):
