@@ -26,7 +26,8 @@ def assemble():
     #sample param overrides for quick testing - comment out
 
     #uncomment to render STL instead of previewing
-    finger.action = Action.RENDER | Action.EMITSCAD
+    #finger.action = Action.RENDER | Action.EMITSCAD
+    
     finger.part = FingerPart.BASE | FingerPart.MIDDLE | FingerPart.TIP
     finger.render_quality = RenderQuality.ULTRAHIGH #FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
     finger.render_threads = 8
