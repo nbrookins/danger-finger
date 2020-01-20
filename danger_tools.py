@@ -22,6 +22,12 @@ VERSION = 4.2
 
 # ********************************* Custom SCAD Primitives *****************************
 
+class Action(IntFlag):
+    ''' Enum for passing an orientation '''
+    EMITSCAD = 1
+    PREVIEW = 2
+    RENDER = 4
+
 class Orient(IntFlag):
     ''' Enum for passing an orientation '''
     PROXIMAL = 1
@@ -55,6 +61,7 @@ class FingerPart(IntFlag):
     HARD = BASE | TIP | MIDDLE | LINKAGE
     ALL = SOFT | HARD
 
+#additional custom OpenScad primitive types
 def rcylinder(r, h, rnd=0, center=False):
     ''' primitive for a cylinder with rounded edges'''
     if rnd == 0: return solid.cylinder(r=r, h=h, center=center)
@@ -70,6 +77,8 @@ def rcube(size, rnd=0, center=True):
     c = solid.cube(size, center=center) * solid.resize((size[0]*round_ratio, 0, 0))(solid.cylinder(h=size[2], d=size[1]*round_ratio, center=center))
     return c
 
+#SolidTools hacks to make functions easily done inline
+solid.OpenSCADObject.mod = (lambda self, t: self.set_modifier(t))
 solid.OpenSCADObject.translate = (lambda self, t: solid.translate(t)(self))
 solid.OpenSCADObject.rotate = (lambda self, t: solid.rotate(t)(self))
 solid.OpenSCADObject.resize = (lambda self, t: solid.resize(t)(self))
@@ -292,7 +301,7 @@ class UnbufferedStdOut(object):
         return getattr(self.stream, attr)
 
 class AsyncSubprocess(Borg):
-    '''Async and await  using subprocesses '''
+    '''Async and await using subprocesses - we use this to run the single-threaded openscad render processes in parallel'''
 
     async def run_command(self, *args):
         """Run command in subprocess.   http://asyncio.readthedocs.io/en/latest/subprocess.html"""
