@@ -13,13 +13,16 @@ import time
 import tornado.web
 from enum import IntFlag, Flag
 import solid
+from danger_finger import *
+#from danger_finger import *
+
 
 def main():
     '''main'''
    
     http_port = 8081 #TODO config config.get("service_port", 8081)  # pylint: disable=invalid-name
     tornado.web.Application([
-        (r"/params/([a-zA-Z0-9]+/)", FingerHandler), #, {"params":config}),
+        (r"/params/", FingerHandler), #, {"params":config}),
         (r"/render/([a-zA-Z0-9]+/)", FingerHandler),
         (r"/scad/([a-zA-Z0-9]+/)", FingerHandler),
         (r"/preview", FingerHandler),
@@ -33,18 +36,41 @@ def main():
 # pylint: disable=W0223
 class FingerHandler(tornado.web.RequestHandler):
     '''Handle a metadata request'''
-    def initialize(self):#, params): #pylint: disable=arguments-differ
-        pass
+    def get(self):
 
-    def get(self, part):#pylint: disable=arguments-differ
-        print("part %s" % part)
+        print(" %s " % self.request)
+        #print("part %s" % part)
 
         #TODO - mostly everything for these APIs
 
-        #if params
-            # loop preperties, build dict, emit json
+        finger = DangerFinger()
 
-        #else
+        #if params
+        if self.request.path.startswith("/params"):
+            params = {}
+
+            # for param in vars(type(config_obj)).items(): ###
+            # #print (param)
+            # if param[0].startswith("_"): continue
+            # val = getattr(config_obj, param[0])
+            # if str(val).startswith(("<f", "<b")): continue
+
+            for p in [a for a in dir(finger) if not a.startswith('_')]:
+                v = getattr(finger, p)
+                print(p, v)
+                params[p] = v
+                # loop preperties, build dict, emit json
+                #send our http response
+            pbytes = json.dumps(params, skipkeys=True).encode('utf-8')
+            self.set_header('Content-Length', len(pbytes))
+            self.write(pbytes)
+            self.finish()
+            print("200 OK response to: %s, %sb" %(self.request.uri, len(pbytes)))
+            return
+
+        else:
+            print("nothing to see here!")
+            return
             #loop quert=y params
             # set them to a new finger
             # emit scad
