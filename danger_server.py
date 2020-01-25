@@ -11,7 +11,7 @@ import sys
 import json
 import time
 import tornado.web
-from enum import IntFlag, Flag
+#from enum import IntFlag, Flag
 import solid
 from danger_finger import *
 #from danger_finger import *
@@ -19,7 +19,7 @@ from danger_finger import *
 
 def main():
     '''main'''
-   
+
     http_port = 8081 #TODO config config.get("service_port", 8081)  # pylint: disable=invalid-name
     tornado.web.Application([
         (r"/params/", FingerHandler), #, {"params":config}),
@@ -49,19 +49,20 @@ class FingerHandler(tornado.web.RequestHandler):
         if self.request.path.startswith("/params"):
             params = {}
 
-            # for param in vars(type(config_obj)).items(): ###
+            for param in vars(type(finger)).items(): ###
             # #print (param)
-            # if param[0].startswith("_"): continue
-            # val = getattr(config_obj, param[0])
-            # if str(val).startswith(("<f", "<b")): continue
-
-            for p in [a for a in dir(finger) if not a.startswith('_')]:
-                v = getattr(finger, p)
-                print(p, v)
-                params[p] = v
+                if param[0].startswith("_"): continue
+                val = getattr(finger, param[0])
+                if str(val).startswith(("<f", "<b")): continue
+                params[param[0]] = val
+                print(param, val)
+            # for p in [a for a in dir(finger) if not a.startswith('_')]:
+            #     v = getattr(finger, p)
+            #     print(p, v)
+            #     params[p] = v
                 # loop preperties, build dict, emit json
                 #send our http response
-            pbytes = json.dumps(params, skipkeys=True).encode('utf-8')
+            pbytes = json.dumps(params, skipkeys=True, cls=EnumEncoder).encode('utf-8')
             self.set_header('Content-Length', len(pbytes))
             self.write(pbytes)
             self.finish()
@@ -80,26 +81,24 @@ class FingerHandler(tornado.web.RequestHandler):
             #if preview, also send to openscad to create png
 
             #if render, also send to open scad for STL to DL
-
-        # exmple stuff from elsewhere
-        #         for header in self.request.headers:
-        #         self.set_header('Content-Type', 'text/html; charset=UTF-8')
-        #         try:
-        #             md_bytes = json.dumps(md_list, skipkeys=True, cls=sdsi_eventsvc_config.DatetimeEncoder).encode('utf-8')
-        #         except Exception as ex:
-        #             print("Error: %s " % ex)
-        #             raise tornado.web.HTTPError(404)
-
-        #     #send our http response
-        #     self.set_header('Content-Length', len(md_bytes))
-        #     self.write(md_bytes)
-        #     self.finish()
-        #     print("200 OK response to: %s, %sb" %(self.request.uri, len(md_bytes)))
-        #     return
         self.write_error(500)
 
-    def write_error(self, status_code, **kwargs): #pylint: disable=arguments-differ
-        super().write_error(status_code, **kwargs)
+    # def write_error(self, status_code, **kwargs): #pylint: disable=arguments-differ
+    #     super().write_error(status_code, **kwargs)
+
+class EnumEncoder(json.JSONEncoder):
+    def default(self, obj):
+        ''' test enum encoder'''
+        #if type(obj) in PUBLIC_ENUMS.values():
+        return {"__enum__": str(obj)}
+        #return json.JSONEncoder.default(self, obj)
+
+# def as_enum(d):
+#     if "__enum__" in d:
+#         name, member = d["__enum__"].split(".")
+#         return getattr(PUBLIC_ENUMS[name], member)
+#     else:
+#         return d
 
 if __name__ == "__main__":
     main()
