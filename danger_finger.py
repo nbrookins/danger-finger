@@ -28,13 +28,13 @@ def assemble():
     #uncomment to render STL instead of previewing
     #finger.action = Action.RENDER | Action.EMITSCAD
 
-    finger.part = FingerPart.BASE | FingerPart.MIDDLE | FingerPart.TIP
-    finger.part = FingerPart.TIP
-    finger.render_quality = RenderQuality.HIGH #FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
+    finger.part = FingerPart.HARD
+    #finger.part = FingerPart.TIP
+    finger.render_quality = RenderQuality.FAST #ULTRAFAST FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
     finger.render_threads = 8
 
-    finger.preview_explode = True
-    finger.preview_quality = RenderQuality.MEDIUM #FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
+    #finger.preview_explode = True
+    finger.preview_quality = RenderQuality.ULTRAFAST #ULTRAFAST FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
     #finger.preview_cut = True
     #finger.preview_rotate = 40
     #finger.animate_explode = True
@@ -42,13 +42,14 @@ def assemble():
 
     #load a configuration, with parameters from cli or env
     Params.parse(finger)
-    print(finger.action)
+    print("~~* Building the DangerFinger: %s, %s, %s *~~" % (finger.action, finger.quality, finger.part))
 
     #build some pieces
     finger.build_models()
-
     if finger.emitscad: finger.emit_scad()
     if finger.render: finger.render_stl()
+    if finger.preview: finger.render_stl()
+    #finger.render_png()
 
 
 # ********************************** The danger finger *************************************
@@ -78,7 +79,7 @@ class DangerFinger:
     intermediate_proximal_height = Prop(val=10.0, minv=4, maxv=16, doc=''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
 
     proximal_length = Prop(val=-1, minv=8, maxv=30, doc=''' length of the proximal/base finger segment ''') #TODO 2 - min auto of knuckle radius
-    distal_length = Prop(val=24, minv=8, maxv=30, doc=''' length of the distal/tip finger segment ''')
+    distal_length = Prop(val=18, minv=8, maxv=30, doc=''' length of the distal/tip finger segment ''')
     distal_base_length = Prop(val=5.5, minv=0, maxv=20, doc=''' length of the base of the distal/tip finger segment ''')
 
     knuckle_proximal_width = Prop(val=18.0, minv=4, maxv=20, doc=''' width of the proximal knuckle hinge''')
@@ -96,6 +97,10 @@ class DangerFinger:
     linkage_length = Prop(val=70, minv=10, maxv=120, doc=''' length of the wrist linkage ''')
     linkage_width = Prop(val=6.8, minv=4, maxv=12, doc=''' width of the wrist linkage ''')
     linkage_height = Prop(val=4.4, minv=3, maxv=8, doc=''' thickness of the wrist linkage ''')
+    linkage_hook_length = Prop(val=11.0, minv=4, maxv=12, doc='''  ''')
+    linkage_hook_height = Prop(val=6.0, minv=4, maxv=12, doc='''  ''')
+    linkage_hook_thickness = Prop(val=1.25, minv=0, maxv=12, doc='''  ''')
+    linkage_hook_opening = Prop(val=.2, minv=0, maxv=12, doc='''  ''')
 
     # ************************************* rare or non-recommended to muss with *************
     tunnel_height = Prop(val=2.0, minv=0, maxv=5, adv=True, doc=''' height of tendon tunnel ''')
@@ -176,6 +181,7 @@ class DangerFinger:
     render = property(lambda self: (Action.RENDER in self.action))
     preview = property(lambda self: (Action.PREVIEW in self.action))
     emitscad = property(lambda self: (Action.EMITSCAD in self.action))
+    quality = property(lambda self: (self.render_quality if not self.preview else self.preview_quality))
     bottom_strut_width = property(lambda self: {Orient.DISTAL: self.intermediate_bottom_width_factor * (self.intermediate_width[Orient.DISTAL]-(self.knuckle_inset_border*2)),
                                  Orient.PROXIMAL: self.intermediate_bottom_width_factor * (self.intermediate_width[Orient.PROXIMAL]-(self.knuckle_inset_border*2))})
     #**************************************** finger bits ****************************************
@@ -205,7 +211,8 @@ class DangerFinger:
         mod_extra = cylinder(r=radius+self.knuckle_clearance, h=self.knuckle_inner_width[Orient.PROXIMAL], center=True)#.mod("*")
         mod_main = hull()(mod_core + mod_hinge) + hull()(mod_tunnel + mod_core)
 
-        return  (mod_main - mod_plugs - mod_side_trim + mod_socket_interface - mod_hinge_cut - mod_tendon_hole - mod_elastic - mod_breather- _mod_bridge_cut[0].translate((0.2, -2, 0)).resize((0, 0, self.knuckle_inner_width[Orient.PROXIMAL]))) - mod_extra + mod_washers
+        #TODO - hardcoded hack
+        return  (mod_main - mod_plugs - mod_side_trim + mod_socket_interface - mod_hinge_cut.translate((self.tunnel_radius/2, 0, 0)) - mod_tendon_hole - mod_elastic - mod_breather- _mod_bridge_cut[0].translate((0.2, -2, 0)).resize((0, 0, self.knuckle_inner_width[Orient.PROXIMAL]))) - mod_extra + mod_washers
 
     def part_tip(self):
         ''' Generate the tip finger knuckle section, most distal to remnant '''
@@ -278,7 +285,55 @@ class DangerFinger:
         mod_plug_dr = self.shift_distal()(plug.rotate((0, 180, 0)).translate((0, 0, d_offset)))
         return mod_plug_pl, mod_plug_pr, mod_plug_dl, mod_plug_dr
 
+    def part_linkage(self):
+        ''' The wrist linakge strut for securing the finger tendon '''
+        mod_core = rcylinder(r=self.linkage_width/2, h=self.linkage_length, rnd=1.5, center=True).resize((self.linkage_width + .25, self.linkage_height, 0)) * cube((self.linkage_width, self.linkage_height, self.linkage_length), center=True)
+        mod_core = mod_core.rotate((90, 90, 0))
+
+        mod_hook = self.link_hook().translate(((self.linkage_hook_height - self.linkage_height)/2, -self.linkage_length/2 -self.linkage_hook_length/2 + self.linkage_hook_thickness*2.4, 0))
+        mod_hook_left = mod_hook - cube((20, 20, 20), center=True).translate((0, -self.linkage_length/2 -10 + 1))
+        mod_core_right = mod_core - cube((20, 200, 20), center=True).translate((0, 100 -self.linkage_length/2.5))
+        mod_core_hull = hull()(mod_core_right + mod_hook_left)#.mod("%")
+
+        mod_hole = cylinder(r=self.tendon_hole_radius, h=self.linkage_length/3).rotate((90, 90, 0)).translate((0, (self.linkage_length/3)*1.5+.01, 0)).resize((self.linkage_height/2.6, 0, 0))#.mod("%")
+        mod_cross = cylinder(r=self.tendon_hole_radius, h=self.linkage_width+1, center=True).resize((self.linkage_height/3.2, 0, 0))
+        mod_slit = cylinder(r=self.linkage_height/3.2/2, h=3).rotate((90, 90, 0))
+        mod_cut = mod_cross.translate((0, self.linkage_length/3, 0)) + mod_cross.translate((0, self.linkage_length/3 + 3, 0)) + \
+            mod_slit.translate((0, self.linkage_length/3 + 3, -self.linkage_width/1.9)) + \
+            mod_slit.translate((0, self.linkage_length/3 + 3, self.linkage_width/1.9))
+        return mod_core + mod_hook + mod_core_hull - mod_hole - mod_cut#.mod("%")
+
+    def part_socket(self):
+        ''' create the interface socket '''
+        #r = self.socket_interface_radius[Orient.DISTAL] #- self.socket_interface_thickness
+        #h = self.socket_interface_length-socket_interface_base - self.socket_interface_thickness
+
+        #mod_core = cylinder(r2=self.socket_interface_radius[Orient.PROXIMAL]-c, r1=self.socket_interface_radius[Orient.DISTAL]-c, h=self.socket_interface_length-socket_interface_base) + \
+
+        mod_socket_interface = self.socket_interface(Orient.OUTER)
+        return color("blue")(mod_socket_interface)
+
+    def part_tipcover(self):
+        ''' the finger tip flexible portion '''
+        h = self.distal_length-self.distal_base_length
+        mod_core = cylinder(r=self.tip_radius, h=h).rotate((90, 90, 0)).translate((0, self.intermediate_length + self.distal_base_length + h, 0))
+        return color("blue")(mod_core)
+
     #**************************************** Primitives ***************************************
+
+    def link_hook(self):
+        ''' create the hooke for end of linkage '''
+        linkage_loop_extrusion = 1.5
+        #opening = 40
+        mod_hook = resize((self.linkage_hook_height, self.linkage_hook_length, self.linkage_width))( \
+                    rotate_extrude(convexity=3, angle=300)(
+                        hull()(circle(d=self.linkage_hook_thickness).translate((linkage_loop_extrusion, -self.linkage_width/2, 0)), \
+                            circle(d=self.linkage_hook_thickness).translate((linkage_loop_extrusion, self.linkage_width/2, 0)))
+                                ).rotate((0, 0, 160))).translate((0, self.linkage_hook_thickness/2, 0))
+
+        mod_cut = cube((self.linkage_hook_thickness*2, self.linkage_hook_thickness*2, self.linkage_width+.01), center=True).translate((-2, self.linkage_hook_thickness*1.5, 0)) \
+            - sphere(r=self.linkage_width/1.9).resize((self.linkage_height*1.2, 0, self.linkage_width*1.5)).translate((-self.linkage_width/3.14, -self.linkage_width/3.4, 0))#.mod("%")
+        return difference()(mod_hook, mod_cut.translate((0, -self.linkage_hook_opening, 0)))#.mod("%"))
 
     def tip_detent(self):
         ''' create tendon detents '''
@@ -300,11 +355,8 @@ class DangerFinger:
     def tip_interface(self):
         ''' the snap-on interface section to the soft tip cover'''
         mod_post = cylinder(r=self.tip_interface_post_radius - self.tip_interface_clearance, h=self.tip_interface_post_height+self.tip_interface_clearance, center=True)
-        #TODO make facto of tip core length vs base lenth
-        #tip_taper_length = 0.75
-        #mod_taper = cylinder(r1=self.tip_interface_post_radius, r2=self.tip_interface_post_radius-1.0, h=tip_taper_length).translate((0, 0, self.tip_interface_post_height))
         mod_ridge = cylinder(r=self.tip_interface_ridge_radius+self.tip_interface_post_radius - self.tip_interface_clearance, h=self.tip_interface_ridge_height, center=True).translate((0, 0, -self.tip_interface_post_height+.01))
-        mod_core = mod_post + mod_ridge #+ mod_taper
+        mod_core = mod_post + mod_ridge
         return mod_core.rotate((90, 0, 0)).translate((0, self.distal_base_length + self.tip_interface_post_height/2 + self.tip_interface_clearance/2 - .01, 0))
 
     def tendon_hole(self):
@@ -465,7 +517,9 @@ class DangerFinger:
         mod_cut = sphere(r).resize((0, 0, h*2)) + cylinder(r=r, h=h).translate((0, 0, 0.01))
         mod_cut = mod_cut.translate((0, 0, h + self.socket_interface_depth))
 
-        return translate((0, -length - self.distal_flange_height + .01, 0))(rotate((90, 0, 0))(mod_core - translate((0, 0, .01))(mod_cut)))
+        if orient == Orient.INNER:
+            return translate((0, -length - self.distal_flange_height + .01, 0))(rotate((90, 0, 0))(mod_core - translate((0, 0, .01))(mod_cut)))
+        return translate((0, -length - self.distal_flange_height + .01, 0))(rotate((90, 0, 0))(mod_core))
 
     def knuckle_plug(self, clearance):
         ''' plug cover for the knuckle pins'''
@@ -529,8 +583,13 @@ class DangerFinger:
         return code
 
     def render_stl(self):
-        ''' render all modela to STL '''
+        ''' render all models to STL '''
         Renderer().scad_parallel_to_stl(self._mod.keys(), max_concurrent_tasks=4)
+        return
+
+    def render_png(self):
+        ''' render all models to PNG '''
+        Renderer().scad_parallel_to_png(self._mod.keys(), max_concurrent_tasks=4)
         return
 
     _mod = {}
@@ -549,7 +608,7 @@ class DangerFinger:
             mod_segment = getattr(self, part_name)()
             if iterable(mod_segment):
                 if self.preview:
-                    print("preview %s" % self.action)
+                    #print("preview %s" % self.action)
                     if self.preview_cut:
                         mod_segment = [x - self.cut_model() for i, x in enumerate(mod_segment, 0)]
                 if self.preview and self.preview_rotate != 0:
@@ -590,21 +649,21 @@ class DangerFinger:
         ''' amount to expand during explode'''
         return self._prop_offset(self._explode_offsets, self._animate_factor)
     _explode_offsets = {"middle":(0, 20, 0), "base" : (0, 0, 0), "tip":(0, 40, 0), "socket":(0, -20, 0), \
-        "linkage" : (10, -30, 0), "tipcover" : (0, 50, 0), "plugs":((0, 0, -8), (0, 0, 8), (0, 40, -8), (0, 40, 20))}
+        "linkage" : (10, -30, 0), "tipcover" : (0, 60, 0), "plugs":((0, 0, -8), (0, 0, 8), (0, 40, -8), (0, 40, 20))}
 
     @property
     def translate_offsets(self):
         ''' amount to expand during explode'''
         return self._prop_offset(self._translate_offsets, self.distal_offset)
     _translate_offsets = {"middle":(0, 0, 0), "base" : (0, 0, 0), "tip":(0, 1, 0), "socket":(0, 0, 0), \
-        "linkage" : (0, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
+        "linkage" : (.5, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
 
     @property
     def print_rotate_offsets(self):
         ''' amount rotate in print mode'''
         return self._prop_offset(self._print_rotate_offsets, self.distal_offset)
     _print_rotate_offsets = {"middle":(0, -90, 0), "base" : (90, 0, 0), "tip":(-90, 0, 0), "socket":(0, 0, 0), \
-        "linkage" : (0, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
+        "linkage" : (0, -90, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
 
     @property
     def rotate_offsets(self):

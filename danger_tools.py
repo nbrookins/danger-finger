@@ -172,10 +172,22 @@ class Renderer(Borg):
             self._try_executable(os.path.join(os.environ.get('Programfiles', 'C:'), 'OpenSCAD\\openscad.exe'))
 
     def scad_to_stl(self, scad_filename, stl_filename):#, **kw):
-        '''render a scad file'''
+        '''render a scad file to stl'''
         try:
             # now run openscad to generate stl:
             cmd = [self.openscad_exec, '-o', stl_filename, scad_filename]
+            out = subprocess.check_output(cmd)
+            if out != b'': print(out)
+            #if return_code < 0:
+            #    raise Exception('openscad command line returned code {}'.format(return_code))
+        except Exception as e:
+            raise e
+
+    def scad_to_png(self, scad_filename, png_filename):#, **kw):
+        '''render a scad file to png'''
+        try:
+            # now run openscad to generate stl:
+            cmd = [self.openscad_exec, '--preview', '-o', png_filename, scad_filename]
             out = subprocess.check_output(cmd)
             if out != b'': print(out)
             #if return_code < 0:
@@ -194,6 +206,19 @@ class Renderer(Borg):
         end = time.time()
         rounded_end = "{0:.4f}".format(round(end - start, 4))
         print("Rendered STL in %s seconds" % (rounded_end), flush=True)
+        return results
+
+    def scad_parallel_to_png(self, scad_filenames, max_concurrent_tasks=4):
+        ''' run up to max concurrent tasks to render a list of scad files in parallel '''
+        start = time.time()
+
+        commands = [[self.openscad_exec, '--preview', '-o', scad_filename + ".png", scad_filename] for scad_filename in scad_filenames]
+        tasks = [AsyncSubprocess().run_command(*command) for command in commands]
+        results = AsyncSubprocess().run_asyncio_commands(tasks, max_concurrent_tasks=max_concurrent_tasks)
+
+        end = time.time()
+        rounded_end = "{0:.4f}".format(round(end - start, 4))
+        print("Rendered PNG in %s seconds" % (rounded_end), flush=True)
         return results
 
 class Params():
