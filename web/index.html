@@ -1,0 +1,288 @@
+
+<!DOCTYPE html>
+
+<html>
+<head>
+	<title>Viewstl Javascript Plugin - Live Preview</title>
+
+	<script>
+		var animations=new Array
+		(
+			{stop:-1, a:{delta:{rotationx:1, rotationy:1.1, rotationz:1.2, msec:5000, loop:true}, exact:{x:50, y:50, z:50, msec:3000}} },
+			{stop:-1, a:{delta:{rotationy:1, rotationz:1, msec:1000, loop:true}} },
+			{stop:2000, a:{exact:{scale:2, msec:2000}} },
+			{stop:2000, a:{exact:{scale:0.5, msec:2000}} }
+		);
+
+		var model_curr_anim=new Array();
+
+		function $id(id)
+		{
+			return document.getElementById(id);
+		}
+
+		function model_clicked(model_id)
+		{
+			$id('model_info_cont').value=JSON.stringify(stl_viewer.get_model_info(model_id));
+		}
+
+		function add_control(model_id)
+		{
+			var model_info=stl_viewer.get_model_info(model_id);
+
+			if (!model_info.name) return;
+
+			var model_name=model_info.name.substring(0, model_info.name.lastIndexOf('.'));
+			var tdobj=$id('m'+model_name);
+			if (!tdobj) return;
+
+			update_model_col(tdobj, model_id, model_info, model_name);
+
+			new StlViewer($id('v'+model_name),
+			{
+				load_three_files:false,allow_drag_and_drop:false,
+				models:
+				[
+					{id:0, mesh:stl_viewer.get_model_mesh(model_id), color:model_info.color, display:model_info.display}
+				]
+			});
+		}
+
+		var range_val=new Array();
+		function update_model_col(tdobj, model_id, model_info, model_name)
+		{
+			var s='<table class="c-vm"><tr><td><div id="v'+model_name+'" style="width:98px;height:98px;"></div></td></tr>';
+			s+='<tr><td>Color:<input id="color'+model_id+'" type="color" value="'+(model_info.color?(model_info.color):"#909090")+'" onchange="$id(\'transparent'+model_id+'\').checked=false;stl_viewer.set_color('+model_id+', this.value);">';
+			s+='<br><input id="transparent'+model_id+'" type="checkbox" onchange="stl_viewer.set_color('+model_id+', this.checked?\'transparent\':$id(\'color'+model_id+'\').value);">Transparent</td></tr>';
+			s+='<tr><td>Display:<select onchange="stl_viewer.set_display('+model_id+',this.value);"><option value="flat" '+(model_info.display?(model_info.display=="flat"?"selected":""):"")+'>Flat</option><option value="smooth" '+(model_info.display?(model_info.display=="smooth"?"selected":""):"")+'>Smooth</option><option value="wireframe" '+(model_info.display?(model_info.display=="wireframe"?"selected":""):"")+'>Wireframe</option></select></td></tr>';
+			s+='<tr><td>Scale:<input type="range" value="1" min="0" max="10" step="0.1" onchange="stl_viewer.set_scale('+model_id+',this.value);" oninput="stl_viewer.set_scale('+model_id+',this.value);"></td></tr>';
+			s+='<tr><td>Axis <select id="axis'+model_id+'"><option value="0">X</option><option value="1">Y</option><option value="2">Z</option></select>:<br><table class="atitle"><tr><td>Move</td><td><input type="range" value="0" min="-1000" max="1000" step="5" onchange="stl_viewer.set_position('+model_id+',($id(\'axis'+model_id+'\').value==0?this.value:null),($id(\'axis'+model_id+'\').value==1?this.value:null),($id(\'axis'+model_id+'\').value==2?this.value:null));" oninput="stl_viewer.set_position('+model_id+',($id(\'axis'+model_id+'\').value==0?this.value:null),($id(\'axis'+model_id+'\').value==1?this.value:null),($id(\'axis'+model_id+'\').value==2?this.value:null));"></td></tr><tr><td>Rotate</td><td><input type="range" value="5" min="0" max="10" step="0.1" onchange="var step=range_val['+model_id+']>=this.value?0.628:-0.628; stl_viewer.rotate('+model_id+',($id(\'axis'+model_id+'\').value==0?step:null),($id(\'axis'+model_id+'\').value==1?step:null),($id(\'axis'+model_id+'\').value==2?step:null));range_val['+model_id+']=this.value;" oninput="var step=range_val['+model_id+']>=this.value?0.628:-0.628; stl_viewer.rotate('+model_id+',($id(\'axis'+model_id+'\').value==0?step:null),($id(\'axis'+model_id+'\').value==1?step:null),($id(\'axis'+model_id+'\').value==2?step:null));range_val['+model_id+']=this.value;"></td></tr></table></td></tr>';
+			s+='<tr><td><span class="abtn" id="abtn'+model_id+'" onclick="this.classList.toggle(\'abtn-clicked\');set_animation('+model_id+',this);">Random Animation</span></td></tr>';
+			s+='</table>';
+			tdobj.innerHTML='';
+			tdobj.insertAdjacentHTML('afterbegin', s);
+		}
+
+		function set_animation(model_id, obj)
+		{
+			if (obj.classList.contains('abtn-clicked'))
+			{
+				var aid;
+
+				if (model_curr_anim[model_id])
+				{
+					aid=(model_curr_anim[model_id].aid+1) % animations.length;
+					if (model_curr_anim[model_id].timer)
+						clearTimeout(model_curr_anim[model_id].timer);
+				}
+				else
+					aid=Math.floor((Math.random() * (animations.length)));
+
+				model_curr_anim[model_id]={aid:aid, stop:animations[aid].stop, timer:null};
+				if (model_curr_anim[model_id].stop>0)
+					model_curr_anim[model_id].timer=setTimeout(function(){ $id('abtn'+model_id).classList.remove('abtn-clicked'); }, model_curr_anim[model_id].stop);
+
+				stl_viewer.animate_model(model_id, animations[aid].a);
+			}
+			else
+				stl_viewer.animate_model(model_id, null);
+		}
+
+		function do_resize()
+		{
+			var height = isNaN(window.innerHeight) ? window.clientHeight : window.innerHeight;
+			var width = isNaN(window.innerWidth) ? window.clientWidth : window.innerWidth;
+			$id('stl_cont').style.height=height*0.4+'px';
+		}
+
+		function load_prog(load_status, load_session)
+		{
+			var loaded=0;
+			var total=0;
+
+			Object.keys(load_status).forEach(function(key)
+			{
+				if (load_status[key].load_session==load_session)
+				{
+					loaded+=load_status[key].loaded;
+					total+=load_status[key].total;
+				}
+			});
+
+		}
+
+		function all_loaded()
+		{
+			$id('loader').style.display='none';
+			$id('stl_cont').style.visibility='visible';
+		}
+
+		function add_model(model_name, model_desc, params, skip_load)
+		{
+			document.getElementById("loader").src="loader.gif";
+			var tdobj=$id('m'+model_name);
+			if (!tdobj)
+			{
+				tdobj=$id('mrow').insertCell(-1);
+				tdobj.id='m'+model_name;
+			}
+
+			tdobj.innerHTML='Loaded';//Adding '+model_desc+'<br><img id="loader" style="width:95px;height:15px;" src="loader.gif">';
+
+			if (!skip_load)
+				stl_viewer.add_model(params);
+		}
+
+		function model_drop(model_name)
+		{
+			//add_model(model_name, true);
+			model_name=model_name.substring(0, model_name.lastIndexOf('.'));
+			add_model(model_name, model_name, null, true);
+		}
+
+		function shuffle(a)
+		{
+			var j, x, i;
+			for (i = a.length - 1; i > 0; i--) {
+				j = Math.floor(Math.random() * (i + 1));
+				x = a[i];
+				a[i] = a[j];
+				a[j] = x;
+			}
+		}
+
+	</script>
+
+	<style>
+		table
+		{
+			margin:0 auto;
+			border-collapse: collapse;
+		}
+
+		table td
+		{
+			width:100px;
+			height:100px;
+			border:1px dashed black;
+		}
+
+		.c-vm td
+		{
+			width:98px;
+			height:auto;
+			border:0;
+			border-bottom:1px dashed black;
+			text-align:center;
+			padding:5px;
+			border-collapse: collapse;
+		}
+
+		.c-vm tr:last-child td
+		{
+			border-bottom:0;
+		}
+
+		.c-vm td input[type="color"]
+		{
+			display:inline-block;
+			margin-left:0 5px 0 0;
+			width:40px;
+		}
+
+		.c-vm td input[type="range"]
+		{
+			width:40px;
+			height:15px;
+		}
+
+		.c-vm .atitle
+		{
+			height:20px;
+			width:40px;
+			text-align:left;
+			border-collapse: collapse;
+			padding:0;
+		}
+
+		.c-vm .atitle td
+		{
+			text-align:left;
+		}
+
+		.abtn
+		{
+			display:inline-block;
+			color:black;
+			backgrond-color:#FFFFFF;
+			border: 1px solid black;
+			border-radius:5px;
+			cursor:pointer;
+		}
+
+		.abtn-clicked
+		{
+			background-color:#0707AA;
+			color:#DDDDDD;
+			font-weight:bold;
+		}
+
+		.abtn:hover
+		{
+			background-color:#020277;
+			color:#FFFFFF;
+		}
+
+		#mrow td
+		{
+			text-align:center;
+		}
+	</style>
+</head>
+<body>
+	<div id="wrap" style="width:100%; margin:0 auto;position:relative;">
+		<div id="stl_cont" style="width:100%;visibility:hidden;border:1px dashed #202020;"></div>
+		<img id="loader" style="position:absolute;top:150px;left:50%;margin-left:-193px;width:385px;height:42px;" >
+	</div>
+
+	<input type="text" id="model_info_cont" style="width:100%;">
+
+	<table id="mdata">
+		<tr id="mrow">
+			<td id="middle"><input type="button" value="Middle" onclick="add_model('middle', 'Middle', {filename:('render/middle.stl')});"></td>
+		</tr>
+	</table>
+
+	<script src="stl_viewer.min.js"></script>
+
+	<script>
+		//we'll hide some of the models - why?  too much ...
+		// var ha=new Array(1,2,3,4,5,6,7,8,9,10);
+		// shuffle(ha);
+		// var ta=$id("mrow").cells;
+		// for (var i=0;i<7;i++)
+		// 	ta[ha[i]].style.display='none' ;src="loader.gif"
+
+
+		do_resize();
+		var stl_viewer=new StlViewer(document.getElementById("stl_cont"),
+		{
+			loading_progress_callback:load_prog,
+			all_loaded_callback:all_loaded,
+			auto_resize:true,
+			zoom:300,
+			allow_drag_and_drop:true,
+			on_model_drop:model_drop,
+			model_loaded_callback:add_control,
+			on_model_mousedown:model_clicked//,
+			// models:new Array
+			// (
+			// //	{id:0, filename:"/render/middle.stl", color:"#AA2211", scale:3}
+			// )
+		});
+
+		//add_model("viewstl", "Viewstl", null, true);
+	</script>
+
+</body>
+</html>
