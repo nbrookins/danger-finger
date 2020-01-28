@@ -14,7 +14,7 @@ import tornado.web
 #from enum import IntFlag, Flag
 import solid
 from danger_finger import *
-#from danger_finger import *
+from danger_tools import *
 
 
 def main():
@@ -22,12 +22,12 @@ def main():
 
     http_port = 8081 #TODO config config.get("service_port", 8081)  # pylint: disable=invalid-name
     tornado.web.Application([
-        (r"/params/", FingerHandler), #, {"params":config}),
-        (r"/render/([a-zA-Z0-9]+/)", FingerHandler),
-        (r"/scad/([a-zA-Z0-9]+/)", FingerHandler),
+        (r"/params", FingerHandler), #, {"params":config}),
+        (r"/render/([a-zA-Z0-9.]+)", FingerHandler),
+        (r"/scad/([a-zA-Z0-9.]+)", FingerHandler),
         (r"/preview", FingerHandler),
         #fallback serves static files, include ones to supply preview page
-        (r"/(.*)", tornado.web.StaticFileHandler, {"path": "./"})
+        (r"/(.*)", tornado.web.StaticFileHandler, {"path": "./web/"})
         ]).listen(http_port)
 
     print("Listening on localhost %s" % (http_port))
@@ -36,13 +36,11 @@ def main():
 # pylint: disable=W0223
 class FingerHandler(tornado.web.RequestHandler):
     '''Handle a metadata request'''
-    def get(self):
-
-        print(" %s " % self.request)
-        #print("part %s" % part)
-
+    def get(self, part_name):
+        '''Handle a metadata request'''
         #TODO - mostly everything for these APIs
-
+        part = part_name.replace('.stl', '')
+        print(" %s %s %s" % (self.request, self.request.path, part))
         finger = DangerFinger()
 
         #if params
@@ -69,6 +67,33 @@ class FingerHandler(tornado.web.RequestHandler):
             print("200 OK response to: %s, %sb" %(self.request.uri, len(pbytes)))
             return
 
+        if self.request.path.startswith("/render"):
+            finger.part = FingerPart.from_str(part)
+            #finger.part = FingerPart.HARD
+            finger.action = Action.RENDER | Action.EMITSCAD
+            finger.render_quality = RenderQuality.ULTRAFAST #ULTRAFAST FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
+            finger.render_threads = 8
+            finger.preview_quality = RenderQuality.ULTRAFAST #ULTRAFAST FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
+            build_models(finger)
+            emit_scad(finger)
+            #render_stl(finger)
+            for key in finger.mod.keys():#TODO - find correct key, not just first - multentrant
+                stl = key + ".stl"
+                Renderer().scad_to_stl(key, stl)
+                with open(stl, 'rb') as file_h:
+                    print("serving %s" % stl)
+                    #the whole pie
+                    file_h.seek(0, os.SEEK_END)
+                    self.set_header('Content-Length', file_h.tell())
+                    self.set_header('Content-Type', 'model/stl')
+                    self.set_header('Content-Disposition', 'filename="%s"' % stl)
+                    file_h.seek(0, 0)
+                    data = file_h.read()
+                    #now send response body
+                    self.write(data)
+                    self.flush()
+                    self.finish()
+                    return
         else:
             print("nothing to see here!")
             return
@@ -87,7 +112,7 @@ class FingerHandler(tornado.web.RequestHandler):
     #     super().write_error(status_code, **kwargs)
 
 class EnumEncoder(json.JSONEncoder):
-    def default(self, obj):
+    def default(self, obj): #pylint: disable=method-hidden
         ''' test enum encoder'''
         #if type(obj) in PUBLIC_ENUMS.values():
         return {"__enum__": str(obj)}
@@ -101,4 +126,5 @@ class EnumEncoder(json.JSONEncoder):
 #         return d
 
 if __name__ == "__main__":
+    sys.stdout = UnbufferedStdOut(sys.stdout)
     main()

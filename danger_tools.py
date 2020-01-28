@@ -17,6 +17,9 @@ import platform
 from enum import IntFlag, Flag
 import argparse
 import solid
+from solid import *
+from solid.utils import *
+from solid.solidpython import OpenSCADObject
 
 VERSION = 4.2
 
@@ -60,6 +63,9 @@ class FingerPart(IntFlag):
     SOFT = BUMPER | PLUGS | SOCKET | TIPCOVER
     HARD = BASE | TIP | MIDDLE | LINKAGE
     ALL = SOFT | HARD
+    @classmethod
+    def from_str(cls, label):
+        return cls[str.upper(label)]
 
 #additional custom OpenScad primitive types
 def rcylinder(r, h, rnd=0, center=False):
@@ -220,6 +226,7 @@ class Renderer(Borg):
         rounded_end = "{0:.4f}".format(round(end - start, 4))
         print("Rendered PNG in %s seconds" % (rounded_end), flush=True)
         return results
+
 
 class Params():
     ''' handy class for parsing/loading/saving dynamic configs'''
@@ -388,3 +395,83 @@ class AsyncSubprocess(Borg):
 
         loop.close()
         return all_results
+
+def animate_explosion(model, _time: Optional[float] = 0) -> OpenSCADObject:
+    ''' special callback function for openscad animation'''
+    model.animate_factor = max(_time -.3, 0)
+    mod = model.build_models()
+    return mod[list(mod.keys())[0]]
+
+def emit_scad(model):#, val, filename=None):
+    ''' emit all models to SCAD code '''
+    #print(self._mod)
+    code = {}
+    for filename in model.mod:
+        val = model.mod[filename]
+        tempval = None
+        if iterable(val):
+            for v in val:
+                tempval = v if not tempval else tempval + v
+        if tempval: val = tempval
+        if not filename:
+            print("No filename, emitting to console")
+            code[filename] = scad_render(val, file_header=model.scad_header)
+        elif model.animate_explode or model.animate_rotate:
+            print("Writing SCAD animation to %s/%s" % (model.output_directory, filename))
+            scad_render_animated_file(animate_explosion(model), steps=20, back_and_forth=True, out_dir=model.output_directory, file_header=model.scad_header, include_orig_code=True, filepath=filename)
+        else:
+            print("Writing SCAD output to %s/%s" % (model.output_directory, filename))
+            scad_render_to_file(val, out_dir=model.output_directory, file_header=model.scad_header, include_orig_code=True, filepath=filename)
+    return code
+
+def render_stl(model):
+    ''' render all models to STL '''
+    Renderer().scad_parallel_to_stl(model.mod.keys(), max_concurrent_tasks=4)
+    return
+
+def render_png(model):
+    ''' render all models to PNG '''
+    Renderer().scad_parallel_to_png(model.mod.keys(), max_concurrent_tasks=4)
+    return
+
+def build_models(model):
+    ''' determine which models to emit, and organize by output filename '''
+    file_template = "dangerfinger_%s_%s_gen.scad"
+    mod = {}
+    mod_preview = None
+    for pv in FingerPart:
+        if not model.part & pv: continue
+        p = str.lower(str(pv.name) if isinstance(pv, FingerPart) else str(pv))
+        part_name = "part_%s" % p
+        #print(part_name)
+        if not hasattr(model, part_name): continue
+        mod_file = file_template % (VERSION, p)
+        mod_segment = getattr(model, part_name)()
+        if iterable(mod_segment):
+            if model.preview:
+                #print("preview %s" % self.action)
+                if model.preview_cut:
+                    mod_segment = [x - model.cut_model() for i, x in enumerate(mod_segment, 0)]
+            if model.preview and model.preview_rotate != 0:
+                mod_segment = [rotate(model.rotate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
+            if model.preview and model.preview_explode:
+                mod_segment = [translate(model.explode_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
+            mod_segment = [translate(model.translate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
+            if not model.preview: #rotate for print mode
+                mod_segment = [rotate(model.print_rotate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
+        else:
+            if model.preview and model.preview_cut:
+                mod_segment = mod_segment - model.cut_model()
+            if model.preview and model.preview_explode:
+                mod_segment = mod_segment.translate(model.explode_offsets[p])
+            r = max(model.rotate_offset_factors[p], key=lambda v: v) if model.preview and model.preview_rotate != 0 else 0
+            if r != 0: mod_segment = mod_segment.rotate(model.rotate_offsets[p]) #rotate before translate
+            mod_segment = mod_segment.translate(model.translate_offsets[p])
+            if r > 1: mod_segment = mod_segment.rotate(model.rotate_offsets[p]) #rotate after translate
+            if not model.preview: #rotate for print mode
+                mod_segment = mod_segment.rotate(model.print_rotate_offsets[p])
+
+        mod_preview = mod_segment if not mod_preview else mod_preview + mod_segment
+        mod[mod_file] = mod_segment
+    model.mod.update(mod if not model.preview else {file_template % (VERSION, "preview"): mod_preview})
+    return model.mod
