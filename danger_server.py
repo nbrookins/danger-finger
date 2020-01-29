@@ -22,7 +22,7 @@ def main():
 
     http_port = 8081 #TODO config config.get("service_port", 8081)  # pylint: disable=invalid-name
     tornado.web.Application([
-        (r"/params", FingerHandler), #, {"params":config}),
+        (r"/param([a-zA-Z0-9.]+)", FingerHandler), #, {"params":config}),
         (r"/render/([a-zA-Z0-9.]+)", FingerHandler),
         (r"/scad/([a-zA-Z0-9.]+)", FingerHandler),
         (r"/preview", FingerHandler),
@@ -39,74 +39,89 @@ class FingerHandler(tornado.web.RequestHandler):
     def get(self, part_name):
         '''Handle a metadata request'''
         #TODO - mostly everything for these APIs
-        part = part_name.replace('.stl', '')
-        print(" %s %s %s" % (self.request, self.request.path, part))
+        print(" %s %s %s" % (self.request, self.request.path, part_name))
         finger = DangerFinger()
 
-        #if params
-        if self.request.path.startswith("/params"):
-            params = {}
+        if self.request.path.startswith("/param"):
+            return self.get_params(finger)
 
-            for param in vars(type(finger)).items(): ###
-            # #print (param)
-                if param[0].startswith("_"): continue
-                val = getattr(finger, param[0])
-                if str(val).startswith(("<f", "<b")): continue
-                params[param[0]] = val
-                print(param, val)
-            # for p in [a for a in dir(finger) if not a.startswith('_')]:
-            #     v = getattr(finger, p)
-            #     print(p, v)
-            #     params[p] = v
-                # loop preperties, build dict, emit json
-                #send our http response
-            pbytes = json.dumps(params, skipkeys=True, cls=EnumEncoder).encode('utf-8')
-            self.set_header('Content-Length', len(pbytes))
-            self.write(pbytes)
-            self.finish()
-            print("200 OK response to: %s, %sb" %(self.request.uri, len(pbytes)))
-            return
+        if self.request.path.startswith("/scad"):
+            return self.get_scad(finger, part_name)
 
         if self.request.path.startswith("/render"):
-            finger.part = FingerPart.from_str(part)
-            #finger.part = FingerPart.HARD
-            finger.action = Action.RENDER | Action.EMITSCAD
-            finger.render_quality = RenderQuality.ULTRAFAST #ULTRAFAST FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
-            finger.render_threads = 8
-            finger.preview_quality = RenderQuality.ULTRAFAST #ULTRAFAST FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
-            build_models(finger)
-            emit_scad(finger)
-            #render_stl(finger)
-            for key in finger.mod.keys():#TODO - find correct key, not just first - multentrant
-                stl = key + ".stl"
-                Renderer().scad_to_stl(key, stl)
-                with open(stl, 'rb') as file_h:
-                    print("serving %s" % stl)
-                    #the whole pie
-                    file_h.seek(0, os.SEEK_END)
-                    self.set_header('Content-Length', file_h.tell())
-                    self.set_header('Content-Type', 'model/stl')
-                    self.set_header('Content-Disposition', 'filename="%s"' % stl)
-                    file_h.seek(0, 0)
-                    data = file_h.read()
-                    #now send response body
-                    self.write(data)
-                    self.flush()
-                    self.finish()
-                    return
-        else:
-            print("nothing to see here!")
-            return
-            #loop quert=y params
-            # set them to a new finger
-            # emit scad
+            return self.get_stl(finger, part_name)
 
-            #if emit scad,set dl headers and send
-
-            #if preview, also send to openscad to create png
-
-            #if render, also send to open scad for STL to DL
         self.write_error(500)
+
+    def build_finger(self, p, finger):
+        if p=="preview":
+            finger.action = Action.PREVIEW | Action.RENDER | Action.EMITSCAD
+            finger.part = FingerPart.HARD
+        else:
+            finger.action = Action.RENDER | Action.EMITSCAD
+            finger.part = FingerPart.from_str(p)
+
+        finger.render_quality = RenderQuality.ULTRAFAST #ULTRAFAST FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
+        finger.render_threads = 8
+        finger.preview_quality = RenderQuality.ULTRAFAST #ULTRAFAST FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
+        finger.preview_explode = True
+        build_models(finger)
+        emit_scad(finger)
+
+    def get_scad(self, finger, part_name):
+        p = part_name.split('.')[0]
+        self.build_finger(p, finger)
+
+        for key in finger.mod.keys():
+            if not p + "_" in key: continue
+            self.serve_file(key, 'text/scad')
+
+    def serve_file(self, filename, mimetype):
+        with open(filename, 'rb') as file_h:
+            print("serving %s" % filename)
+            #the whole pie
+            file_h.seek(0, os.SEEK_END)
+            self.set_header('Content-Length', file_h.tell())
+            self.set_header('Content-Type', mimetype)
+            self.set_header('Content-Disposition', 'filename="%s"' % filename)
+            file_h.seek(0, 0)
+            data = file_h.read()
+            #now send response body
+            self.write(data)
+            self.flush()
+            self.finish()
+            print("200 OK response to: %s, %sb" %(self.request.uri, len(data)))
+            return
+
+    def get_stl(self, finger, part_name):
+        p = part_name.split('.')[0]
+        self.build_finger(p, finger)
+
+        for key in finger.mod.keys():
+            if not p + "_" in key: continue
+            stl = key + ".stl"
+            start = time.time()
+            Renderer().scad_to_stl(key, stl)
+            print(" Rendered %s in %s sec" % (stl, round(time.time()-start, 1)))
+            self.serve_file(stl, 'model/stl')
+
+    def get_params(self, finger):
+        params = {}
+
+        for param in dir(DangerFinger):#vars( #type(finger)).items(): ###
+            print (param)
+            if param.startswith("_"): continue
+            val = getattr(finger, param)
+            if str(val).startswith(("{", "__", "<f", "<b")): continue
+            params[param] = val
+            print(param, val)
+
+        pbytes = json.dumps(params, skipkeys=True, cls=EnumEncoder).encode('utf-8')
+        self.set_header('Content-Length', len(pbytes))
+        self.write(pbytes)
+        self.finish()
+        print("200 OK JSON response to: %s, %sb" %(self.request.uri, len(pbytes)))
+        return
 
     # def write_error(self, status_code, **kwargs): #pylint: disable=arguments-differ
     #     super().write_error(status_code, **kwargs)
