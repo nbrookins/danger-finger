@@ -5,15 +5,11 @@ The danger_finger copyright 2014-2020 Nicholas Brookins and Danger Creations, LL
 http://dangercreations.com/prosthetics :: http://www.thingiverse.com/thing:1340624
 Released under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/
 Source code licensed under Apache 2.0:  https://www.apache.org/licenses/LICENSE-2.0'''
-import os
-import sys
 import math
-import time
 from solid import *
 from solid.utils import *
 from solid.solidpython import OpenSCADObject
-from danger_tools import *
-from danger_finger_props import *
+from .danger_finger_base import *
 
 VERSION = 4.2
 
@@ -378,10 +374,6 @@ class DangerFinger(DangerFingerBase):
             translate((x_shift, 0, 0))(self.strut(height=h, length=brace_length+ self.knuckle_inset_border*.8))))
         return mod_brace
 
-    def cut_model(self):
-        ''' model to cut from preview for cutaway previwe'''
-        return cube((30, 200, 30)).translate((0, -75, 0))
-
     #TODO 3 Socket
     #TODO 3 Socket scallops
     #TODO 3 Socket texture
@@ -394,9 +386,3 @@ class DangerFinger(DangerFingerBase):
     #TODO 2 Linkage Hook
 
     #TODO 4 Bumper
-    #************************************* utilities ****************************************
-
-
-if __name__ == '__main__':
-    sys.stdout = UnbufferedStdOut(sys.stdout)
-    assemble(DangerFinger())

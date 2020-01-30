@@ -6,73 +6,89 @@ http://dangercreations.com/prosthetics :: http://www.thingiverse.com/thing:13406
 Released under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/
 Source code licensed under Apache 2.0:  https://www.apache.org/licenses/LICENSE-2.0'''
 import math
-from solid import *
-from solid.utils import *
-from solid.solidpython import OpenSCADObject
-from danger_tools import *
+import inspect
+import itertools
+from .danger_tools import *
 
 VERSION = 4.2
-# *********************************** Entry Point ****************************************
-#@staticmethod
-def assemble(finger):
-    ''' The entry point which loads a finger with proper parameters and outputs SCAD files as configured '''
-    #sample param overrides for quick testing - comment out
 
-    #uncomment to render STL instead of previewing
-    #finger.action = Action.RENDER | Action.EMITSCAD
+class Action(IntFlag):
+    ''' Enum for passing an orientation '''
+    EMITSCAD = 1
+    PREVIEW = 2
+    RENDER = 4
 
-    finger.part = FingerPart.HARD
-    #finger.part = FingerPart.TIP
-    finger.render_quality = RenderQuality.FAST #ULTRAFAST FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
-    finger.render_threads = 8
+class Orient(IntFlag):
+    ''' Enum for passing an orientation '''
+    PROXIMAL = 1
+    DISTAL = 2
+    INNER = 4
+    OUTER = 8
+    UNIVERSAL = 16
 
-    #finger.preview_explode = True
-    finger.preview_quality = RenderQuality.ULTRAFAST #ULTRAFAST FAST SUBMEDIUM MEDIUM EXTRAMEDIUM HIGH ULTRAHIGH
-    #finger.preview_cut = True
-    #finger.preview_rotate = 40
-    #finger.animate_explode = True
-    #finger.animate_rotate = True
+class RenderQuality(Flag):
+    ''' Enum for passing an orientation '''
+    #AUTO = 0
+    ULTRAHIGH = 5
+    HIGH = 10
+    EXTRAMEDIUM = 13
+    MEDIUM = 15
+    SUBMEDIUM = 17
+    FAST = 20
+    ULTRAFAST = 25
 
-    #load a configuration, with parameters from cli or env
-    Params.parse(finger)
-    print("~~* Building the DangerFinger: %s, %s, %s *~~" % (finger.action, finger.quality, finger.part))
+class FingerPart(IntFlag):
+    ''' Enum for passing an orientation '''
+    SOCKET = 2
+    BASE = 4
+    MIDDLE = 8
+    TIP = 16
+    TIPCOVER = 32
+    LINKAGE = 64
+    PLUGS = 128
+    BUMPER = 256
+    SOFT = BUMPER | PLUGS | SOCKET | TIPCOVER
+    HARD = BASE | TIP | MIDDLE | LINKAGE
+    ALL = SOFT | HARD
+    PREVIEW = 512 | ALL
 
-    #build some pieces
-    #TODO !!! - refact these to static helper methods
-    build_models(finger)
-
-    if finger.emitscad: emit_scad(finger)
-
-    if finger.render: render_stl(finger)
-
-    if finger.preview: render_stl(finger)
-    #finger.render_png()
+    @classmethod
+    def from_str(cls, label):
+        ''' parse string into this enum'''
+        return cls[str.upper(label)]
 
 # ********************************** The danger finger *************************************
 class DangerFingerBase:
     ''' The actual finger model '''
     # ************************************* control params *****************************************
+    def __init__(self):
+        self._models = {}
+        self._animate_factor = 1
+        #self._scad = {}
 
-    action = Prop(val=Action.PREVIEW | Action.EMITSCAD, doc=''' ''')
+    models = property(lambda self: self._models)
+    #scad = property(lambda self: self._scad)
+
+    #action = Prop(val=Action.PREVIEW | Action.EMITSCAD, doc=''' ''')
     preview_cut = Prop(val=False, doc=''' cut the preview for inset view ''')
     preview_explode = Prop(val=False, doc=''' Enable explode mode, only for preview ''')
     preview_rotate = Prop(val=0, minv=0, maxv=120, doc=''' rotate the finger ''')
     animate_explode = Prop(val=False, doc=''' Enable explode animation, only for preview ''')
     animate_rotate = Prop(val=False, doc=''' Enable rotate animation, only for preview ''')
+    animate = property(lambda self: self.animate_rotate or self.animate_explode)
+    #emit = Prop(val=True, doc=''' emit SCAD ''')
+    render_quality = Prop(val=RenderQuality.HIGH, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, obj, value: (value))
+    preview_quality = Prop(val=RenderQuality.FAST, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, obj, value: (value))
 
-    emit = Prop(val=True, doc=''' emit SCAD ''')
-    render_quality = Prop(val=RenderQuality.AUTO, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, value: (value))
-    preview_quality = Prop(val=RenderQuality.AUTO, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, value: (value))
-    render_threads = Prop(val=2, minv=1, maxv=64, doc=''' render to STL ''')
-    output_directory = Prop(val=os.getcwd(), doc=''' output_directory for scad code, otherwise current''')
+   # output_directory = Prop(val=os.getcwd(), doc=''' output_directory for scad code, otherwise current''')
 
     # **************************************** parameters ****************************************
-    #TODO 3 - make a first class "AUTO" value
+    #TODO 3 - make a first class "AUTO" value?
     intermediate_length = Prop(val=24, minv=8, maxv=30, doc=''' length of the intermediate finger segment ''')
     intermediate_distal_height = Prop(val=9.0, minv=4, maxv=16, doc=''' height of the middle section at the distal end.  roughly the height of the hinge circle ''')
     intermediate_proximal_height = Prop(val=10.0, minv=4, maxv=16, doc=''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
 
-    proximal_length = Prop(val=-1, minv=8, maxv=30, doc=''' length of the proximal/base finger segment ''') #TODO 2 - min auto of knuckle radius
+    proximal_length = Prop(val=-1, minv=8, maxv=30, doc=''' length of the proximal/base finger segment ''') #TODO 3 - dynamic min auto of knuckle radius
     distal_length = Prop(val=18, minv=8, maxv=30, doc=''' length of the distal/tip finger segment ''')
     distal_base_length = Prop(val=5.5, minv=0, maxv=20, doc=''' length of the base of the distal/tip finger segment ''')
 
@@ -172,42 +188,49 @@ class DangerFingerBase:
     distal_offset = property(lambda self: (self.intermediate_length))
     socket_interface_radius = property(lambda self: {Orient.DISTAL: self.socket_radius[Orient.DISTAL] - self.socket_interface_radius_offset, Orient.PROXIMAL: self.socket_radius[Orient.DISTAL] - self.socket_interface_radius_offset + self.socket_interface_flare_radius})
     shift_distal = property(lambda self: translate((0, self.distal_offset, 0)))
-    render = property(lambda self: (Action.RENDER in self.action))
-    preview = property(lambda self: (Action.PREVIEW in self.action))
-    emitscad = property(lambda self: (Action.EMITSCAD in self.action))
-    quality = property(lambda self: (self.render_quality if not self.preview else self.preview_quality))
-    bottom_strut_width = property(lambda self: {Orient.DISTAL: self.intermediate_bottom_width_factor * (self.intermediate_width[Orient.DISTAL]-(self.knuckle_inset_border*2)),
-                                 Orient.PROXIMAL: self.intermediate_bottom_width_factor * (self.intermediate_width[Orient.PROXIMAL]-(self.knuckle_inset_border*2))})
-    animate_factor = 1
+    bottom_strut_width = property(lambda self: {Orient.DISTAL: self.intermediate_bottom_width_factor * (self.intermediate_width[Orient.DISTAL]-(self.knuckle_inset_border*2)), \
+        Orient.PROXIMAL: self.intermediate_bottom_width_factor * (self.intermediate_width[Orient.PROXIMAL]-(self.knuckle_inset_border*2))})
+
+    #The minimum circumferential length of a polygon segment.  higher is faster
+    fs = property(lambda self: ({
+        RenderQuality.ULTRAHIGH : .1, RenderQuality.HIGH : .2, RenderQuality.EXTRAMEDIUM : .3, RenderQuality.MEDIUM : .4, RenderQuality.SUBMEDIUM : .6,
+        RenderQuality.FAST : 1, RenderQuality.ULTRAFAST : 1.5}))#, RenderQuality.AUTO : 1 if self.preview else .2}))
+
+    #the minimum dgrees of each polygon framgment , higher is faster
+    fa = property(lambda self: ({
+        RenderQuality.ULTRAHIGH : 1.5, RenderQuality.HIGH : 2, RenderQuality.EXTRAMEDIUM : 3, RenderQuality.MEDIUM : 4, RenderQuality.SUBMEDIUM : 5,
+        RenderQuality.FAST : 6, RenderQuality.ULTRAFAST : 10}))#, RenderQuality.AUTO : 6 if self.preview else 2}))#[self.render_quality if not self.preview else self.preview_quality]))
+
+    def scad_header(self, rq):
+        return "$fa = %s; \n$fs = %s;\n" % (self.fa[rq], self.fs[rq])
     #*************************************** special properties **********************************
-    mod = {}
     @property
     def explode_offsets(self):
         ''' amount to expand during explode'''
-        return self._prop_offset(self._explode_offsets, self.animate_factor)
-    _explode_offsets = {"middle":(0, 20, 0), "base" : (0, 0, 0), "tip":(0, 40, 0), "socket":(0, -20, 0), \
-        "linkage" : (10, -30, 0), "tipcover" : (0, 60, 0), "plugs":((0, 0, -8), (0, 0, 8), (0, 40, -8), (0, 40, 20))}
+        return self._prop_offset(self._explode_offsets, self._animate_factor)
+    _explode_offsets = {FingerPart.MIDDLE:((0, 20, 0),), FingerPart.BASE : ((0, 0, 0),), FingerPart.TIP:((0, 40, 0),), FingerPart.SOCKET:((0, -20, 0),), \
+        FingerPart.LINKAGE : ((10, -30, 0),), FingerPart.TIPCOVER : ((0, 60, 0)), FingerPart.PLUGS:((0, 0, -8), (0, 0, 8), (0, 40, -8), (0, 40, 20))}
 
     @property
     def translate_offsets(self):
         ''' amount to expand during explode'''
         return self._prop_offset(self._translate_offsets, self.distal_offset)
-    _translate_offsets = {"middle":(0, 0, 0), "base" : (0, 0, 0), "tip":(0, 1, 0), "socket":(0, 0, 0), \
-        "linkage" : (.5, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
+    _translate_offsets = {FingerPart.MIDDLE:((0, 0, 0),), FingerPart.BASE : ((0, 0, 0),), FingerPart.TIP:((0, 1, 0),), FingerPart.SOCKET:((0, 0, 0),), \
+        FingerPart.LINKAGE : ((.5, 0, 0),), FingerPart.TIPCOVER : ((0, 0, 0),), FingerPart.PLUGS:((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
 
     @property
     def print_rotate_offsets(self):
         ''' amount rotate in print mode'''
         return self._prop_offset(self._print_rotate_offsets, self.distal_offset)
-    _print_rotate_offsets = {"middle":(0, -90, 0), "base" : (90, 0, 0), "tip":(-90, 0, 0), "socket":(0, 0, 0), \
-        "linkage" : (0, -90, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
+    _print_rotate_offsets = {FingerPart.MIDDLE:((0, -90, 0),), FingerPart.BASE : ((90, 0, 0),), FingerPart.TIP:((-90, 0, 0),), FingerPart.SOCKET:((0, 0, 0),), \
+        FingerPart.LINKAGE : ((0, -90, 0),), FingerPart.TIPCOVER : ((0, 0, 0),), FingerPart.PLUGS:((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
 
     @property
     def rotate_offsets(self):
         ''' amount to rotate'''
-        return self._prop_offset(self.rotate_offset_factors, self.animate_factor * self.preview_rotate, func=lambda v: min(v, 1))
-    rotate_offset_factors = {"middle":(0, 0, 1), "base" : (0, 0, 0), "tip":(0, 0, 2), "socket":(0, 0, 0), \
-        "linkage" : (0, 0, 0), "tipcover" : (0, 0, 0), "plugs":((0, 0, 0), (0, 0, 0), (0, 0, 2), (0, 0, 2))}
+        return self._prop_offset(self.rotate_offset_factors, self._animate_factor * self.preview_rotate, func=lambda v: min(v, 1))
+    rotate_offset_factors = {FingerPart.MIDDLE:((0, 0, 1),), FingerPart.BASE : ((0, 0, 0),), FingerPart.TIP:((0, 0, 2),), FingerPart.SOCKET:((0, 0, 0),), \
+        FingerPart.LINKAGE : ((0, 0, 0),), FingerPart.TIPCOVER : ((0, 0, 0),), FingerPart.PLUGS:((0, 0, 0), (0, 0, 0), (0, 0, 2), (0, 0, 2))}
 
     def _prop_offset(self, offs, f, func=lambda v: v):
         ''' calculate offsets by facot for animation, etc '''
@@ -215,23 +238,70 @@ class DangerFingerBase:
             [(func(v[0]) * f, func(v[1]) * f, func(v[2]) * f) for v in offs[o]] for o in offs}
         return new_offs
 
-    _part = FingerPart.MIDDLE
-    @property
-    def part(self):
-        ''' select which part to print. list of FingerPart enums'''
-        return FingerPart.ALL if self.preview else self._part
-    @part.setter
-    def part(self, val):
-        self._part = val
+    def params(self, adv=False, allv=True, extended=False):
+        ''' return all parameters for this finger model '''
+        params = {}
+        for name, prop in inspect.getmembers(DangerFingerBase):
+            if name.startswith("_"): continue
+            if isinstance(prop, Prop):
+                inst_val = getattr(self, name)
+                if (prop.adv and (adv or allv)) or (not prop.adv and not adv):
+                    params[name] = inst_val if not extended else {"value":inst_val, "minv":prop.minv, "maxv":prop.maxv, "adv":prop.adv, "doc":prop.doc}
+        return params
 
-    #The minimum circumferential length of a polygon segment.  higher is faster
-    fs = property(lambda self: ({
-        RenderQuality.ULTRAHIGH : .1, RenderQuality.HIGH : .2, RenderQuality.EXTRAMEDIUM : .3, RenderQuality.MEDIUM : .4, RenderQuality.SUBMEDIUM : .6,
-        RenderQuality.FAST : 1, RenderQuality.ULTRAFAST : 1.5, RenderQuality.AUTO : 1 if self.preview else .2}[self.render_quality if not self.preview else self.preview_quality]))
+    def cut_model(self):
+        ''' model to cut from preview for cutaway previwe'''
+        return cube((30, 200, 30)).translate((0, -75, 0))
 
-    #the minimum dgrees of each polygon framgment , higher is faster
-    fa = property(lambda self: ({
-        RenderQuality.ULTRAHIGH : 1.5, RenderQuality.HIGH : 2, RenderQuality.EXTRAMEDIUM : 3, RenderQuality.MEDIUM : 4, RenderQuality.SUBMEDIUM : 5,
-        RenderQuality.FAST : 6, RenderQuality.ULTRAFAST : 10, RenderQuality.AUTO : 6 if self.preview else 2}[self.render_quality if not self.preview else self.preview_quality]))
+    def build(self):
+        ''' build all models and render their scad code.  populates .models - this is very fast '''
+        self._build_models()
+        self._build_preview()
+        self._build_scad()
 
-    scad_header = property(lambda self: ("$fa = %s; \n$fs = %s;\n" % (self.fa, self.fs)))
+    def _build_scad(self):
+        for fp, model in self.models.items():
+            obj = flatten(model)
+            header = self.scad_header(self.preview_quality if fp == FingerPart.PREVIEW else self.render_quality)
+            code = scad_render(obj, file_header=header) if not (self.animate and fp == FingerPart.PREVIEW) else \
+                    scad_render_animated(self._animate_explosion(), steps=20, back_and_forth=True, file_header=header)#, include_orig_code=True)
+            set_list_attr(model, "scad", code)
+
+    def _animate_explosion(self, _time: Optional[float] = 0) -> OpenSCADObject:
+        ''' special callback function for openscad animation'''
+        self._animate_factor = max(_time -.3, 0)
+        self._build_models()
+        self._build_preview()
+        return self.models[FingerPart.PREVIEW]#list(models.keys())[0]]
+
+    def _build_models(self):
+        ''' walk possible parts looking for methods to build them and populate self.models'''
+        models = {}
+        for pv in FingerPart:
+            name = str.lower(str(pv.name) if isinstance(pv, FingerPart) else str(pv))
+            part_name = "part_%s" % name
+            #check for an available method for the part
+            if not hasattr(self, part_name): continue
+            mod_segment = getattr(self, part_name)()
+            set_list_attr(mod_segment, "part", name)
+            models[pv] = mod_segment
+        self.models.update(models)
+
+    def _build_preview(self):
+        ''' combine models into a preview '''
+        mod_preview = None
+        for fp, model in self.models.items():
+            if not iterable(model): model = [model]
+            if self.preview_cut:
+                model = [x - self.cut_model() for i, x in enumerate(model, 0)]
+            if self.preview_explode:
+                model = [translate(self.explode_offsets[fp][i])(x) for i, x in enumerate(model, 0)]
+            r = max(self.rotate_offset_factors[fp], key=lambda v: v) if self.preview_rotate else 0
+            if r != 0: model = [rotate(self.rotate_offsets[fp][i])(x) for i, x in enumerate(model, 0)]
+            model = [translate(self.translate_offsets[fp][i])(x) for i, x in enumerate(model, 0)]
+            if r > 1: model = [rotate(self.rotate_offsets[fp][i])(x) for i, x in enumerate(model, 0)]
+            fold = flatten(model)
+            mod_preview = fold if not mod_preview else mod_preview + fold
+            mod_preview.part = "preview"
+        self.models[FingerPart.PREVIEW] = mod_preview
+

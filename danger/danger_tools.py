@@ -25,48 +25,6 @@ VERSION = 4.2
 
 # ********************************* Custom SCAD Primitives *****************************
 
-class Action(IntFlag):
-    ''' Enum for passing an orientation '''
-    EMITSCAD = 1
-    PREVIEW = 2
-    RENDER = 4
-
-class Orient(IntFlag):
-    ''' Enum for passing an orientation '''
-    PROXIMAL = 1
-    DISTAL = 2
-    INNER = 4
-    OUTER = 8
-    UNIVERSAL = 16
-
-class RenderQuality(Flag):
-    ''' Enum for passing an orientation '''
-    AUTO = 0
-    ULTRAHIGH = 5
-    HIGH = 10
-    EXTRAMEDIUM = 13
-    MEDIUM = 15
-    SUBMEDIUM = 17
-    FAST = 20
-    ULTRAFAST = 25
-
-class FingerPart(IntFlag):
-    ''' Enum for passing an orientation '''
-    SOCKET = 2
-    BASE = 4
-    MIDDLE = 8
-    TIP = 16
-    TIPCOVER = 32
-    LINKAGE = 64
-    PLUGS = 128
-    BUMPER = 256
-    SOFT = BUMPER | PLUGS | SOCKET | TIPCOVER
-    HARD = BASE | TIP | MIDDLE | LINKAGE
-    ALL = SOFT | HARD
-    @classmethod
-    def from_str(cls, label):
-        return cls[str.upper(label)]
-
 #additional custom OpenScad primitive types
 def rcylinder(r, h, rnd=0, center=False):
     ''' primitive for a cylinder with rounded edges'''
@@ -102,6 +60,19 @@ def diff(val1, val2):
     ''' get difference between numbers '''
     return max(val1, val2)- min(val1, val2)
 
+def set_list_attr(l, name, val):
+    if not iterable(l):
+        setattr(l, name, val)
+    else:
+        for i in l: setattr(i, name, val)
+
+def flatten(l):
+    if not iterable(l): return l
+    flat = l[0]
+    for i in l[1:]:
+        flat += i
+    return flat
+
 #********************************* Parameterization system **********************************
 class Prop(object):
     ''' a simple property replacement that enforces min and max values'''
@@ -113,28 +84,40 @@ class Prop(object):
         self._getter = getter
         self._setter = setter
         self._adv = adv
+        self._default = val
+        self.name = None
+
+    adv = property(lambda self: self._adv)
+    val = property(lambda self: self._value)
+    minv = property(lambda self: self._min)
+    maxv = property(lambda self: self._max)
+    doc = property(lambda self: self.__doc__)
+    default = property(lambda self: self._default)
 
     @staticmethod
     def minmax(value, minv=None, maxv=None):
         '''return the value constrained by a min and max, skipped if None/not provided'''
         try:
-            #print(value, minv, maxv)
             value = value if not minv else max(value, minv)
             value = value if not maxv else min(value, maxv)
-            #print(value)
         except Exception as _e:
             pass
         return value
 
-    def __get__(self, obj, objtype):
-        if self._getter is not None:
-            return self._getter(self)
-        return self._value
+    def __set_name__(self, owner, name):
+        self.name = name
 
     def __set__(self, obj, value):
         if self._setter is not None:
-            self._value = self._setter(self, value)
-        self._value = self.minmax(value, self._min, self._max)
+            self._value = self._setter(self, obj, value)
+        setattr(obj, "__" + self.name, self.minmax(value, self._min, self._max))
+
+    def __get__(self, obj, objtype=None):
+        if obj is None: return self
+        if self._getter is not None:
+            return self._getter(self, obj, objtype)
+        val = getattr(obj, "__" + self.name, None)
+        return val if val is not None else self._value
 
 class Borg:
     '''This is a very elegant singleton'''
@@ -395,83 +378,3 @@ class AsyncSubprocess(Borg):
 
         loop.close()
         return all_results
-
-def animate_explosion(model, _time: Optional[float] = 0) -> OpenSCADObject:
-    ''' special callback function for openscad animation'''
-    model.animate_factor = max(_time -.3, 0)
-    mod = model.build_models()
-    return mod[list(mod.keys())[0]]
-
-def emit_scad(model):#, val, filename=None):
-    ''' emit all models to SCAD code '''
-    #print(self._mod)
-    code = {}
-    for filename in model.mod:
-        val = model.mod[filename]
-        tempval = None
-        if iterable(val):
-            for v in val:
-                tempval = v if not tempval else tempval + v
-        if tempval: val = tempval
-        if not filename:
-            print("No filename, emitting to console")
-            code[filename] = scad_render(val, file_header=model.scad_header)
-        elif model.animate_explode or model.animate_rotate:
-            print("Writing SCAD animation to %s/%s" % (model.output_directory, filename))
-            scad_render_animated_file(animate_explosion(model), steps=20, back_and_forth=True, out_dir=model.output_directory, file_header=model.scad_header, include_orig_code=True, filepath=filename)
-        else:
-            print("Writing SCAD output to %s/%s" % (model.output_directory, filename))
-            scad_render_to_file(val, out_dir=model.output_directory, file_header=model.scad_header, include_orig_code=True, filepath=filename)
-    return code
-
-def render_stl(model):
-    ''' render all models to STL '''
-    Renderer().scad_parallel_to_stl(model.mod.keys(), max_concurrent_tasks=4)
-    return
-
-def render_png(model):
-    ''' render all models to PNG '''
-    Renderer().scad_parallel_to_png(model.mod.keys(), max_concurrent_tasks=4)
-    return
-
-def build_models(model):
-    ''' determine which models to emit, and organize by output filename '''
-    file_template = "dangerfinger_%s_%s_gen.scad"
-    mod = {}
-    mod_preview = None
-    for pv in FingerPart:
-        if not model.part & pv: continue
-        p = str.lower(str(pv.name) if isinstance(pv, FingerPart) else str(pv))
-        part_name = "part_%s" % p
-        #print(part_name)
-        if not hasattr(model, part_name): continue
-        mod_file = file_template % (VERSION, p)
-        mod_segment = getattr(model, part_name)()
-        if iterable(mod_segment):
-            if model.preview:
-                #print("preview %s" % self.action)
-                if model.preview_cut:
-                    mod_segment = [x - model.cut_model() for i, x in enumerate(mod_segment, 0)]
-            if model.preview and model.preview_rotate != 0:
-                mod_segment = [rotate(model.rotate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
-            if model.preview and model.preview_explode:
-                mod_segment = [translate(model.explode_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
-            mod_segment = [translate(model.translate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
-            if not model.preview: #rotate for print mode
-                mod_segment = [rotate(model.print_rotate_offsets[p][i])(x) for i, x in enumerate(mod_segment, 0)]
-        else:
-            if model.preview and model.preview_cut:
-                mod_segment = mod_segment - model.cut_model()
-            if model.preview and model.preview_explode:
-                mod_segment = mod_segment.translate(model.explode_offsets[p])
-            r = max(model.rotate_offset_factors[p], key=lambda v: v) if model.preview and model.preview_rotate != 0 else 0
-            if r != 0: mod_segment = mod_segment.rotate(model.rotate_offsets[p]) #rotate before translate
-            mod_segment = mod_segment.translate(model.translate_offsets[p])
-            if r > 1: mod_segment = mod_segment.rotate(model.rotate_offsets[p]) #rotate after translate
-            if not model.preview: #rotate for print mode
-                mod_segment = mod_segment.rotate(model.print_rotate_offsets[p])
-
-        mod_preview = mod_segment if not mod_preview else mod_preview + mod_segment
-        mod[mod_file] = mod_segment
-    model.mod.update(mod if not model.preview else {file_template % (VERSION, "preview"): mod_preview})
-    return model.mod
