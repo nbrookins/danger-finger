@@ -39,6 +39,7 @@ class RenderQuality(Flag):
 
 class FingerPart(IntFlag):
     ''' Enum for passing an orientation '''
+    NONE = 0
     SOCKET = 2
     BASE = 4
     MIDDLE = 8
@@ -64,23 +65,16 @@ class DangerFingerBase:
     def __init__(self):
         self._models = {}
         self._animate_factor = 1
-        #self._scad = {}
 
     models = property(lambda self: self._models)
-    #scad = property(lambda self: self._scad)
-
-    #action = Prop(val=Action.PREVIEW | Action.EMITSCAD, doc=''' ''')
     preview_cut = Prop(val=False, doc=''' cut the preview for inset view ''')
     preview_explode = Prop(val=False, doc=''' Enable explode mode, only for preview ''')
     preview_rotate = Prop(val=0, minv=0, maxv=120, doc=''' rotate the finger ''')
     animate_explode = Prop(val=False, doc=''' Enable explode animation, only for preview ''')
     animate_rotate = Prop(val=False, doc=''' Enable rotate animation, only for preview ''')
     animate = property(lambda self: self.animate_rotate or self.animate_explode)
-    #emit = Prop(val=True, doc=''' emit SCAD ''')
     render_quality = Prop(val=RenderQuality.HIGH, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, obj, value: (value))
     preview_quality = Prop(val=RenderQuality.FAST, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, obj, value: (value))
-
-   # output_directory = Prop(val=os.getcwd(), doc=''' output_directory for scad code, otherwise current''')
 
     # **************************************** parameters ****************************************
     #TODO 3 - make a first class "AUTO" value?
@@ -202,6 +196,7 @@ class DangerFingerBase:
         RenderQuality.FAST : 6, RenderQuality.ULTRAFAST : 10}))#, RenderQuality.AUTO : 6 if self.preview else 2}))#[self.render_quality if not self.preview else self.preview_quality]))
 
     def scad_header(self, rq):
+        ''' calculate header for top of scad file'''
         return "$fa = %s; \n$fs = %s;\n" % (self.fa[rq], self.fs[rq])
     #*************************************** special properties **********************************
     @property
@@ -304,4 +299,3 @@ class DangerFingerBase:
             mod_preview = fold if not mod_preview else mod_preview + fold
             mod_preview.part = "preview"
         self.models[FingerPart.PREVIEW] = mod_preview
-

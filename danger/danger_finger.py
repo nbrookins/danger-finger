@@ -4,7 +4,8 @@
 The danger_finger copyright 2014-2020 Nicholas Brookins and Danger Creations, LLC
 http://dangercreations.com/prosthetics :: http://www.thingiverse.com/thing:1340624
 Released under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/
-Source code licensed under Apache 2.0:  https://www.apache.org/licenses/LICENSE-2.0'''
+Source code licensed under Apache 2.0:  https://www.apache.org/licenses/LICENSE-2.0
+'''
 import math
 from solid import *
 from solid.utils import *
@@ -277,8 +278,7 @@ class DangerFinger(DangerFingerBase):
         dim = (height, length, width)
         anchor = rotate((90, 0, 0))(cylinder(r=r, h=.01))
         if rnd:
-            anchor = translate((r/4 * -.5 if not top else r/4,
-                -r/3, r/2*(-1 if shift else 1)))(sphere(r=r/2))
+            anchor = translate((r/4 * -.5 if not top else r/4, -r/3, r/2*(-1 if shift else 1)))(sphere(r=r/2))
         return translate(dim)(anchor)
 
     def knuckle_outer(self, orient, extend_cut=(0, 0)):

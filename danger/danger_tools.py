@@ -61,12 +61,14 @@ def diff(val1, val2):
     return max(val1, val2)- min(val1, val2)
 
 def set_list_attr(l, name, val):
+    ''' set an attribute on an object or list of objects'''
     if not iterable(l):
         setattr(l, name, val)
     else:
         for i in l: setattr(i, name, val)
 
 def flatten(l):
+    '''flatten a list by adding all items'''
     if not iterable(l): return l
     flat = l[0]
     for i in l[1:]:
@@ -258,14 +260,14 @@ class Params():
         parser.add_argument("-o", "--open_config", help="open config or checkpoint from json file")
         parser.add_argument("-v", "--verbose", help="verbose mode", action="store_true")
 
-        # loop through config class and add a parameter option for each attribute, using _ prepended ones for simu-docstrings
+        # loop through config class and add a parameter option for each attribute
         for param in vars(type(config_obj)).items(): ###
             #print (param)
             if param[0].startswith("_"): continue
             val = getattr(config_obj, param[0])
             if str(val).startswith(("<f", "<b")): continue
             doc = inspect.getdoc(param[1])
-            if doc is None: doc = "" #getattr(config, "_" + param[0], None) if hasattr(config, "_" + param[0]) else inspect.getdoc(param[1])
+            if doc is None: doc = ""
             parser.add_argument("--%s" % param[0], default=val, help=doc)
             #print("added param %s, %s, \"%s\"" % (param[0], val, doc))
 
