@@ -111,11 +111,11 @@ class DangerFinger(DangerFingerBase):
         ''' plug covers for the knuckle pins'''
         plug = color(Blue)(self.knuckle_plug(clearance=clearance))
         p_offset = -self.knuckle_proximal_width/2 + self.knuckle_plug_thickness/2 - 0.01
-        d_offset = -self.knuckle_distal_width/2 + self.knuckle_plug_thickness/2 - 0.01
+        d_offset = -self.knuckle_distal_width/2 + self.knuckle_plug_thickness/2
         mod_plug_pl = translate((0, 0, p_offset))(plug)
         mod_plug_pr = rotate((0, 180, 0))(translate((0, 0, p_offset))(plug))
-        mod_plug_dl = self.shift_distal()(plug.translate((0, 0, d_offset)))
-        mod_plug_dr = self.shift_distal()(plug.rotate((0, 180, 0)).translate((0, 0, d_offset)))
+        mod_plug_dl = self.shift_distal()(plug.translate((0, 0, -d_offset- 0.1)))
+        mod_plug_dr = self.shift_distal()(plug.rotate((0, 180, 0)).translate((0, 0, d_offset+.01)))
         return mod_plug_pl, mod_plug_pr, mod_plug_dl, mod_plug_dr
 
     def part_linkage(self):
@@ -143,14 +143,31 @@ class DangerFinger(DangerFingerBase):
 
         #mod_core = cylinder(r2=self.socket_interface_radius[Orient.PROXIMAL]-c, r1=self.socket_interface_radius[Orient.DISTAL]-c, h=self.socket_interface_length-socket_interface_base) + \
 
+        #TODO 3 Socket
+        #TODO 3 Socket scallops
+        #TODO 3 Socket texture
+        length = (self.proximal_length + self.intermediate_height[Orient.PROXIMAL]/2)
+        mod_core = cylinder(r1=self.socket_interface_radius[Orient.DISTAL] + self.socket_thickness[Orient.DISTAL], \
+            r2=self.socket_interface_radius[Orient.PROXIMAL] + self.socket_thickness[Orient.PROXIMAL], h=self.socket_interface_length)
+        mod_core = translate((0, -length - self.distal_flange_height -.01, 0))(rotate((90, 0, 0))(mod_core))
         mod_socket_interface = self.socket_interface(Orient.OUTER)
-        return color("blue")(mod_socket_interface)
+        mod_bottom = cylinder(r1=self.socket_interface_radius[Orient.PROXIMAL] + self.socket_thickness[Orient.PROXIMAL], r2=self.socket_radius[Orient.DISTAL]+ self.socket_thickness[Orient.DISTAL], h=4) + \
+            cylinder(r1=self.socket_radius[Orient.DISTAL]+ self.socket_thickness[Orient.DISTAL], r2=self.socket_radius[Orient.PROXIMAL]+ self.socket_thickness[Orient.PROXIMAL], h=self.socket_depth - self.socket_interface_depth -4).translate((0, 0, 4))
+        mod_bottom = translate((0, -length - self.distal_flange_height -.01 - self.socket_interface_length, 0))(rotate((90, 0, 0))(mod_bottom))
+        return color("blue")(mod_core - mod_socket_interface +mod_bottom)
 
     def part_tipcover(self):
         ''' the finger tip flexible portion '''
-        h = self.distal_length-self.distal_base_length
-        mod_core = cylinder(r=self.tip_radius, h=h).rotate((90, 90, 0)).translate((0, self.intermediate_length + self.distal_base_length + h, 0))
-        return color("blue")(mod_core)
+
+        #TODO 3 Tip Cover
+        #TODO 3 Tip Cover fingernail (ugh..)
+        #TODO 3 Tip Cover fingerprints
+
+        #h = self.distal_length-self.distal_base_length
+        sr = self.tip_radius/1.5
+        mod_core = cylinder(r=self.tip_radius, h=self.distal_base_length).rotate((90, 90, 0)).translate((0, self.intermediate_length + self.distal_base_length*2, 0))
+        mod_sphere = sphere(r=sr).resize((self.tip_radius*1.2, 0, self.tip_radius*1.8)).translate((-self.tip_radius/3, self.intermediate_length + self.distal_length-sr, 0))
+        return color("blue")(hull()(mod_core + mod_sphere))
 
     #**************************************** Primitives ***************************************
 
@@ -250,10 +267,8 @@ class DangerFinger(DangerFingerBase):
         r = self.tunnel_radius
 
         height_top = self.intermediate_height[orient_lat] / 2 + self.tunnel_height
-        height_bottom = self.intermediate_height[orient_lat] / 2 -.5 #+ (0 if orient_part == Orient.INNER and inside else 0)#adjust to not stick out from struts
-        #TODO 2 - slant down for bridge at end of tip.  unhard code this based on tip height, not yet defined
+        height_bottom = self.intermediate_height[orient_lat] / 2 -.5 #adjust to not stick out from struts
         height = (height_top -r) if top else height_bottom
-        #if rnd: height += 1
 
         top_inner_slant = self.strut_rounding + self.tunnel_inner_slant
         width_top_in = (self.intermediate_width[orient_lat] / 2) - (top_inner_slant if (orient_part == Orient.INNER) else 0)
@@ -344,8 +359,8 @@ class DangerFinger(DangerFingerBase):
         r = self.socket_interface_radius[Orient.PROXIMAL]-c - self.socket_interface_thickness
         h = self.socket_interface_length-socket_interface_base - self.socket_interface_thickness
 
-        mod_core = cylinder(r2=self.socket_interface_radius[Orient.PROXIMAL]-c, r1=self.socket_interface_radius[Orient.DISTAL]-c, h=self.socket_interface_length-socket_interface_base) + \
-            translate((0, 0, self.socket_interface_length-socket_interface_base- .01))(cylinder(r=self.socket_interface_radius[Orient.PROXIMAL]-c, h=socket_interface_base))
+        mod_core = cylinder(r2=self.socket_interface_radius[Orient.PROXIMAL]-c, r1=self.socket_interface_radius[Orient.DISTAL]-c, h=self.socket_interface_length-socket_interface_base + (self.socket_interface_clearance*2 if orient == Orient.OUTER else 0)) + \
+            translate((0, 0, self.socket_interface_length-socket_interface_base- .01))(cylinder(r=self.socket_interface_radius[Orient.PROXIMAL]-c, h=socket_interface_base))            #small base section
         mod_cut = sphere(r).resize((0, 0, h*2)) + cylinder(r=r, h=h).translate((0, 0, 0.01))
         mod_cut = mod_cut.translate((0, 0, h + self.socket_interface_depth))
 
@@ -362,7 +377,7 @@ class DangerFinger(DangerFingerBase):
         mod_plug = translate((0, 0, -h/2))( \
             cylinder(r1=r, r2=r+self.knuckle_plug_ridge, h=h2, center=True)) + \
             translate((0, 0, h2/2-0.01))(cylinder(r=r+self.knuckle_plug_ridge, h=h, center=True))
-        return rotate((0, 0, 90))(mod_plug)
+        return rotate((0, 0, 90))(mod_plug) #TODO - reverse rotate for left
 
     def cross_strut(self):
         ''' center cross strut'''
@@ -373,16 +388,5 @@ class DangerFinger(DangerFingerBase):
             hull()(translate((x_shift, 0, 0))(self.strut(height=h, length=brace_length)) + \
             translate((x_shift, 0, 0))(self.strut(height=h, length=brace_length+ self.knuckle_inset_border*.8))))
         return mod_brace
-
-    #TODO 3 Socket
-    #TODO 3 Socket scallops
-    #TODO 3 Socket texture
-
-    #TODO 3 Tip Cover
-    #TODO 3 Tip Cover fingernail (ugh..)
-    #TODO 3 Tip Cover fingerprints
-
-    #TODO 2 Linkage
-    #TODO 2 Linkage Hook
 
     #TODO 4 Bumper

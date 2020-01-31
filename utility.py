@@ -23,38 +23,38 @@ def main():
     server = False
     if server:
         start_server()
+        return
 
-    else:
-        print("running CLI")
-        finger = DangerFinger()
+    print("running CLI")
+    finger = DangerFinger()
 
-        render_stl = FingerPart.NONE
-        #render_stl = FingerPart.HARD
-        cores = 6
+    render_stl = FingerPart.NONE
+    #render_stl = FingerPart.PREVIEW # HARD PREVIEW ALL
+    cores = 6
 
-        Params.parse(finger)
-        finger.render_quality = RenderQuality.ULTRAFAST
-        finger.preview_explode = True
-        #finger.preview_cut = True
-        #finger.preview_rotate = 40
-        #finger.animate_explode = True
-        #finger.animate_rotate = True
-        finger.build()
+    Params.parse(finger)
+    finger.render_quality = RenderQuality.ULTRAFAST
+   # finger.preview_explode = True
+    #finger.preview_cut = True
+    #finger.preview_rotate = 40
+    #finger.animate_explode = True
+    #finger.animate_rotate = True
+    finger.build()
 
-        for _fp, model in finger.models.items():
-            #flat = flatten(model)
-            if not iterable(model):
-                filename = "output/dangerfinger_v4.2_" + model.part
-                model.scad_filename = filename + ".scad"
-                write_file(model.scad.encode('utf-8'), model.scad_filename)
+    for _fp, model in finger.models.items():
+        #flat = flatten(model)
+        if not iterable(model):
+            filename = "output/dangerfinger_v4.2_" + model.part
+            model.scad_filename = filename + ".scad"
+            write_file(model.scad.encode('utf-8'), model.scad_filename)
 
-        if render_stl:
-            files = []
-            for fp, model in finger.models.items():
-                if fp & render_stl == fp:
-                    files.append(model.scad_filename)
-            if files:
-                Renderer().scad_parallel_to_stl(files, max_concurrent_tasks=cores)
+    if render_stl:
+        files = []
+        for fp, model in finger.models.items():
+            if fp & render_stl == fp and not iterable(model): #TODO - make expanded one for non unioned plugs
+                files.append(model.scad_filename)
+        if files:
+            Renderer().scad_parallel_to_stl(files, max_concurrent_tasks=cores)
     print("Complete")
 
 def start_server(http_port=8081):
@@ -111,6 +111,7 @@ class FingerHandler(tornado.web.RequestHandler):
 
         if self.request.path.startswith(("/scad", "/render")):
             finger = DangerFinger()
+            finger.render_quality = RenderQuality.ULTRAFAST
             finger.build()
             p = var.split('.')[0]
             model = finger.models[FingerPart.from_str(p)]
