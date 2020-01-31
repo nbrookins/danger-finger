@@ -12,12 +12,6 @@ from .danger_tools import *
 
 VERSION = 4.2
 
-class Action(IntFlag):
-    ''' Enum for passing an orientation '''
-    EMITSCAD = 1
-    PREVIEW = 2
-    RENDER = 4
-
 class Orient(IntFlag):
     ''' Enum for passing an orientation '''
     PROXIMAL = 1
@@ -48,10 +42,10 @@ class FingerPart(IntFlag):
     LINKAGE = 64
     PLUGS = 128
     BUMPER = 256
+    PREVIEW = 512
     SOFT = BUMPER | PLUGS | SOCKET | TIPCOVER
     HARD = BASE | TIP | MIDDLE | LINKAGE
     ALL = SOFT | HARD
-    PREVIEW = 512 | ALL
 
     @classmethod
     def from_str(cls, label):
@@ -83,7 +77,7 @@ class DangerFingerBase:
     intermediate_proximal_height = Prop(val=10.0, minv=4, maxv=16, doc=''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
 
     proximal_length = Prop(val=-1, minv=8, maxv=30, doc=''' length of the proximal/base finger segment ''') #TODO 3 - dynamic min auto of knuckle radius
-    distal_length = Prop(val=18, minv=8, maxv=30, doc=''' length of the distal/tip finger segment ''')
+    distal_length = Prop(val=23, minv=8, maxv=30, doc=''' length of the distal/tip finger segment ''')
     distal_base_length = Prop(val=5.5, minv=0, maxv=20, doc=''' length of the base of the distal/tip finger segment ''')
 
     knuckle_proximal_width = Prop(val=18.0, minv=4, maxv=20, doc=''' width of the proximal knuckle hinge''')
@@ -203,25 +197,26 @@ class DangerFingerBase:
     def explode_offsets(self):
         ''' amount to expand during explode'''
         return self._prop_offset(self._explode_offsets, self._animate_factor)
-    _explode_offsets = {FingerPart.MIDDLE:((0, 20, 0),), FingerPart.BASE : ((0, 0, 0),), FingerPart.TIP:((0, 40, 0),), FingerPart.SOCKET:((0, -20, 0),), \
-        FingerPart.LINKAGE : ((10, -30, 0),), FingerPart.TIPCOVER : ((0, 60, 0)), FingerPart.PLUGS:((0, 0, -8), (0, 0, 8), (0, 40, -8), (0, 40, 20))}
+    _exf = 12
+    _explode_offsets = {FingerPart.MIDDLE:((0, _exf, 0),), FingerPart.BASE : ((0, 0, 0),), FingerPart.TIP:((0, _exf*2, 0),), FingerPart.SOCKET:((0, -_exf, 0),), \
+        FingerPart.LINKAGE : ((_exf/2, -_exf, 0),), FingerPart.TIPCOVER : ((0, _exf*3, 0),), FingerPart.PLUGS:((0, 0, -_exf/2), (0, 0, _exf/2), (0, _exf*2, -_exf/2), (0, _exf*2, _exf*1.8))}
 
     @property
     def translate_offsets(self):
-        ''' amount to expand during explode'''
+        ''' amount to expand during non explode'''
         return self._prop_offset(self._translate_offsets, self.distal_offset)
     _translate_offsets = {FingerPart.MIDDLE:((0, 0, 0),), FingerPart.BASE : ((0, 0, 0),), FingerPart.TIP:((0, 1, 0),), FingerPart.SOCKET:((0, 0, 0),), \
-        FingerPart.LINKAGE : ((.5, 0, 0),), FingerPart.TIPCOVER : ((0, 0, 0),), FingerPart.PLUGS:((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
+        FingerPart.LINKAGE : ((.75, -2, 0),), FingerPart.TIPCOVER : ((0, 0, 0),), FingerPart.PLUGS:((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
 
     @property
-    def print_rotate_offsets(self):
+    def rotate_offsets_print(self):
         ''' amount rotate in print mode'''
         return self._prop_offset(self._print_rotate_offsets, self.distal_offset)
     _print_rotate_offsets = {FingerPart.MIDDLE:((0, -90, 0),), FingerPart.BASE : ((90, 0, 0),), FingerPart.TIP:((-90, 0, 0),), FingerPart.SOCKET:((0, 0, 0),), \
         FingerPart.LINKAGE : ((0, -90, 0),), FingerPart.TIPCOVER : ((0, 0, 0),), FingerPart.PLUGS:((0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0))}
 
     @property
-    def rotate_offsets(self):
+    def rotate_offsets_preview(self):
         ''' amount to rotate'''
         return self._prop_offset(self.rotate_offset_factors, self._animate_factor * self.preview_rotate, func=lambda v: min(v, 1))
     rotate_offset_factors = {FingerPart.MIDDLE:((0, 0, 1),), FingerPart.BASE : ((0, 0, 0),), FingerPart.TIP:((0, 0, 2),), FingerPart.SOCKET:((0, 0, 0),), \
@@ -280,7 +275,7 @@ class DangerFingerBase:
             mod_segment = getattr(self, part_name)()
             set_list_attr(mod_segment, "part", name)
             models[pv] = mod_segment
-        self.models.update(models)
+        self.models.update(models) #TODO - ensure print offset are applied, and collapse models
 
     def _build_preview(self):
         ''' combine models into a preview '''
@@ -290,11 +285,11 @@ class DangerFingerBase:
             if self.preview_cut:
                 model = [x - self.cut_model() for i, x in enumerate(model, 0)]
             if self.preview_explode:
-                model = [translate(self.explode_offsets[fp][i])(x) for i, x in enumerate(model, 0)]
+                model = [translate(self.explode_offsets[fp][i])(x) if self.explode_offsets[fp][i] != (0, 0, 0) else x for i, x in enumerate(model, 0)]
             r = max(self.rotate_offset_factors[fp], key=lambda v: v) if self.preview_rotate else 0
-            if r != 0: model = [rotate(self.rotate_offsets[fp][i])(x) for i, x in enumerate(model, 0)]
-            model = [translate(self.translate_offsets[fp][i])(x) for i, x in enumerate(model, 0)]
-            if r > 1: model = [rotate(self.rotate_offsets[fp][i])(x) for i, x in enumerate(model, 0)]
+            if r != 0: model = [rotate(self.rotate_offsets_preview[fp][i])(x) for i, x in enumerate(model, 0)]
+            model = [translate(self.translate_offsets[fp][i])(x) if self.translate_offsets[fp][i] != (0, 0, 0) else x for i, x in enumerate(model, 0)]
+            if r > 1: model = [rotate(self.rotate_offsets_preview[fp][i])(x) for i, x in enumerate(model, 0)]
             fold = flatten(model)
             mod_preview = fold if not mod_preview else mod_preview + fold
             mod_preview.part = "preview"
