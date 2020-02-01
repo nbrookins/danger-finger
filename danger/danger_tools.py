@@ -156,6 +156,14 @@ class Renderer(Borg):
             self._try_executable('/usr/bin/openscad')
             if self.openscad_exec is None:
                 self._try_executable('/usr/local/bin/openscad')
+            if self.openscad_exec is None:
+                self._try_executable('openscad')
+            if self.openscad_exec is None:
+                self._try_executable('/usr/bin/openscad-nightly')
+            if self.openscad_exec is None:
+                self._try_executable('/usr/local/bin/openscad-nightly')
+            if self.openscad_exec is None:
+                self._try_executable('openscad-nightly')
         elif platfm == 'Darwin':
             self._try_executable('/Applications/OpenSCAD.app/Contents/MacOS/OpenSCAD')
         elif platfm == 'Windows':

@@ -10,9 +10,53 @@ import os
 import sys
 import json
 import time
+import threading
+from functools import wraps
+import tornado.options
+# import tornado.ioloop
+#import tornado.httpserver
+#import tornado.httpclient
+import tornado.ioloop
 import tornado.web
+import tornado.gen
+import tornado.concurrent
+# import time
+# from threading import Thread
+
 import solid
 from danger import *
+
+
+# import os
+# import threading
+# import tornado.options
+# import tornado.ioloop
+# import tornado.httpserver
+# import tornado.httpclient
+# import tornado.web
+# from tornado import gen
+# from tornado.web import asynchronous
+
+tornado.options.define('port', type=int, default=8081, help='server port number (default: 9000)')
+tornado.options.define('debug', type=bool, default=False, help='run in debug mode with autoreload (default: False)')
+
+# class Worker(threading.Thread):
+#    def __init__(self, callback=None, *args, **kwargs):
+#         super(Worker, self).__init__(*args, **kwargs)
+#         self.callback = callback
+
+#    def run(self):
+
+
+# class MainHandler(tornado.web.RequestHandler):
+#     @tornado.web.asynchronous
+#     @tornado.gen.coroutine
+#     def get(self):
+#         response = yield tornado.gen.Task(sleeper)
+#         self.write(response)
+#         self.finish()
+
+
 
 def main():
     '''main'''
@@ -20,7 +64,7 @@ def main():
     config = {}
     Params.parse(config)
 
-    server = False
+    server = True
     if server:
         start_server()
         return
@@ -29,11 +73,12 @@ def main():
     finger = DangerFinger()
 
     render_stl = FingerPart.NONE
-    #render_stl = FingerPart.PREVIEW # HARD PREVIEW ALL
+    render_stl = FingerPart.HARD # HARD PREVIEW ALL
     cores = 6
 
     Params.parse(finger)
-    finger.render_quality = RenderQuality.ULTRAFAST
+    finger.render_quality = RenderQuality.HIGH #  INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
+    finger.preview_quality = RenderQuality.FAST #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
    # finger.preview_explode = True
     #finger.preview_cut = True
     #finger.preview_rotate = 40
@@ -57,19 +102,15 @@ def main():
             Renderer().scad_parallel_to_stl(files, max_concurrent_tasks=cores)
     print("Complete")
 
-def start_server(http_port=8081):
-    ''' start the web server to take api request for finger building '''
-    tornado.web.Application([
-        (r"/params(/?\w*)", FingerHandler), #, {"params":config}),
-        (r"/render/([a-zA-Z0-9.]+)", FingerHandler),
-        (r"/scad/([a-zA-Z0-9.]+)", FingerHandler),
-        (r"/preview", FingerHandler),
-        #fallback serves static files, include ones to supply preview page
-        (r"/(.*)", tornado.web.StaticFileHandler, {"path": "./web/", "default_filename": "index.html"})
-        ]).listen(http_port)
-
-    print("Listening on localhost %s" % (http_port))
+def start_server():#http_port=8081):
+    http_server = tornado.httpserver.HTTPServer(Application())
+    http_server.listen(tornado.options.options.port)
     tornado.ioloop.IOLoop.instance().start()
+#     ''' start the web server to take api request for finger building '''
+
+
+#     print("Listening on localhost %s" % (http_port))
+#     tornado.ioloop.IOLoop.instance().start()
 
 def write_file(data, filename):
     ''' write bytes to file '''
@@ -96,9 +137,50 @@ def get_params(self, finger, var):
     print("200 OK JSON response to: %s, %sb" %(self.request.uri, len(pbytes)))
     return
 
+class Application(tornado.web.Application):
+    def __init__(self):
+        handlers = [
+            (r"/params(/?\w*)", FingerHandler), #, {"params":config}),
+            (r"/render/([a-zA-Z0-9.]+)", FingerHandler),
+            (r"/scad/([a-zA-Z0-9.]+)", FingerHandler),
+            (r"/preview", FingerHandler),
+            #fallback serves static files, include ones to supply preview page
+            (r"/(.*)", tornado.web.StaticFileHandler, {"path": "./web/", "default_filename": "index.html"})
+            # ]).listen(http_port)
+            #     (r"/", IndexHandler),
+            #     (r"/thread", ThreadHandler),
+        ]
+        settings = dict(
+            static_path=os.path.join(os.path.dirname(__file__), "static"),
+            template_path=os.path.join(os.path.dirname(__file__), "templates"),
+            debug=tornado.options.options.debug,
+        )
+        tornado.web.Application.__init__(self, handlers, **settings)
+
+
+# def run_async(func):
+#     @wraps(func)
+#     def async_func(*args, **kwargs):
+#         func_hl = Thread(target = func, args = args, kwargs = kwargs)
+#         func_hl.start()
+#         return func_hl
+
+#     return async_func
+
+#@run_async
+@tornado.gen.coroutine
+def task(scad_file, stl_file):
+    write_stl(scad_file, stl_file)
+    #self.serve_file(stl_file, 'model/stl')
+    #callback(
+    return (stl_file)
+    #raise gen.Return(response
+
+
 # pylint: disable=W0223
 class FingerHandler(tornado.web.RequestHandler):
     '''Handle a metadata request'''
+    @tornado.gen.coroutine
     def get(self, var):
         '''Handle a metadata request'''
         print("  HTTP Request: %s %s %s" % (self.request, self.request.path, var))
@@ -121,12 +203,19 @@ class FingerHandler(tornado.web.RequestHandler):
             if self.request.path.startswith("/scad"):
                 self.serve_file(scad_file, 'text/scad')
             else:
-                write_stl(scad_file, stl_file)
-                self.serve_file(stl_file, 'model/stl')
+                response = yield task(scad_file, stl_file) #tornado.gen.Task(sleeper)
+                self.serve_file(response, 'model/stl')
+                #self.write(response)
+                #self.finish()
             return
 
         self.write_error(500)
 
+    #         Worker(self.worker_done).start()
+
+
+    # def worker_done(self, value):
+    #     self.finish(value)
     def serve_file(self, filename, mimetype, download=False):
         '''serve a file from disk to client'''
         with open(filename, 'rb') as file_h:
