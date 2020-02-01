@@ -23,6 +23,7 @@ class Orient(IntFlag):
 class RenderQuality(Flag):
     ''' Enum for passing an orientation '''
     #AUTO = 0
+    INSANE = 2
     ULTRAHIGH = 5
     HIGH = 10
     EXTRAMEDIUM = 13
@@ -30,6 +31,7 @@ class RenderQuality(Flag):
     SUBMEDIUM = 17
     FAST = 20
     ULTRAFAST = 25
+    STUPIDFAST = 30
 
 class FingerPart(IntFlag):
     ''' Enum for passing an orientation '''
@@ -181,13 +183,13 @@ class DangerFingerBase:
 
     #The minimum circumferential length of a polygon segment.  higher is faster
     fs = property(lambda self: ({
-        RenderQuality.ULTRAHIGH : .1, RenderQuality.HIGH : .2, RenderQuality.EXTRAMEDIUM : .3, RenderQuality.MEDIUM : .4, RenderQuality.SUBMEDIUM : .6,
-        RenderQuality.FAST : 1, RenderQuality.ULTRAFAST : 1.5}))#, RenderQuality.AUTO : 1 if self.preview else .2}))
+        RenderQuality.INSANE : .05, RenderQuality.ULTRAHIGH : .1, RenderQuality.HIGH : .2, RenderQuality.EXTRAMEDIUM : .3, RenderQuality.MEDIUM : .4, RenderQuality.SUBMEDIUM : .6,
+        RenderQuality.FAST : 1, RenderQuality.ULTRAFAST : 1.5, RenderQuality.STUPIDFAST : 2}))#, RenderQuality.AUTO : 1 if self.preview else .2}))
 
     #the minimum dgrees of each polygon framgment , higher is faster
     fa = property(lambda self: ({
-        RenderQuality.ULTRAHIGH : 1.5, RenderQuality.HIGH : 2, RenderQuality.EXTRAMEDIUM : 3, RenderQuality.MEDIUM : 4, RenderQuality.SUBMEDIUM : 5,
-        RenderQuality.FAST : 6, RenderQuality.ULTRAFAST : 10}))#, RenderQuality.AUTO : 6 if self.preview else 2}))#[self.render_quality if not self.preview else self.preview_quality]))
+        RenderQuality.INSANE : 1, RenderQuality.ULTRAHIGH : 1.5, RenderQuality.HIGH : 2, RenderQuality.EXTRAMEDIUM : 3, RenderQuality.MEDIUM : 4, RenderQuality.SUBMEDIUM : 5,
+        RenderQuality.FAST : 6, RenderQuality.ULTRAFAST : 10, RenderQuality.STUPIDFAST : 15}))#, RenderQuality.AUTO : 6 if self.preview else 2}))#[self.render_quality if not self.preview else self.preview_quality]))
 
     def scad_header(self, rq):
         ''' calculate header for top of scad file'''
@@ -196,10 +198,10 @@ class DangerFingerBase:
     @property
     def explode_offsets(self):
         ''' amount to expand during explode'''
-        return self._prop_offset(self._explode_offsets, self._animate_factor)
-    _exf = 12
-    _explode_offsets = {FingerPart.MIDDLE:((0, _exf, 0),), FingerPart.BASE : ((0, 0, 0),), FingerPart.TIP:((0, _exf*2, 0),), FingerPart.SOCKET:((0, -_exf, 0),), \
-        FingerPart.LINKAGE : ((_exf/2, -_exf, 0),), FingerPart.TIPCOVER : ((0, _exf*3, 0),), FingerPart.PLUGS:((0, 0, -_exf/2), (0, 0, _exf/2), (0, _exf*2, -_exf/2), (0, _exf*2, _exf*1.8))}
+        return self._prop_offset(self._explode_offsets, self._animate_factor)#pass through ;amda to apply animate offsets
+    _explode_factor = 12
+    _explode_offsets = {FingerPart.MIDDLE:((0, _explode_factor, 0),), FingerPart.BASE : ((0, 0, 0),), FingerPart.TIP:((0, _explode_factor*2, 0),), FingerPart.SOCKET:((0, -_explode_factor, 0),), \
+        FingerPart.LINKAGE : ((_explode_factor/2, -_explode_factor, 0),), FingerPart.TIPCOVER : ((0, _explode_factor*3, 0),), FingerPart.PLUGS:((0, 0, -_explode_factor/2), (0, 0, _explode_factor/2), (0, _explode_factor*2, -_explode_factor/2), (0, _explode_factor*2, _explode_factor*1.8))}
 
     @property
     def translate_offsets(self):
@@ -257,7 +259,7 @@ class DangerFingerBase:
                     scad_render_animated(self._animate_explosion(), steps=20, back_and_forth=True, file_header=header)#, include_orig_code=True)
             set_list_attr(model, "scad", code)
 
-    def _animate_explosion(self, _time: Optional[float] = 0) -> OpenSCADObject:
+    def _animate_explosion(self, _time=0) -> OpenSCADObject:
         ''' special callback function for openscad animation'''
         self._animate_factor = max(_time -.3, 0)
         self._build_models()

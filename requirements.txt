@@ -1,0 +1,4 @@
+#example for hello.py.  replace with your won requirements.txt in your project folder
+solidpython
+tornado
+asyncio
