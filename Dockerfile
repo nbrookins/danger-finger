@@ -21,6 +21,9 @@ ENV script $script
 ARG py3
 ENV py3 $py3
 
+ENV script 'python3 -u utility.py $$@'
+ENV project 'danger-finger'
+
 #install python deps
 COPY requirements.txt /
 RUN DEBIAN_FRONTEND=noninteractive python$py3 -m pip install --no-cache-dir --upgrade pip \
