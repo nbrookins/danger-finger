@@ -21,7 +21,7 @@ ENV script $script
 ARG py3
 ENV py3 $py3
 
-ENV script 'python3 -u utility.py $$@'
+ENV script 'python3 -u utility.py $@'
 ENV project 'danger-finger'
 ENV py3 '3'
 
