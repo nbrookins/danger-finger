@@ -13,29 +13,12 @@ import time
 import threading
 from functools import wraps
 import tornado.options
-# import tornado.ioloop
-#import tornado.httpserver
-#import tornado.httpclient
 import tornado.ioloop
 import tornado.web
 import tornado.gen
 import tornado.concurrent
-# import time
-# from threading import Thread
-
 import solid
 from danger import *
-
-
-# import os
-# import threading
-# import tornado.options
-# import tornado.ioloop
-# import tornado.httpserver
-# import tornado.httpclient
-# import tornado.web
-# from tornado import gen
-# from tornado.web import asynchronous
 
 tornado.options.define('port', type=int, default=8081, help='server port number (default: 9000)')
 tornado.options.define('debug', type=bool, default=False, help='run in debug mode with autoreload (default: False)')
@@ -55,8 +38,6 @@ tornado.options.define('debug', type=bool, default=False, help='run in debug mod
 #         response = yield tornado.gen.Task(sleeper)
 #         self.write(response)
 #         self.finish()
-
-
 
 def main():
     '''main'''
