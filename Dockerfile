@@ -38,6 +38,7 @@ RUN wget -qO - https://files.openscad.org/OBS-Repository-Key.pub | apt-key add -
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
         openscad-nightly \
     && apt-get clean \
+    && mkdir output \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 #the below should generally be replicated in child dockerfiles
