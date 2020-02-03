@@ -23,6 +23,7 @@ ENV py3 $py3
 
 ENV script 'python3 -u utility.py $$@'
 ENV project 'danger-finger'
+ENV py3 '3'
 
 #install python deps
 COPY requirements.txt /

@@ -95,6 +95,18 @@
 			add_model(model_name, model_name, null, true);
 		}
 
+		function fill(url) {
+			var xhttp = new XMLHttpRequest();
+			xhttp.onreadystatechange = function() {
+				if (this.readyState == 4 && this.status == 200) {
+					$id('params_info').innerHTML = this.responseText;
+				}
+			};
+			xhttp.open("GET", url, true);
+			xhttp.setRequestHeader("Content-type", "application/json");
+			xhttp.send("");
+		}
+
 	</script>
 
 </head>
@@ -113,6 +125,16 @@
 			<td id="middle"><input id="b_middle" type="button" value="Middle" onclick="add_model('middle', 'Middle', {id:1, filename:('render/middle.stl')}); "></td>
 			<td id="base"><input id="b_base" type="button" value="Base" onclick="add_model('base', 'Base', {id:2, filename:('render/base.stl')});"></td>
 			<td id="linkage"><input id="b_linkage" type="button" value="Linkage" onclick="add_model('linkage', 'Linkage', {id:3, filename:('render/linkage.stl')});"></td>
+		</tr>
+		<tr id="mrow-p">
+			<td id="params-basic"><input id="b_pb" type="button" value="Params: Basic" onclick="fill('/params');"></td>
+			<td id="params-basic"><input id="b_pbad" type="button" value="Params: Adv" onclick="fill('/params/adv');"></td>
+			<td id="params-basic"><input id="b_pba" type="button" value="Params: All" onclick="fill('/params/all');"></td>
+			<td id="params-basic"><input id="b_pbad" type="button" value="" onclick=""></td>
+			<td id="params-basic"><input id="b_pba" type="button" value="" onclick=""></td>
+		</tr>
+		<tr id="mrow-pv" >
+			<td id="params_info" colspan="5"></td>
 		</tr>
 	</table>
 
