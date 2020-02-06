@@ -10,16 +10,10 @@ import os
 import sys
 import json
 import time
-import threading
-from functools import wraps
+import concurrent
 import tornado.options
 import tornado.ioloop
 import tornado.web
-import tornado.gen
-import tornado.concurrent
-from tornado.concurrent import run_on_executor
-import concurrent
-from concurrent.futures import ThreadPoolExecutor
 import solid
 from danger import *
 
@@ -33,11 +27,6 @@ def main():
     config = {}
     Params.parse(config)
 
-    # server = True
-    # if server:
-    #     start_server()
-    #     return
-
     print("running CLI")
     finger = DangerFinger()
 
@@ -47,7 +36,7 @@ def main():
 
     Params.parse(finger)
     finger.render_quality = RenderQuality.HIGH #  INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
-    finger.preview_quality = RenderQuality.FAST #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
+    finger.preview_quality = RenderQuality.STUPIDFAST #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
    # finger.preview_explode = True
     #finger.preview_cut = True
     #finger.preview_rotate = 40
@@ -71,46 +60,9 @@ def main():
             Renderer().scad_parallel_to_stl(files, max_concurrent_tasks=cores)
     print("Complete")
 
-# def start_server():#http_port=8081):
-#     http_server = tornado.httpserver.HTTPServer(Application())
-#     http_server.listen(tornado.options.options.port)
-#     tornado.ioloop.IOLoop.instance().start()
-#     ''' start the web server to take api request for finger building '''
-
-def write_file(data, filename):
-    ''' write bytes to file '''
-    print("  writing %s bytes to %s" %(len(data), filename))
-    with open(filename, 'wb') as file_h:
-        file_h.write(data)
-
-def write_stl(scad_file, stl_file):
-    ''' render and write stl to file '''
-    #TODO - cache these with hash of config...
-    start = time.time()
-    print("  Beginning render of %s" %(stl_file))
-    Renderer().scad_to_stl(scad_file, stl_file)#), trialrun=True)
-    #sp = Subprocess(print_res, timeout=30, args=cmd)
-    #sp.start()
-    print("  Rendered %s in %s sec" % (stl_file, round(time.time()-start, 1)))
-    return stl_file
-
-def get_params(self, finger, var):
-    '''walk finger to discover parameters'''
-    params = finger.params(adv=var.startswith("/adv"), allv=var.startswith("/all"), extended=True)
-    pbytes = json.dumps(params, skipkeys=True, cls=EnumEncoder).encode('utf-8')
-    self.set_header('Content-Length', len(pbytes))
-    self.set_header('Content-Type', 'application/json')
-    self.write(pbytes)
-    self.finish()
-    print("200 OK JSON response to: %s, %sb" %(self.request.uri, len(pbytes)))
-    return
-
 # pylint: disable=W0223
 class FingerHandler(tornado.web.RequestHandler):
-    # executor = ThreadPoolExecutor(max_workers=4)
 
-    '''Handle a metadata request'''
-    #@tornado.gen.coroutine
     async def get(self, var):
         '''Handle a metadata request'''
         print("  HTTP Request: %s %s %s" % (self.request, self.request.path, var))
@@ -122,38 +74,29 @@ class FingerHandler(tornado.web.RequestHandler):
             return
 
         if self.request.path.startswith(("/scad", "/render")):
-            finger = DangerFinger()
-            finger.render_quality = RenderQuality.ULTRAFAST
-            finger.build()
+            rend = not self.request.path.startswith("/scad")
+            mime = 'model/stl' if render else 'text/scad'
             p = var.split('.')[0]
-            model = finger.models[FingerPart.from_str(p)]
-            scad_file = "output/dangerfinger_v4.2_" + p + ".scad"
-            stl_file = "output/dangerfinger_v4.2_" + p + ".stl"
-            write_file(model.scad.encode('utf-8'), scad_file)
-            if self.request.path.startswith("/scad"):
-                self.serve_file(scad_file, 'text/scad')
-            else:
-                #response = yield task(scad_file, stl_file) #tornado.gen.Task(sleeper)
-                #yield self.task(scad_file, stl_file)
-                #print(response.)
-                # self.serve_file(stl_file, 'model/stl')
-                #self.write(response)
-                #self.finish()
-
-                l = asyncio.get_event_loop()
-                f = l.run_in_executor(self.application.executor, write_stl, scad_file, stl_file)
-                await f
-                #print(r)
-                self.serve_file(stl_file, 'model/stl')
+            l = asyncio.get_event_loop()
+            f = l.run_in_executor(self.application.executor, build, p, rend)
+            filename = await f
+            #print(r)
+            self.serve_file(filename, mime)
             return
 
         self.write_error(500)
 
-    #         Worker(self.worker_done).start()
+    def get_params(self, finger, var):
+        '''walk finger to discover parameters'''
+        params = finger.params(adv=var.startswith("/adv"), allv=var.startswith("/all"), extended=True)
+        pbytes = json.dumps(params, skipkeys=True, cls=EnumEncoder).encode('utf-8')
+        self.set_header('Content-Length', len(pbytes))
+        self.set_header('Content-Type', 'application/json')
+        self.write(pbytes)
+        self.finish()
+        print("200 OK JSON response to: %s, %sb" %(self.request.uri, len(pbytes)))
+        return
 
-
-    # def worker_done(self, value):
-    #     self.finish(value)
     def serve_file(self, filename, mimetype, download=False):
         '''serve a file from disk to client'''
         with open(filename, 'rb') as file_h:
@@ -171,11 +114,34 @@ class FingerHandler(tornado.web.RequestHandler):
         self.write(data)
         print("200 OK response to: %s, %sb" %(self.request.uri, len(data)))
 
-class EnumEncoder(json.JSONEncoder):
-    '''simple encoder to support emuns generically'''
-    def default(self, obj): #pylint: disable=method-hidden, arguments-differ
-        ''' test enum encoder'''
-        return {"__enum__": str(obj)}
+def write_file(data, filename):
+    ''' write bytes to file '''
+    print("  writing %s bytes to %s" %(len(data), filename))
+    with open(filename, 'wb') as file_h:
+        file_h.write(data)
+
+def write_stl(scad_file, stl_file):
+    ''' render and write stl to file '''
+    #TODO - cache these with hash of config...
+    start = time.time()
+    print("  Beginning render of %s" %(stl_file))
+    Renderer().scad_to_stl(scad_file, stl_file)#), trialrun=True)
+    print("  Rendered %s in %s sec" % (stl_file, round(time.time()-start, 1)))
+    return stl_file
+
+def build(p, rend):
+    scad_file = "output/dangerfinger_v4.2_" + p + ".scad"
+    stl_file = "output/dangerfinger_v4.2_" + p + ".stl"
+    if not os.path.exists(scad_file):
+        finger = DangerFinger()
+        finger.render_quality = RenderQuality.STUPIDFAST
+        finger.build()
+    #model = finger.models[FingerPart.from_str(p)]
+    if rend:
+        if not os.path.exists(stl_file):
+            write_stl(scad_file, stl_file)
+        return stl_file
+    return scad_file
 
 async def make_app():
     ''' create server async'''
@@ -186,9 +152,6 @@ async def make_app():
         (r"/preview", FingerHandler),
         #fallback serves static files, include ones to supply preview page
         (r"/(.*)", tornado.web.StaticFileHandler, {"path": "./web/", "default_filename": "index.html"})
-        # ]).listen(http_port)
-        #     (r"/", IndexHandler),
-        #     (r"/thread", ThreadHandler),
     ]
     settings = dict(
         static_path=os.path.join(os.path.dirname(__file__), "static"),
@@ -201,6 +164,12 @@ async def make_app():
     app.counter = 0
     app.listen(8081)
 
+class EnumEncoder(json.JSONEncoder):
+    '''simple encoder to support emuns generically'''
+    def default(self, obj): #pylint: disable=method-hidden, arguments-differ
+        ''' test enum encoder'''
+        return {"__enum__": str(obj)}
+
 if __name__ == "__main__":
     sys.stdout = UnbufferedStdOut(sys.stdout)
     server = True
@@ -212,4 +181,3 @@ if __name__ == "__main__":
         loop.run_forever()
     else:
         main()
-

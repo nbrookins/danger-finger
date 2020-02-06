@@ -75,9 +75,9 @@
 			$id('stl_cont').style.visibility='visible';
 			//$id(tag).innerHTML=tag
 
-			stl_viewer.set_position(0, 0, 60, 0);
-			stl_viewer.set_position(1, 0, 30, 0);
-			stl_viewer.set_position(3, 10, -50, 0);
+			stl_viewer.set_position(0, -60, 0, 0);
+			stl_viewer.set_position(1, -30, 0, 0);
+			stl_viewer.set_position(3, 50, 10, 0);
 		}
 
 		function add_model(model_name, model_desc, params){//}, params2){//, skip_load){
@@ -129,14 +129,14 @@
 	<table id="mdata">
 		<tr id="mrow">
 		<td id="preview"><input id="b_preview" type="button" value="Preview"
-				onclick="add_model('tip', 'Tip', {id:0, filename:('render/tip.stl')});
-					add_model('middle', 'Middle', {id:1, filename:('render/middle.stl')});
-					add_model('base', 'Base', {id:2, filename:('render/base.stl')});
-					add_model('linkage', 'Linkage', {id:3, filename:('render/linkage.stl')});"> </td>
+				onclick="add_model('tip', 'Tip', {id:0, rotationz: 90/57.3, filename:('render/tip.stl')});
+					add_model('middle', 'Middle', {id:1, rotationz: 90/57.3, filename:('render/middle.stl')});
+					add_model('base', 'Base', {id:2, rotationz: 90/57.3, filename:('render/base.stl')});
+					add_model('linkage', 'Linkage', {id:3, rotationz: 90/57.3, filename:('render/linkage.stl')});"> </td>
 			<td id="tip"><input id="b_tip" type="button" value="Tip" onclick="add_model('tip', 'Tip', {id:0, filename:('render/tip.stl')});"></td>
 			<td id="middle"><input id="b_middle" type="button" value="Middle" onclick="add_model('middle', 'Middle', {id:1, filename:('render/middle.stl')}); "></td>
 			<td id="base"><input id="b_base" type="button" value="Base" onclick="add_model('base', 'Base', {id:2, filename:('render/base.stl')});"></td>
-			<td id="linkage"><input id="b_linkage" type="button" value="Linkage" onclick="add_model('linkage', 'Linkage', {id:3, filename:('render/linkage.stl')});"></td>
+			<td id="linkage"><input id="b_linkage" type="button" value="Linkage" onclick="add_model('linkage', 'Linkage', {id:3, rotationx: 90, filename:('render/linkage.stl')});"></td>
 		</tr>
 		<tr id="mrow-p">
 			<td id="params-basic"><input id="b_pb" type="button" value="Params: Basic" onclick="fill('/params');"></td>
@@ -160,7 +160,7 @@
 			loading_progress_callback:load_prog,
 			all_loaded_callback:all_loaded,
 			auto_resize:true,
-			zoom:200,
+			zoom:100,
 			allow_drag_and_drop:true,
 			on_model_drop:model_drop,
 			model_loaded_callback:mod_loaded,

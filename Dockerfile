@@ -1,4 +1,5 @@
 FROM ubuntu:18.04
+#FROM alpine:latest
 #most of this came from python:3, but was more elegant to override rather than inherit, dur to sql install
 
 # apt-get system utilities
