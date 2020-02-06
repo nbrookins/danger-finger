@@ -170,13 +170,14 @@ class Renderer(Borg):
             self._try_executable(os.path.join(os.environ.get('Programfiles(x86)', 'C:'), 'OpenSCAD\\openscad.exe'))
             self._try_executable(os.path.join(os.environ.get('Programfiles', 'C:'), 'OpenSCAD\\openscad.exe'))
 
-    def scad_to_stl(self, scad_filename, stl_filename):#, **kw):
+    def scad_to_stl(self, scad_filename, stl_filename, trialrun=False):#, **kw):
         '''render a scad file to stl'''
         try:
             # now run openscad to generate stl:
             cmd = [self.openscad_exec, '-o', stl_filename, scad_filename]
+            if trialrun: return cmd
             out = subprocess.check_output(cmd)
-            if out != b'': print(out)
+            if out != b'': return out
             #if return_code < 0:
             #    raise Exception('openscad command line returned code {}'.format(return_code))
         except Exception as e:

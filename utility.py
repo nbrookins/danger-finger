@@ -17,27 +17,15 @@ import tornado.ioloop
 import tornado.web
 import tornado.gen
 import tornado.concurrent
+from tornado.concurrent import run_on_executor
+import concurrent
+from concurrent.futures import ThreadPoolExecutor
 import solid
 from danger import *
 
 tornado.options.define('port', type=int, default=8081, help='server port number (default: 9000)')
 tornado.options.define('debug', type=bool, default=False, help='run in debug mode with autoreload (default: False)')
 
-# class Worker(threading.Thread):
-#    def __init__(self, callback=None, *args, **kwargs):
-#         super(Worker, self).__init__(*args, **kwargs)
-#         self.callback = callback
-
-#    def run(self):
-
-
-# class MainHandler(tornado.web.RequestHandler):
-#     @tornado.web.asynchronous
-#     @tornado.gen.coroutine
-#     def get(self):
-#         response = yield tornado.gen.Task(sleeper)
-#         self.write(response)
-#         self.finish()
 
 def main():
     '''main'''
@@ -45,10 +33,10 @@ def main():
     config = {}
     Params.parse(config)
 
-    server = True
-    if server:
-        start_server()
-        return
+    # server = True
+    # if server:
+    #     start_server()
+    #     return
 
     print("running CLI")
     finger = DangerFinger()
@@ -70,7 +58,7 @@ def main():
     for _fp, model in finger.models.items():
         #flat = flatten(model)
         if not iterable(model):
-            filename = "output/dangerfinger_v4.2_" + model.part
+            filename = "output/dangerfinger_v4.2_" + model.part #TODO - fix template
             model.scad_filename = filename + ".scad"
             write_file(model.scad.encode('utf-8'), model.scad_filename)
 
@@ -83,15 +71,11 @@ def main():
             Renderer().scad_parallel_to_stl(files, max_concurrent_tasks=cores)
     print("Complete")
 
-def start_server():#http_port=8081):
-    http_server = tornado.httpserver.HTTPServer(Application())
-    http_server.listen(tornado.options.options.port)
-    tornado.ioloop.IOLoop.instance().start()
-#     ''' start the web server to take api request for finger building '''
-
-
-#     print("Listening on localhost %s" % (http_port))
+# def start_server():#http_port=8081):
+#     http_server = tornado.httpserver.HTTPServer(Application())
+#     http_server.listen(tornado.options.options.port)
 #     tornado.ioloop.IOLoop.instance().start()
+#     ''' start the web server to take api request for finger building '''
 
 def write_file(data, filename):
     ''' write bytes to file '''
@@ -104,8 +88,11 @@ def write_stl(scad_file, stl_file):
     #TODO - cache these with hash of config...
     start = time.time()
     print("  Beginning render of %s" %(stl_file))
-    Renderer().scad_to_stl(scad_file, stl_file)
+    Renderer().scad_to_stl(scad_file, stl_file)#), trialrun=True)
+    #sp = Subprocess(print_res, timeout=30, args=cmd)
+    #sp.start()
     print("  Rendered %s in %s sec" % (stl_file, round(time.time()-start, 1)))
+    return stl_file
 
 def get_params(self, finger, var):
     '''walk finger to discover parameters'''
@@ -118,51 +105,13 @@ def get_params(self, finger, var):
     print("200 OK JSON response to: %s, %sb" %(self.request.uri, len(pbytes)))
     return
 
-class Application(tornado.web.Application):
-    def __init__(self):
-        handlers = [
-            (r"/params(/?\w*)", FingerHandler), #, {"params":config}),
-            (r"/render/([a-zA-Z0-9.]+)", FingerHandler),
-            (r"/scad/([a-zA-Z0-9.]+)", FingerHandler),
-            (r"/preview", FingerHandler),
-            #fallback serves static files, include ones to supply preview page
-            (r"/(.*)", tornado.web.StaticFileHandler, {"path": "./web/", "default_filename": "index.html"})
-            # ]).listen(http_port)
-            #     (r"/", IndexHandler),
-            #     (r"/thread", ThreadHandler),
-        ]
-        settings = dict(
-            static_path=os.path.join(os.path.dirname(__file__), "static"),
-            template_path=os.path.join(os.path.dirname(__file__), "templates"),
-            debug=tornado.options.options.debug,
-        )
-        tornado.web.Application.__init__(self, handlers, **settings)
-
-
-# def run_async(func):
-#     @wraps(func)
-#     def async_func(*args, **kwargs):
-#         func_hl = Thread(target = func, args = args, kwargs = kwargs)
-#         func_hl.start()
-#         return func_hl
-
-#     return async_func
-
-#@run_async
-@tornado.gen.coroutine
-def task(scad_file, stl_file):
-    write_stl(scad_file, stl_file)
-    #self.serve_file(stl_file, 'model/stl')
-    #callback(
-    return (stl_file)
-    #raise gen.Return(response
-
-
 # pylint: disable=W0223
 class FingerHandler(tornado.web.RequestHandler):
+    # executor = ThreadPoolExecutor(max_workers=4)
+
     '''Handle a metadata request'''
-    @tornado.gen.coroutine
-    def get(self, var):
+    #@tornado.gen.coroutine
+    async def get(self, var):
         '''Handle a metadata request'''
         print("  HTTP Request: %s %s %s" % (self.request, self.request.path, var))
         #TODO - get config here from query string or post
@@ -184,10 +133,18 @@ class FingerHandler(tornado.web.RequestHandler):
             if self.request.path.startswith("/scad"):
                 self.serve_file(scad_file, 'text/scad')
             else:
-                response = yield task(scad_file, stl_file) #tornado.gen.Task(sleeper)
-                self.serve_file(response, 'model/stl')
+                #response = yield task(scad_file, stl_file) #tornado.gen.Task(sleeper)
+                #yield self.task(scad_file, stl_file)
+                #print(response.)
+                # self.serve_file(stl_file, 'model/stl')
                 #self.write(response)
                 #self.finish()
+
+                l = asyncio.get_event_loop()
+                f = l.run_in_executor(self.application.executor, write_stl, scad_file, stl_file)
+                await f
+                #print(r)
+                self.serve_file(stl_file, 'model/stl')
             return
 
         self.write_error(500)
@@ -220,6 +177,39 @@ class EnumEncoder(json.JSONEncoder):
         ''' test enum encoder'''
         return {"__enum__": str(obj)}
 
+async def make_app():
+    ''' create server async'''
+    handlers = [
+        (r"/params(/?\w*)", FingerHandler), #, {"params":config}),
+        (r"/render/([a-zA-Z0-9.]+)", FingerHandler),
+        (r"/scad/([a-zA-Z0-9.]+)", FingerHandler),
+        (r"/preview", FingerHandler),
+        #fallback serves static files, include ones to supply preview page
+        (r"/(.*)", tornado.web.StaticFileHandler, {"path": "./web/", "default_filename": "index.html"})
+        # ]).listen(http_port)
+        #     (r"/", IndexHandler),
+        #     (r"/thread", ThreadHandler),
+    ]
+    settings = dict(
+        static_path=os.path.join(os.path.dirname(__file__), "static"),
+        template_path=os.path.join(os.path.dirname(__file__), "templates"),
+        debug=tornado.options.options.debug,
+    )
+    app = tornado.web.Application(handlers, **settings)
+    #app = tornado.web.Application(handlers, debug=True)
+    app.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+    app.counter = 0
+    app.listen(8081)
+
 if __name__ == "__main__":
     sys.stdout = UnbufferedStdOut(sys.stdout)
-    main()
+    server = True
+
+    if server:
+        #tornado.platform.asyncio.AsyncIOMainLoop().install()
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(make_app())
+        loop.run_forever()
+    else:
+        main()
+
