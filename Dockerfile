@@ -20,7 +20,7 @@ RUN wget -qO - https://files.openscad.org/OBS-Repository-Key.pub | apt-key add -
 
 #install python deps
 COPY requirements.txt /
-RUN DEBIAN_FRONTEND=noninteractive python$py3 -m pip install --no-cache-dir --upgrade pip \
+RUN DEBIAN_FRONTEND=noninteractive python3 -m pip install --no-cache-dir --upgrade pip \
     && python3 -m pip install --no-cache-dir -r requirements.txt \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -29,5 +29,5 @@ ENV script 'python3 -u utility.py $@'
 ENV project 'danger-finger'
 COPY . /
 RUN chmod +x entrypoint.sh \
-    && mkdir output 
+    && mkdir output
 ENTRYPOINT ["/entrypoint.sh"]
