@@ -80,7 +80,7 @@
 			stl_viewer.set_position(3, 50, 10, 0);
 		}
 
-		function add_model(model_name, model_desc, params){//}, params2){//, skip_load){
+		function add_model(model_name, params){//}, params2){//, skip_load){
 			document.getElementById("loader").src="loader.gif";
 			var tdobj=$id("b_" + model_name);
 			// if (!tdobj){
@@ -89,11 +89,20 @@
 			// }
 
 			//tdobj.innerHTML='Adding ' + model_desc + '<br><img id="loader" tag="' + model_name + '" style="width:95px;height:15px;" src="loader.gif">';
-			tdobj.disabled = true//.innerHTML= model_desc
+			//tdobj.disabled = true//.innerHTML= model_desc
+			//TODO - set to removed
 
 			//if (!skip_load)
 			stl_viewer.add_model(params);
+			tdobj.onclick = function() {rem_model(model_name, params['id']);}
+		}
 
+		function rem_model(model_name, model_id){//}, params2){//, skip_load){
+			document.getElementById("loader").src="loader.gif";
+			var tdobj=$id("b_" + model_name);
+			//tdobj.disabled = true//.innerHTML= model_desc
+			stl_viewer.remove_model(model_id); //TODO - remove by ID
+			tdobj.onclick = function() {add_model(model_name, {id:model_id, rotationz: 90/57.3, filename:('render/' + model_name + '.stl')});}
 		}
 
 		function model_drop(model_name){
@@ -129,21 +138,21 @@
 	<table id="mdata">
 		<tr id="mrow">
 		<td id="preview"><input id="b_preview" type="button" value="Preview"
-				onclick="add_model('tip', 'Tip', {id:0, rotationz: 90/57.3, filename:('render/tip.stl')});
-					add_model('middle', 'Middle', {id:1, rotationz: 90/57.3, filename:('render/middle.stl')});
-					add_model('base', 'Base', {id:2, rotationz: 90/57.3, filename:('render/base.stl')});
-					add_model('linkage', 'Linkage', {id:3, rotationz: 90/57.3, filename:('render/linkage.stl')});"> </td>
-			<td id="tip"><input id="b_tip" type="button" value="Tip" onclick="add_model('tip', 'Tip', {id:0, filename:('render/tip.stl')});"></td>
-			<td id="middle"><input id="b_middle" type="button" value="Middle" onclick="add_model('middle', 'Middle', {id:1, filename:('render/middle.stl')}); "></td>
-			<td id="base"><input id="b_base" type="button" value="Base" onclick="add_model('base', 'Base', {id:2, filename:('render/base.stl')});"></td>
-			<td id="linkage"><input id="b_linkage" type="button" value="Linkage" onclick="add_model('linkage', 'Linkage', {id:3, rotationx: 90, filename:('render/linkage.stl')});"></td>
+				onclick="add_model('tip', {id:0, rotationz: 90/57.3, filename:('render/tip.stl')});
+					add_model('middle', {id:1, rotationz: 90/57.3, filename:('render/middle.stl')});
+					add_model('base', {id:2, rotationz: 90/57.3, filename:('render/base.stl')});
+					add_model('linkage', {id:3, rotationz: 90/57.3, filename:('render/linkage.stl')});"> </td>
+			<td id="tip"><input id="b_tip" type="button" value="Tip" onclick="add_model('tip', {id:0, rotationz: 90/57.3,filename:('render/tip.stl')});"></td>
+			<td id="middle"><input id="b_middle" type="button" value="Middle" onclick="add_model('middle', {id:1, rotationz: 90/57.3,filename:('render/middle.stl')}); "></td>
+			<td id="base"><input id="b_base" type="button" value="Base" onclick="add_model('base', {id:2, rotationz: 90/57.3,filename:('render/base.stl')});"></td>
+			<td id="linkage"><input id="b_linkage" type="button" value="Linkage" onclick="add_model('linkage', {id:3, rotationz: 90/57.3,rotationx: 90, filename:('render/linkage.stl')});"></td>
 		</tr>
 		<tr id="mrow-p">
 			<td id="params-basic"><input id="b_pb" type="button" value="Params: Basic" onclick="fill('/params');"></td>
 			<td id="params-basic"><input id="b_pbad" type="button" value="Params: Adv" onclick="fill('/params/adv');"></td>
 			<td id="params-basic"><input id="b_pba" type="button" value="Params: All" onclick="fill('/params/all');"></td>
 			<td id="params-basic"><input id="b_pbad" type="button" value="" onclick=""></td>
-			<td id="params-basic"><input id="b_pba" type="button" value="" onclick=""></td>
+			<td id="params-basic"><input id="b_pba" type="button" value="" onclick=""></td> <!--TODO show params as table, omit default matches feature?-->
 		</tr>
 		<tr id="mrow-pv" >
 			<td id="params_info" colspan="5"></td>
