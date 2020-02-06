@@ -1,11 +1,7 @@
 
 #!make
-
+environ=dev
 env=""
-#always load build.env
-include env/build.env
-export $(shell sed 's/=.*//' env/build.env)
-env_file_param=--env-file env/build.env
 #now also parse any other files they passed in env=
 ifeq ($(env),"")
 	#automatic detect environ
@@ -49,11 +45,11 @@ build_cmd:
 
 build_internal:
 	docker build --rm --compress \
-		--build-arg py3=$(py3) \
-		--tag $(DOCKER_TAG) .
+		--build-arg .
+	#	--tag $(DOCKER_TAG) .
 	docker build --rm --compress \
-		--build-arg py3=$(py3) \
-		--tag $(project):latest .
+		--build-arg .
+	#	--tag $(project):latest .
 
 #build_script_prep::
 	#pwd
