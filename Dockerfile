@@ -29,6 +29,6 @@ RUN DEBIAN_FRONTEND=noninteractive python3 -m pip install --no-cache-dir --upgra
 ENV script 'python3 -u utility.py $@'
 ENV project 'danger-finger'
 COPY . /
-RUN chmod +x entrypoint.sh \
-    && mkdir output
+RUN chmod +x entrypoint.sh
+#   && mkdir output
 ENTRYPOINT ["/entrypoint.sh"]
