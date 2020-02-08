@@ -62,7 +62,7 @@ def main():
 
 # pylint: disable=W0223
 class FingerHandler(tornado.web.RequestHandler):
-
+    ''' handle torando requests for finger api'''
     async def get(self, var):
         '''Handle a metadata request'''
         print("  HTTP Request: %s %s %s" % (self.request, self.request.path, var))

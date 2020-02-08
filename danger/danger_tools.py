@@ -78,8 +78,9 @@ def flatten(l):
 #********************************* Parameterization system **********************************
 class Prop(object):
     ''' a simple property replacement that enforces min and max values'''
-    def __init__(self, val=None, minv=None, maxv=None, doc=None, getter=None, setter=None, adv=False):
+    def __init__(self, val=None, minv=None, maxv=None, doc=None, getter=None, setter=None, adv=False, hidden=False):
         self._value = val
+        self._hidden = hidden
         self._min = minv
         self._max = maxv
         self.__doc__ = doc
@@ -89,12 +90,13 @@ class Prop(object):
         self._default = val
         self.name = None
 
-    adv = property(lambda self: self._adv)
-    val = property(lambda self: self._value)
-    minv = property(lambda self: self._min)
-    maxv = property(lambda self: self._max)
-    doc = property(lambda self: self.__doc__)
+    advanced = property(lambda self: self._adv)
+    value = property(lambda self: self._value)
+    minimum = property(lambda self: self._min)
+    maximum = property(lambda self: self._max)
+    docs = property(lambda self: self.__doc__)
     default = property(lambda self: self._default)
+    hidden = property(lambda self: self._hidden)
 
     @staticmethod
     def minmax(value, minv=None, maxv=None):

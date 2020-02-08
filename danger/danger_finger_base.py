@@ -237,8 +237,8 @@ class DangerFingerBase:
             if name.startswith("_"): continue
             if isinstance(prop, Prop):
                 inst_val = getattr(self, name)
-                if (prop.adv and (adv or allv)) or (not prop.adv and not adv):
-                    params[name] = inst_val if not extended else {"value":inst_val, "minv":prop.minv, "maxv":prop.maxv, "adv":prop.adv, "doc":prop.doc}
+                if (prop.advanced and (adv or allv)) or (not prop.advanced and not adv):
+                    params[name] = inst_val if not extended else {"Value":inst_val, "Minimum":prop.minimum, "Maximum":prop.maximum, "Advanced":prop.advanced, "Documentation":prop.docs, "Default":prop.default}
         return params
 
     def cut_model(self):
