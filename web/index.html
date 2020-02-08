@@ -4,128 +4,9 @@
 	<title>Danger-Finger - Configure and Preview</title>
 	<link rel="stylesheet" type="text/css" href="style.css">
 	<script src="stl_viewer.min.js"></script>
-	<script>
-		function $id(id){
-			return document.getElementById(id);
-		}
-
-		function model_clicked(model_id){
-			$id('model_info_cont').value=JSON.stringify(stl_viewer.get_model_info(model_id));
-		}
-
-		// function add_control(model_id){
-		// 	var model_info=stl_viewer.get_model_info(model_id);
-		// 	if (!model_info.name) return;
-
-		// 	var model_name=model_info.name.substring(0, model_info.name.lastIndexOf('.'));
-		// 	var tdobj=$id('m'+model_name);
-		// 	if (!tdobj) return;
-
-		// 	update_model_col(tdobj, model_id, model_info, model_name);
-
-		// 	// new StlViewer($id('v'+model_name),{
-		// 	// 	load_three_files:false,allow_drag_and_drop:false,
-		// 	// 	models:[{id:0, mesh:stl_viewer.get_model_mesh(model_id), color:model_info.color, display:model_info.display}]
-		// 	// });
-		// }
-
-		// var range_val=new Array();
-		// function update_model_col(tdobj, model_id, model_info, model_name){
-		// 	var s='<table class="c-vm"><tr><td><div id="v'+model_name+'" style="width:98px;height:98px;"></div></td></tr>';
-		// 	s+='<tr><td>Color:<input id="color'+model_id+'" type="color" value="'+(model_info.color?(model_info.color):"#909090")+'" onchange="$id(\'transparent'+model_id+'\').checked=false;stl_viewer.set_color('+model_id+', this.value);">';
-		// 	s+='<br><input id="transparent'+model_id+'" type="checkbox" onchange="stl_viewer.set_color('+model_id+', this.checked?\'transparent\':$id(\'color'+model_id+'\').value);">Transparent</td></tr>';
-		// 	s+='<tr><td>Display:<select onchange="stl_viewer.set_display('+model_id+',this.value);"><option value="flat" '+(model_info.display?(model_info.display=="flat"?"selected":""):"")+'>Flat</option><option value="smooth" '+(model_info.display?(model_info.display=="smooth"?"selected":""):"")+'>Smooth</option><option value="wireframe" '+(model_info.display?(model_info.display=="wireframe"?"selected":""):"")+'>Wireframe</option></select></td></tr>';
-		// 	s+='<tr><td>Scale:<input type="range" value="1" min="0" max="10" step="0.1" onchange="stl_viewer.set_scale('+model_id+',this.value);" oninput="stl_viewer.set_scale('+model_id+',this.value);"></td></tr>';
-		// 	s+='<tr><td>Axis <select id="axis'+model_id+'"><option value="0">X</option><option value="1">Y</option><option value="2">Z</option></select>:<br><table class="atitle"><tr><td>Move</td><td><input type="range" value="0" min="-1000" max="1000" step="5" onchange="stl_viewer.set_position('+model_id+',($id(\'axis'+model_id+'\').value==0?this.value:null),($id(\'axis'+model_id+'\').value==1?this.value:null),($id(\'axis'+model_id+'\').value==2?this.value:null));" oninput="stl_viewer.set_position('+model_id+',($id(\'axis'+model_id+'\').value==0?this.value:null),($id(\'axis'+model_id+'\').value==1?this.value:null),($id(\'axis'+model_id+'\').value==2?this.value:null));"></td></tr><tr><td>Rotate</td><td><input type="range" value="5" min="0" max="10" step="0.1" onchange="var step=range_val['+model_id+']>=this.value?0.628:-0.628; stl_viewer.rotate('+model_id+',($id(\'axis'+model_id+'\').value==0?step:null),($id(\'axis'+model_id+'\').value==1?step:null),($id(\'axis'+model_id+'\').value==2?step:null));range_val['+model_id+']=this.value;" oninput="var step=range_val['+model_id+']>=this.value?0.628:-0.628; stl_viewer.rotate('+model_id+',($id(\'axis'+model_id+'\').value==0?step:null),($id(\'axis'+model_id+'\').value==1?step:null),($id(\'axis'+model_id+'\').value==2?step:null));range_val['+model_id+']=this.value;"></td></tr></table></td></tr>';
-		// 	s+='<tr><td><span class="abtn" id="abtn'+model_id+'" onclick="this.classList.toggle(\'abtn-clicked\');set_animation('+model_id+',this);">Random Animation</span></td></tr>';
-		// 	s+='</table>';
-		// 	tdobj.innerHTML='';
-		// 	tdobj.insertAdjacentHTML('afterbegin', s);
-		// }
-
-		function do_resize(){
-			var height = isNaN(window.innerHeight) ? window.clientHeight : window.innerHeight;
-			var width = isNaN(window.innerWidth) ? window.clientWidth : window.innerWidth;
-			$id('stl_cont').style.height=height*0.4+'px';
-		}
-
-		function load_prog(load_status, load_session){
-			var loaded=0;
-			var total=0;
-
-			Object.keys(load_status).forEach(function(key){
-				if (load_status[key].load_session==load_session){
-					loaded+=load_status[key].loaded;
-					total+=load_status[key].total;
-				}
-			});
-
-		}
-
-		function all_loaded(){
-			//var tag = $id('loader').tag
-			//$id('loader').style.display='none';
-			//$id('stl_cont').style.visibility='visible';
-			//$id(tag).innerHTML=tag
-		}
-
-		function mod_loaded(){
-			//var tag = $id('loader').tag
-			$id('loader').style.display='none';
-			$id('stl_cont').style.visibility='visible';
-			//$id(tag).innerHTML=tag
-
-			stl_viewer.set_position(0, -60, 0, 0);
-			stl_viewer.set_position(1, -30, 0, 0);
-			stl_viewer.set_position(3, 50, 10, 0);
-		}
-
-		function add_model(model_name, params){//}, params2){//, skip_load){
-			document.getElementById("loader").src="loader.gif";
-			var tdobj=$id("b_" + model_name);
-			// if (!tdobj){
-			// 	tdobj=$id('mrow').insertCell(-1);
-			// 	tdobj.id=model_name;
-			// }
-
-			//tdobj.innerHTML='Adding ' + model_desc + '<br><img id="loader" tag="' + model_name + '" style="width:95px;height:15px;" src="loader.gif">';
-			//tdobj.disabled = true//.innerHTML= model_desc
-			//TODO - set to removed
-
-			//if (!skip_load)
-			stl_viewer.add_model(params);
-			tdobj.onclick = function() {rem_model(model_name, params['id']);}
-		}
-
-		function rem_model(model_name, model_id){//}, params2){//, skip_load){
-			document.getElementById("loader").src="loader.gif";
-			var tdobj=$id("b_" + model_name);
-			//tdobj.disabled = true//.innerHTML= model_desc
-			stl_viewer.remove_model(model_id); //TODO - remove by ID
-			tdobj.onclick = function() {add_model(model_name, {id:model_id, rotationz: 90/57.3, filename:('render/' + model_name + '.stl')});}
-		}
-
-		function model_drop(model_name){
-			//add_model(model_name, true);
-			model_name=model_name.substring(0, model_name.lastIndexOf('.'));
-			add_model(model_name, model_name, null, true);
-		}
-
-		function fill(url) {
-			var xhttp = new XMLHttpRequest();
-			xhttp.onreadystatechange = function() {
-				if (this.readyState == 4 && this.status == 200) {
-					$id('params_info').innerHTML = this.responseText;
-				}
-			};
-			xhttp.open("GET", url, true);
-			xhttp.setRequestHeader("Content-type", "application/json");
-			xhttp.send("");
-			//add_model('preview', 'Preview', {filename:('render/preview.stl')});">
-		}
-
-	</script>
-
+	<script src=
+	"https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js">
+		</script>
 </head>
 <body>
 	<div id="wrap" style="width:100%; margin:0 auto;position:relative;">
@@ -137,37 +18,102 @@
 
 	<table id="mdata">
 		<tr id="mrow">
-		<td id="preview"><input id="b_preview" type="button" value="Preview"
-				onclick="add_model('tip', {id:0, rotationz: 90/57.3, filename:('render/tip.stl')});
-					add_model('middle', {id:1, rotationz: 90/57.3, filename:('render/middle.stl')});
-					add_model('base', {id:2, rotationz: 90/57.3, filename:('render/base.stl')});
-					add_model('linkage', {id:3, rotationz: 90/57.3, filename:('render/linkage.stl')});"> </td>
-			<td id="tip"><input id="b_tip" type="button" value="Tip" onclick="add_model('tip', {id:0, rotationz: 90/57.3,filename:('render/tip.stl')});"></td>
-			<td id="middle"><input id="b_middle" type="button" value="Middle" onclick="add_model('middle', {id:1, rotationz: 90/57.3,filename:('render/middle.stl')}); "></td>
-			<td id="base"><input id="b_base" type="button" value="Base" onclick="add_model('base', {id:2, rotationz: 90/57.3,filename:('render/base.stl')});"></td>
-			<td id="linkage"><input id="b_linkage" type="button" value="Linkage" onclick="add_model('linkage', {id:3, rotationz: 90/57.3,rotationx: 90, filename:('render/linkage.stl')});"></td>
+			<td id="preview"><input id="b_preview" type="button" value="Preview" onclick="add_models([0,1,2,3])"> </td>
+			<td id="tip"><input id="b_tip" type="button" value="Tip" onclick="add_models([2]);"></td>
+			<td id="middle"><input id="b_middle" type="button" value="Middle" onclick="add_models([1]); "></td>
+			<td id="base"><input id="b_base" type="button" value="Base" onclick="add_models([0]);"></td>
+			<td id="linkage"><input id="b_linkage" type="button" value="Linkage" onclick="add_models([3]);"></td>
 		</tr>
-		<tr id="mrow-p">
-			<td id="params-basic"><input id="b_pb" type="button" value="Params: Basic" onclick="fill('/params');"></td>
-			<td id="params-basic"><input id="b_pbad" type="button" value="Params: Adv" onclick="fill('/params/adv');"></td>
-			<td id="params-basic"><input id="b_pba" type="button" value="Params: All" onclick="fill('/params/all');"></td>
-			<td id="params-basic"><input id="b_pbad" type="button" value="" onclick=""></td>
-			<td id="params-basic"><input id="b_pba" type="button" value="" onclick=""></td> <!--TODO show params as table, omit default matches feature?-->
+		<tr id="mrow">
+			<td id="params-basic"></td>
+			<td id="params-basic"><input id="b_pb" type="button" value="Params: Basic" onclick="get_params('/params');"></td>
+			<td id="params-basic"><input id="b_pbad" type="button" value="Params: Adv" onclick="get_params('/params/adv');"></td>
+			<td id="params-basic"><input id="b_pba" type="button" value="Params: All" onclick="get_params('/params/all');"></td>
+			<td id="params-basic"></td> <!--TODO show params as table, omit default matches feature?-->
 		</tr>
-		<tr id="mrow-pv" >
+		<!-- <tr id="mrow" >
 			<td id="params_info" colspan="5"></td>
-		</tr>
+		</tr> -->
 	</table>
+	<p id="showData"></p>
+<br />
 
 	<script>
 		var parts = {
-			"preview" : {name:"Preview", url:"render/preview.stl"}
+			'0' : {'name': "base", 'pos': [0, 0, 0]},
+			'1' : {'name': "middle", 'pos': [-30, 0, 0]},
+			'2' : {'name': "tip", 'pos': [-60, 0, 0]},
+			'3' : {'name': "linkage", 'pos': [50, 10, 0]},
+		}
+		var rotationx = 0;
+		var rotationy = 0;
+		var rotationz = 90;
+		var url_template = "render/[NAME].stl";
+
+		//convert from degrees to radians
+		function degtorad(deg){ if (deg==0) {return 0; }else{return deg / 57.3;}}
+		function button_name(id){ return "b_" + parts[id]['name'];}
+		function file_name(id){ return url_template.replace('[NAME]', parts[id]['name']);}
+		function $id(id){ return document.getElementById(id);}
+		function model_clicked(model_id){ $id('model_info_cont').value=JSON.stringify(stl_viewer.get_model_info(model_id));}
+
+		function do_resize(){
+			var height = isNaN(window.innerHeight) ? window.clientHeight : window.innerHeight;
+			var width = isNaN(window.innerWidth) ? window.clientWidth : window.innerWidth;
+			$id('stl_cont').style.height = height * 0.4 + 'px';
+		}
+
+		function mod_loaded(){
+			$id('loader').style.display='none';
+			$id('stl_cont').style.visibility='visible';
+			for (id in Object.keys(parts)){
+				stl_viewer.set_position(id, parts[id]['pos'][0], parts[id]['pos'][1], parts[id]['pos'][2]);
+			}
+		}
+
+		function add_models(ids){
+			console.log(ids);
+			document.getElementById("loader").src="loader.gif";
+			for (k of ids){
+				const id = parseInt(k)
+				console.log("add" + id);
+				const tdobj=$id(button_name(id));
+				stl_viewer.add_model({'id': id, 'filename': file_name(id), 'rotationz': degtorad(rotationz)});
+				tdobj.onclick = function() {rem_models([id]);}
+			}
+		}
+
+		function rem_models(ids){
+			console.log(ids);
+			document.getElementById("loader").src="loader.gif";
+			for (k of ids){
+				const id = parseInt(k)
+				console.log("rem" + id);
+				const tdobj=$id(button_name(id));
+				stl_viewer.remove_model(id);
+				tdobj.onclick = function() {add_models([id]);}
+			}
+		}
+
+		function model_drop(model_name){
+			model_name=model_name.substring(0, model_name.lastIndexOf('.'));
+			add_model(model_name, model_name, null, true);
+		}
+
+		function get_params(url) {
+			var xhttp = new XMLHttpRequest();
+			xhttp.onreadystatechange = function() {
+				if (this.readyState == 4 && this.status == 200) {
+					CreateTableFromJSON(JSON.parse( this.responseText));
+				}
+			};
+			xhttp.open("GET", url, true);
+			xhttp.setRequestHeader("Content-type", "application/json");
+			xhttp.send("");
 		}
 
 		do_resize();
 		var stl_viewer=new StlViewer(document.getElementById("stl_cont"),{
-			loading_progress_callback:load_prog,
-			all_loaded_callback:all_loaded,
 			auto_resize:true,
 			zoom:100,
 			allow_drag_and_drop:true,
@@ -176,7 +122,47 @@
 			on_model_mousedown:model_clicked
 		});
 
-		//add_model("viewstl", "Viewstl", null, true);
+		function CreateTableFromJSON(dict) {
+			var table = document.createElement("table");
+			//first key is our parameter name, discover other headers
+			var col = ['#', 'Parameter'];
+			for (var k of Object.keys(dict)) {
+				for (var key in dict[k]) {
+					if (col.indexOf(key) === -1) { col.push(key); }
+				}
+			}
+
+			// CREATE HTML TABLE HEADER ROW USING THE EXTRACTED HEADERS ABOVE.
+			var tr = table.insertRow(-1);                   // TABLE ROW.
+			for (var i = 0; i < col.length; i++) {
+				var th = document.createElement("th");      // TABLE HEADER.
+				th.innerHTML = col[i];
+				tr.appendChild(th);
+			}
+
+			// ADD JSON DATA TO THE TABLE AS ROWS.
+			var c = 0;
+			for (var k of Object.keys(dict)) {
+				c++;
+				tr = table.insertRow(-1);
+				for (var j = 0; j < col.length; j++) {
+					var tabCell = tr.insertCell(-1);
+					if (j==0){
+						tabCell.innerHTML = c;
+					} else if (j==1){
+						tabCell.innerHTML = k;
+					}else{
+						tabCell.innerHTML = dict[k][col[j]];
+					}
+				}
+			}
+
+			// FINALLY ADD THE NEWLY CREATED TABLE WITH JSON DATA TO A CONTAINER.
+			var divContainer = document.getElementById("showData");
+			divContainer.innerHTML = "";
+			divContainer.appendChild(table);
+		}
+
 	</script>
 
 </body>
