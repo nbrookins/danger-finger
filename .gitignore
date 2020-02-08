@@ -1,11 +1,7 @@
-*.stl
-*.scad
 *.png
-*_gen.scad
 objectdb
 *.pyc
 config.py
 __pycache__
 .vscode
-output
 .DS_Store
