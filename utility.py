@@ -36,7 +36,7 @@ def main():
 
     Params.parse(finger)
     finger.render_quality = RenderQuality.HIGH #  INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
-    finger.preview_quality = RenderQuality.STUPIDFAST #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
+    finger.preview_quality = RenderQuality.MEDIUM #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
    # finger.preview_explode = True
     #finger.preview_cut = True
     #finger.preview_rotate = 40
@@ -158,9 +158,17 @@ def build(p, rend):
     scad_file = "output/dangerfinger_v4.2_" + p + ".scad"
     stl_file = "output/dangerfinger_v4.2_" + p + ".stl"
     if not os.path.exists(scad_file):
+        print("Building finger")
         finger = DangerFinger()
-        finger.render_quality = RenderQuality.STUPIDFAST
+        finger.render_quality = RenderQuality.STUPIDFAST #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
         finger.build()
+        #for mod in finger.models:
+        for _fp, model in finger.models.items():
+            #flat = flatten(model)
+            if not iterable(model):
+                filename = "output/dangerfinger_v4.2_" + model.part #TODO - fix template
+                model.scad_filename = filename + ".scad"
+                write_file(model.scad.encode('utf-8'), model.scad_filename)
     #model = finger.models[FingerPart.from_str(p)]
     if rend:
         if not os.path.exists(stl_file):
