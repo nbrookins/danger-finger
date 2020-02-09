@@ -104,7 +104,8 @@
 			var xhttp = new XMLHttpRequest();
 			xhttp.onreadystatechange = function() {
 				if (this.readyState == 4 && this.status == 200) {
-					CreateTableFromJSON(JSON.parse( this.responseText));
+					params = JSON.parse( this.responseText)
+					CreateTableFromJSON(params);
 				}
 			};
 			xhttp.open("GET", url, true);
@@ -121,6 +122,8 @@
 			model_loaded_callback:mod_loaded,
 			on_model_mousedown:model_clicked
 		});
+
+		var params = {}
 
 		function CreateTableFromJSON(dict) {
 			var table = document.createElement("table");
@@ -151,6 +154,8 @@
 						tabCell.innerHTML = c;
 					} else if (j==1){
 						tabCell.innerHTML = k;
+					} else if (col[j]=='Value'){
+						tabCell.innerHTML = "<input id='" + k + "' value='" + dict[k][col[j]] + "' onchange='on_change(\"" + k + "\");' />";
 					}else{
 						tabCell.innerHTML = dict[k][col[j]];
 					}
@@ -161,6 +166,30 @@
 			var divContainer = document.getElementById("showData");
 			divContainer.innerHTML = "";
 			divContainer.appendChild(table);
+		}
+
+		function on_change(k){
+			var v = $id(k).value = params[k]["Value"] = minmax($id(k).value, params[k]['Minimum'], params[k]['Maximum'])
+			var chg = params[k]["Changed"] = (parseFloat(v) != parseFloat(params[k]["Default"]))
+			console.log(k + ": " + JSON.stringify(params[k]) );
+			$id(k).style.backgroundColor = chg ? "Green" : "";
+
+			for (k of Object.keys(params)){
+				if (params[k]["Changed"]){
+					console.log(k)
+					//TODO create render button
+				}
+			}
+		}
+
+		//TODO - create config call
+		//TODO - reference config with model build
+
+		function minmax(v, minv, maxv){
+			var val = v;
+			if (val < minv){ val = minv; }
+			if (val > maxv){ val = maxv; }
+			return val;
 		}
 
 	</script>
