@@ -238,7 +238,7 @@ class DangerFingerBase:
             if isinstance(prop, Prop):
                 inst_val = getattr(self, name)
                 if (prop.advanced and (adv or allv)) or (not prop.advanced and not adv):
-                    params[name] = inst_val if not extended else {"Value":inst_val, "Minimum":prop.minimum, "Maximum":prop.maximum, "Advanced":prop.advanced, "Documentation":prop.docs, "Default":prop.default}
+                    params[name] = inst_val if not extended else {"Value":inst_val, "Default":prop.default, "Minimum":prop.minimum, "Maximum":prop.maximum, "Advanced":prop.advanced, "Documentation":prop.docs}
         return params
 
     def cut_model(self):
