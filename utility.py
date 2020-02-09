@@ -162,14 +162,11 @@ def build(p, rend):
         finger = DangerFinger()
         finger.render_quality = RenderQuality.STUPIDFAST #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
         finger.build()
-        #for mod in finger.models:
         for _fp, model in finger.models.items():
-            #flat = flatten(model)
             if not iterable(model):
-                filename = "output/dangerfinger_v4.2_" + model.part #TODO - fix template
-                model.scad_filename = filename + ".scad"
-                write_file(model.scad.encode('utf-8'), model.scad_filename)
-    #model = finger.models[FingerPart.from_str(p)]
+                model.scad_filename = "output/dangerfinger_v4.2_" + model.part + ".scad"
+                if not os.path.exists(model.scad_filename):
+                    write_file(model.scad.encode('utf-8'), model.scad_filename)
     if rend:
         if not os.path.exists(stl_file):
             write_stl(scad_file, stl_file)
