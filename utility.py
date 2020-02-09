@@ -60,9 +60,30 @@ def main():
             Renderer().scad_parallel_to_stl(files, max_concurrent_tasks=cores)
     print("Complete")
 
+def set_def_headers(self):
+    print("setting headers!!!")
+    self.set_header("Access-Control-Allow-Origin", "*")
+    self.set_header("Access-Control-Allow-Headers", "Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With")
+    self.set_header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+
+class StaticHandler(tornado.web.StaticFileHandler):
+    def set_default_headers(self):
+        set_def_headers(self)
+
+    def options(self):
+        self.set_status(204)
+        self.finish()
+
+    def data_received(self, chunk):
+        pass
+
 # pylint: disable=W0223
 class FingerHandler(tornado.web.RequestHandler):
     ''' handle torando requests for finger api'''
+
+    def set_default_headers(self):
+        set_def_headers(self)
+
     async def get(self, var):
         '''Handle a metadata request'''
         print("  HTTP Request: %s %s %s" % (self.request, self.request.path, var))
@@ -96,6 +117,10 @@ class FingerHandler(tornado.web.RequestHandler):
         self.finish()
         print("200 OK JSON response to: %s, %sb" %(self.request.uri, len(pbytes)))
         return
+
+    def options(self, var):
+        self.set_status(204)
+        self.finish()
 
     def serve_file(self, filename, mimetype, download=False):
         '''serve a file from disk to client'''
@@ -151,7 +176,7 @@ async def make_app():
         (r"/scad/([a-zA-Z0-9.]+)", FingerHandler),
         (r"/preview", FingerHandler),
         #fallback serves static files, include ones to supply preview page
-        (r"/(.*)", tornado.web.StaticFileHandler, {"path": "./web/", "default_filename": "index.html"})
+        (r"/(.*)", StaticHandler, {"path": "./web/", "default_filename": "index.html"})
     ]
     settings = dict(
         static_path=os.path.join(os.path.dirname(__file__), "static"),
