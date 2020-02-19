@@ -45,7 +45,8 @@ class DangerFinger(DangerFingerBase):
         mod_main = hull()(mod_core + mod_hinge) + hull()(mod_tunnel + mod_core)
 
         #TODO - hardcoded hack
-        return  (mod_main - mod_plugs - mod_side_trim + mod_socket_interface - mod_hinge_cut.translate((self.tunnel_radius/2, 0, 0)) - mod_tendon_hole - mod_elastic - mod_breather- _mod_bridge_cut[0].translate((0.2, -2, 0)).resize((0, 0, self.knuckle_inner_width[Orient.PROXIMAL]))) - mod_extra + mod_washers
+        final = (mod_main - mod_plugs - mod_side_trim + mod_socket_interface - mod_hinge_cut.translate((self.tunnel_radius/2, 0, 0)) - mod_tendon_hole - mod_elastic - mod_breather- _mod_bridge_cut[0].translate((0.2, -2, 0)).resize((0, 0, self.knuckle_inner_width[Orient.PROXIMAL]))) - mod_extra + mod_washers
+        return final.rotate((0, 0, 90))
 
     def part_tip(self):
         ''' Generate the tip finger knuckle section, most distal to remnant '''
@@ -73,7 +74,8 @@ class DangerFinger(DangerFingerBase):
         mod_tip_hole = cylinder(r=self.tendon_hole_radius*1.5, h=20, center=True).rotate((90, 0, 0)).translate((0, self.intermediate_distal_height, 0))
 
         #TODO 1 Hacky hard coded, paired to the 10 in bridge
-        return (mod_main + mod_interface + mod_top_detent - mod_plug_cut - mod_tip_hole - mod_hinge_cut - mod_bend_cut - bridge[1][1].translate((0, 9.0, 0)).resize((0, 0, self.knuckle_inner_width[Orient.DISTAL]))) - mod_extra.translate((-1, 0, 0)).mod("") + mod_washers
+        final = ((mod_main + mod_interface + mod_top_detent - mod_plug_cut - mod_tip_hole - mod_hinge_cut - mod_bend_cut - bridge[1][1].translate((0, 9.0, 0)).resize((0, 0, self.knuckle_inner_width[Orient.DISTAL]))) - mod_extra.translate((-1, 0, 0)).mod("") + mod_washers)
+        return final.rotate((0, 0, 90))
 
     def part_middle(self):
         ''' Generate the middle/intermediate finger section '''
@@ -105,7 +107,8 @@ class DangerFinger(DangerFingerBase):
         mod_side_trim_d = trim_c_d.translate((0, 0, self.intermediate_width[Orient.DISTAL]/2+1.99)) + trim_c_d.translate((0, 0, -self.intermediate_width[Orient.DISTAL]/2-1.99))
         mod_side_trim_p = trim_c_p.translate((0, 0, self.intermediate_width[Orient.PROXIMAL]/2+1.99)) + trim_c_p.translate((0, 0, -self.intermediate_width[Orient.PROXIMAL]/2-1.99))
 
-        return (self.shift_distal()(mod_dist_hinge + mod_tunnel_d) + mod_prox_hinge + mod_strut_tl + mod_strut_tr + mod_strut_b + mod_brace + mod_tunnel_p) - (self.shift_distal()(mod_side_trim_d), mod_side_trim_p)
+        final = (self.shift_distal()(mod_dist_hinge + mod_tunnel_d) + mod_prox_hinge + mod_strut_tl + mod_strut_tr + mod_strut_b + mod_brace + mod_tunnel_p) - (self.shift_distal()(mod_side_trim_d), mod_side_trim_p)
+        return final.rotate((0, 0, 90))
 
     def part_plugs(self, clearance=True):
         ''' plug covers for the knuckle pins'''
@@ -134,7 +137,8 @@ class DangerFinger(DangerFingerBase):
         mod_cut = mod_cross.translate((0, self.linkage_length/3, 0)) + mod_cross.translate((0, self.linkage_length/3 + 3, 0)) + \
             mod_slit.translate((0, self.linkage_length/3 + 3, -self.linkage_width/1.9)) + \
             mod_slit.translate((0, self.linkage_length/3 + 3, self.linkage_width/1.9))
-        return mod_core + mod_hook + mod_core_hull - mod_hole - mod_cut#.mod("%")
+        final = mod_core + mod_hook + mod_core_hull - mod_hole - mod_cut#.mod("%")
+        return final.rotate((0, 0, 90))
 
     def part_socket(self):
         ''' create the interface socket '''
@@ -154,7 +158,8 @@ class DangerFinger(DangerFingerBase):
         mod_bottom = cylinder(r1=self.socket_interface_radius[Orient.PROXIMAL] + self.socket_thickness[Orient.PROXIMAL], r2=self.socket_radius[Orient.DISTAL]+ self.socket_thickness[Orient.DISTAL], h=4) + \
             cylinder(r1=self.socket_radius[Orient.DISTAL]+ self.socket_thickness[Orient.DISTAL], r2=self.socket_radius[Orient.PROXIMAL]+ self.socket_thickness[Orient.PROXIMAL], h=self.socket_depth - self.socket_interface_depth -4).translate((0, 0, 4))
         mod_bottom = translate((0, -length - self.distal_flange_height -.01 - self.socket_interface_length, 0))(rotate((90, 0, 0))(mod_bottom))
-        return color("blue")(mod_core - mod_socket_interface +mod_bottom)
+        final = color("blue")(mod_core - mod_socket_interface +mod_bottom)
+        return final.rotate((0, 0, 90))
 
     def part_tipcover(self):
         ''' the finger tip flexible portion '''
@@ -167,8 +172,8 @@ class DangerFinger(DangerFingerBase):
         sr = self.tip_radius/1.5
         mod_core = cylinder(r=self.tip_radius, h=self.distal_base_length).rotate((90, 90, 0)).translate((0, self.intermediate_length + self.distal_base_length*2, 0))
         mod_sphere = sphere(r=sr).resize((self.tip_radius*1.2, 0, self.tip_radius*1.8)).translate((-self.tip_radius/3, self.intermediate_length + self.distal_length-sr, 0))
-        return color("blue")(hull()(mod_core + mod_sphere))
-
+        final = color("blue")(hull()(mod_core + mod_sphere))
+        return final.rotate((0, 0, 90))
     #**************************************** Primitives ***************************************
 
     def link_hook(self):

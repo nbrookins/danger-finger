@@ -201,7 +201,7 @@ class Renderer(Borg):
         ''' run up to max concurrent tasks to render a list of scad files in parallel '''
         start = time.time()
 
-        commands = [[self.openscad_exec, '-o', scad_filename + ".stl", scad_filename] for scad_filename in scad_filenames]
+        commands = [[self.openscad_exec, '-o', scad_filename.replace(".scad", ".stl"), scad_filename] for scad_filename in scad_filenames]
         tasks = [AsyncSubprocess().run_command(*command) for command in commands]
         results = AsyncSubprocess().run_asyncio_commands(tasks, max_concurrent_tasks=max_concurrent_tasks)
 

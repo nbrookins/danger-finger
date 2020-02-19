@@ -1,10 +1,13 @@
+<!---->
 <!DOCTYPE html>
 <html>
 <head>
 	<title>Danger-Finger - Configure and Preview</title>
 	<link rel="stylesheet" type="text/css" href="style.css">
-	<script src="stl_viewer.min.js"></script>
+	<script src="/stl_viewer.min.js"></script>
 </head>
+<!---->
+<!--<script src="/stl_viewer.min.js"></script>-->
 <body>
 	<div id="wrap" style="width:100%; margin:0 auto;position:relative;">
 		<div id="stl_cont" style="width:100%;visibility:hidden;border:1px dashed #202020;"></div>
@@ -40,6 +43,7 @@
 
 	<script>
 		baseurl = "";
+		//baseurl = "http://ec2co-ecsel-qy18jthyyhk1-1448117639.us-east-1.elb.amazonaws.com:8081/";
 		var parts = {
 			'0' : {'name': "base", 'posf': [0, 0, 0], 'exp' : [0, 0, 0], 'pos': [0, 0, 0], 'rotf': [0, 0, 0] },
 			'1' : {'name': "middle", 'posf': [-1, 0, 0], 'exp' : [-1, 0, 0], 'pos': [0, 0, 0], 'rotf': [0, 0, 1] },
@@ -124,15 +128,15 @@
 			var xhttp = new XMLHttpRequest();
 			xhttp.onreadystatechange = function() {
 				if (this.readyState == 4 && this.status == 200) {
-					console.log("received params");
+					//console.log("received params");
 					params = JSON.parse( this.responseText)
 					CreateTableFromJSON(params);
 				}
 			};
-			xhttp.open("GET", url, true);
+			xhttp.open("GET", baseurl + url, true);
 			xhttp.setRequestHeader("Content-type", "application/json");
 			xhttp.send("");
-			console.log("GET" + url);
+			//console.log("GET" + url);
 		}
 
 		do_resize();
