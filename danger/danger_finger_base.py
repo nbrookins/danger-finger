@@ -63,14 +63,14 @@ class DangerFingerBase:
         self._animate_factor = 1
 
     models = property(lambda self: self._models)
-    preview_cut = Prop(val=False, doc=''' cut the preview for inset view ''')
-    preview_explode = Prop(val=False, doc=''' Enable explode mode, only for preview ''')
-    preview_rotate = Prop(val=0, minv=0, maxv=120, doc=''' rotate the finger ''')
-    animate_explode = Prop(val=False, doc=''' Enable explode animation, only for preview ''')
-    animate_rotate = Prop(val=False, doc=''' Enable rotate animation, only for preview ''')
+    preview_cut = Prop(val=False, doc=''' cut the preview for inset view ''', hidden=True)
+    preview_explode = Prop(val=False, doc=''' Enable explode mode, only for preview ''', hidden=True)
+    preview_rotate = Prop(val=0, minv=0, maxv=120, doc=''' rotate the finger ''', hidden=True)
+    animate_explode = Prop(val=False, doc=''' Enable explode animation, only for preview ''', hidden=True)
+    animate_rotate = Prop(val=False, doc=''' Enable rotate animation, only for preview ''', hidden=True)
     animate = property(lambda self: self.animate_rotate or self.animate_explode)
-    render_quality = Prop(val=RenderQuality.HIGH, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, obj, value: (value))
-    preview_quality = Prop(val=RenderQuality.FAST, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, obj, value: (value))
+    render_quality = Prop(val=RenderQuality.HIGH, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, obj, value: (value), hidden=True)
+    preview_quality = Prop(val=RenderQuality.FAST, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=lambda self, obj, value: (value), hidden=True)
 
     # **************************************** parameters ****************************************
     #TODO 3 - make a first class "AUTO" value?
@@ -125,7 +125,7 @@ class DangerFingerBase:
     knuckle_side_clearance = Prop(val=.2, minv=-.25, maxv=1, adv=True, doc=''' clearance of the flat circle side of the hinges ''')
 
     knuckle_rounding = Prop(val=1.5, minv=0, maxv=4, adv=True, doc=''' amount of rounding for the outer hinges ''')
-    knuckle_cutouts = Prop(val=False, adv=True, doc=''' True for extra cutouts on internals of intermediate section ''')
+    knuckle_cutouts = Prop(val=False, adv=True, doc=''' True for extra cutouts on internals of intermediate section ''', hidden=True)
     knuckle_washer_radius = Prop(val=.75, minv=0, maxv=4, adv=True, doc=''' radius of the washers for lowering hinge friction ''')
     knuckle_washer_thickness = Prop(val=.5, minv=0, maxv=4, adv=True, doc=''' thickness of the washers for lowering hinge friction ''')
     knuckle_brace_height_factor = Prop(val=.3, minv=0, maxv=2, adv=True, doc='''ratio of brace height vs regular struts, e.g. .5 for half the height''')
@@ -201,7 +201,8 @@ class DangerFingerBase:
         return self._prop_offset(self._explode_offsets, self._animate_factor)#pass through ;amda to apply animate offsets
     _explode_factor = 12
     _explode_offsets = {FingerPart.MIDDLE:((0, _explode_factor, 0),), FingerPart.BASE : ((0, 0, 0),), FingerPart.TIP:((0, _explode_factor*2, 0),), FingerPart.SOCKET:((0, -_explode_factor, 0),), \
-        FingerPart.LINKAGE : ((_explode_factor/2, -_explode_factor, 0),), FingerPart.TIPCOVER : ((0, _explode_factor*3, 0),), FingerPart.PLUGS:((0, 0, -_explode_factor/2), (0, 0, _explode_factor/2), (0, _explode_factor*2, -_explode_factor/2), (0, _explode_factor*2, _explode_factor*1.8))}
+        FingerPart.LINKAGE : ((_explode_factor/2, -_explode_factor, 0),), FingerPart.TIPCOVER : ((0, _explode_factor*3, 0),),
+        FingerPart.PLUGS:((0, 0, -_explode_factor/2), (0, 0, _explode_factor/2), (0, _explode_factor*2, -_explode_factor/2), (0, _explode_factor*2, _explode_factor*1.8))}
 
     @property
     def translate_offsets(self):
@@ -238,7 +239,7 @@ class DangerFingerBase:
             if isinstance(prop, Prop):
                 inst_val = getattr(self, name)
                 if (prop.advanced and (adv or allv)) or (not prop.advanced and not adv):
-                    params[name] = inst_val if not extended else {"Value":inst_val, "Default":prop.default, "Minimum":prop.minimum, "Maximum":prop.maximum, "Advanced":prop.advanced, "Documentation":prop.docs}
+                    params[name] = inst_val if not extended else {"Value":inst_val, "Default":prop.default, "Minimum":prop.minimum, "Maximum":prop.maximum, "Advanced":prop.advanced, "Documentation":prop.docs, "Hidden":prop.hidden}
         return params
 
     def cut_model(self):
