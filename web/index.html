@@ -190,7 +190,7 @@
 					} else if (j==1){
 						tabCell.innerHTML = k;
 					} else if (col[j]=='Value'){
-						tabCell.innerHTML = "<input id='" + k + "' value='" + dict[k][col[j]] + "' onchange='on_change(\"" + k + "\");' />";
+						tabCell.innerHTML = "<input name='" + k + "' id='" + k + "' value='" + dict[k][col[j]] + "' onchange='on_change(\"" + k + "\");' />";
 					}else{
 						tabCell.innerHTML = dict[k][col[j]];
 					}
@@ -207,7 +207,19 @@
 			// FINALLY ADD THE NEWLY CREATED TABLE WITH JSON DATA TO A CONTAINER.
 			var divContainer = document.getElementById("showData");
 			divContainer.innerHTML = "";
-			divContainer.appendChild(table);
+
+			var form = document.createElement("form");
+			form.id = "form";
+  			form.method = "POST";
+    		form.action = "/profile/nick/config/test";
+			divContainer.appendChild(form);
+			form.appendChild(table);
+			var button = document.createElement('button');
+			button.innerHTML = 'Save';
+			button.onclick = function(){submit();};
+			divContainer.appendChild(button);
+
+			//divContainer.appendChild(table);
 
 			var div2 = document.getElementById("advData");
 			div2.innerHTML = "";
@@ -217,6 +229,17 @@
 			slide_change();
 		}
 
+		function submit(){
+			for (k of Object.keys(params)){
+				if (!params[k]["Changed"]){
+					console.log(k);
+					var i = $id(k);
+					if (i){i.disabled = true;}
+					//TODO create render button
+				}
+			}
+			document.getElementById("form").submit();
+		}
 
 		function on_change(k){
 			var v = $id(k).value = params[k]["Value"] = minmax($id(k).value, params[k]['Minimum'], params[k]['Maximum'])
