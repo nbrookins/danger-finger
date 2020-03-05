@@ -12,12 +12,11 @@ from solid.utils import *
 from solid.solidpython import OpenSCADObject
 from .danger_finger_base import *
 
-VERSION = 4.2
-
 # ********************************** The danger finger *************************************
 class DangerFinger(DangerFingerBase):
     ''' The actual finger model '''
     # #**************************************** finger bits ****************************************
+    VERSION = 4.2
 
     def part_base(self):
         ''' Generate the base finger section, closest proximal to remnant '''
