@@ -10,7 +10,9 @@ import os
 import sys
 import json
 import time
+import zipfile
 import concurrent
+from io import BytesIO
 import threading
 from collections import OrderedDict
 from hashlib import sha256
@@ -65,6 +67,10 @@ class FingerHandler(tornado.web.RequestHandler):
             self.serve_bytes(b, 'application/json')
             return
 
+        if self.request.path.startswith(("/profile")):
+            if self.request.path.find("/download") > -1:
+                self.serve_download(var, var2)
+
         if self.request.path.startswith("/param"):
             params = DangerFinger().params(adv=var.startswith("/adv"), allv=var.startswith("/all"), extended=True)
             pbytes = json.dumps(params, default=str, skipkeys=True).encode('utf-8')
@@ -78,7 +84,7 @@ class FingerHandler(tornado.web.RequestHandler):
         print("  HTTP Request: %s %s %s %s" % (self.request, self.request.path, userhash, cfg))
         if self.request.path.startswith("/profile"):
             pkey = "profiles/%s" % userhash
-            profile = FingerServer().get(pkey)
+            profile = FingerServer().get(pkey, load=True)
             if not profile: profile = {"userhash" : userhash, "createdtime" :  time.time(), "configs" : {}}
             if "configs" not in profile: profile["configs"] = {}
 
@@ -93,7 +99,7 @@ class FingerHandler(tornado.web.RequestHandler):
         print("  HTTP Request: %s %s %s %s" % (self.request, self.request.path, userhash, cfg))
         if self.request.path.startswith("/profile"):
             pkey = "profiles/%s" % userhash
-            profile = FingerServer().get(pkey)
+            profile = FingerServer().get(pkey, load=True)
             if not profile: profile = {"userhash" : userhash, "createdtime" :  time.time(), "configs" : {}}
             if "configs" not in profile: profile["configs"] = {}
 
@@ -101,7 +107,7 @@ class FingerHandler(tornado.web.RequestHandler):
                 _config, cfgbytes, cfghash = package_config_json(process_post(self.request.body_arguments))
                 print("ConfigHash: %s" % cfghash)
 
-                cfg_load = FingerServer().get("configs/%s" % cfghash)
+                cfg_load = FingerServer().get("configs/%s" % cfghash, load=True)
                 if not cfg_load:
                     err = FingerServer().put("configs/%s" % cfghash, cfgbytes)
                     if err is not None:
@@ -126,6 +132,67 @@ class FingerHandler(tornado.web.RequestHandler):
                 return
 
         self.set_status(500)
+
+    def serve_download(self, prf, cfg):
+        '''find all assets for a config and package into a download zip'''
+        try:
+            profile = FingerServer().get("profiles/" + prf, load=True)
+            if profile and "configs" in profile:
+                for c in profile["configs"]:
+                    if c == cfg or profile["configs"][c] == cfg:
+                        cfghash = profile["configs"][c]
+                        config = FingerServer().get("configs/%s" % cfghash)
+                        models = self.get_config_models(cfghash)
+                        scad = self.get_file_list([models[x]["scadkey"] for x in models])
+                        preview = self.get_file_list([models[x]["previewkey"] for x in models])
+                        renders = self.get_file_list([models[x]["renderkey"] for x in models])
+                        if not check_null(renders) or not check_null(preview) or not check_null(scad) or not check_null(models):
+                            self.set_status(404)
+                            return
+
+                        zipname = "danger_finger_v%s_%s_%s.zip" % (DangerFinger().VERSION, prf, cfg)
+                        #TODO - license and readme
+                        bf = BytesIO()
+                        zf = zipfile.ZipFile(bf, "w")
+                        zf.writestr("metadata/config_" + cfg + ".json", config)
+                        zf.writestr("metadata/profile_" + prf + ".json", json.dumps(profile, skipkeys=True))
+                        for (f, s) in {**models, **scad}.items():
+                            b = s if isinstance(s, bytes) else json.dumps(s, skipkeys=True)
+                            zf.writestr("metadata/" + f, b)
+                        for (f, b) in preview.items():
+                            zf.writestr(f, b)
+                        for (f, b) in renders.items():
+                            zf.writestr(f.replace("render/", ""), b)
+                        zf.close()
+                        self.set_header('Content-Type', 'application/zip')
+                        self.set_header("Content-Disposition", "attachment; filename=%s" % zipname)
+                        self.write(bf.getvalue())
+                        bf.close()
+                        self.finish()
+        except Exception as e:
+            print("Failed to download %s: %s" % (cfg, e))
+        self.set_status(404)
+
+    def get_file_list(self, items):
+        '''get files from a list of keys'''
+        objs = {}
+        for key in items:
+            obj = FingerServer().get(key, load=False)
+            objs[key] = obj
+        return objs
+
+    def get_config_models(self, cfg):
+        '''get models from a configuration'''
+        models = {}
+        for p in FingerPart:
+            if parts & p == 0 or parts & p == FingerPart.HARD or parts & p == FingerPart.ALL: continue
+            pn = str.lower(str(p.name))
+            v = DangerFinger.VERSION
+            pkey = get_key(cfg, v, pn)
+            modkey = "models/%s" % pkey + ".mod"
+            model = FingerServer().get(modkey, load=True)
+            models[modkey] = model
+        return models
 
     def serve_file(self, filename, mimetype, download=False):
         '''serve a file from disk to client'''
@@ -155,6 +222,8 @@ handlers = [
         (r"/profile/([a-zA-Z0-9.]+)/preview/([a-zA-Z0-9.]+)", FingerHandler),
         #handle initiation of quality render
         (r"/profile/([a-zA-Z0-9.]+)/render/([a-zA-Z0-9.]+)", FingerHandler),
+        #handle download of a config and all assets
+        (r"/profile/([a-zA-Z0-9.]+)/download/([a-zA-Z0-9.]+)", FingerHandler),
         #handle get or post of a profile
         (r"/profiles/([a-zA-Z0-9.]+)", FingerHandler),
         #handle gets from s3
@@ -192,14 +261,23 @@ class FingerServer(Borg):
             modkey = "models/%s" % pkey + ".mod"
 
             #model file
-            model = self.get(modkey)
+            model = self.get(modkey, load=True)
+            scadbytes = None
             if model is None:
                 model, scadbytes = create_model(pn, v, cfghash)
+                created = True
+            else:
+                scadbytes = self.get(model["scadkey"])
+            if not scadbytes or len(scadbytes) < 16:
+                scad = build(pn, q=RenderQuality.NONE)
+                scadbytes = scad.encode('utf-8')
+                model["scadhash"] = sha256(scadbytes).hexdigest()
+                model["scadkey"] = "scad/%s" % model["scadhash"] + ".scad"
                 created = True
 
             s3key = path + "/" + model["scadhash"]
             tqkey = path + "queuedtime"
-            objs = self.list(s3key)
+            objs = self.dir(s3key)
             found = False
             for obj in objs:
                 found = True
@@ -238,7 +316,7 @@ class FingerServer(Borg):
             return e
         return None
 
-    def get(self, key, load=True):
+    def get(self, key, load=False):
         '''get an object from s3 '''
         try:
             resp = self.s3.Object(self.s3_bucket, key).get()
@@ -276,7 +354,7 @@ class FingerServer(Borg):
                             tskey = pkey + "starttime"
                             tfkey = pkey + "completedtime"
                             #get the model
-                            model = FingerServer().get(obj.key)
+                            model = FingerServer().get(obj.key, load=True)
                             model[tskey] = time.time()
                             #create the scad
                             rq = RenderQuality.STUPIDFAST if path.find("preview") > -1 else RenderQuality.HIGH
@@ -303,6 +381,12 @@ class FingerServer(Borg):
             finally:
                 self.lock = False
                 time.sleep(timeout)
+
+def check_null(obj):
+    '''check dict for null members'''
+    for i in obj:
+        if obj[i] is None: return False
+    return True
 
 def get_key(cfg, v, pn):
     '''get a config key'''
