@@ -149,9 +149,7 @@ class FingerHandler(tornado.web.RequestHandler):
                         if not check_null(renders) or not check_null(preview) or not check_null(scad) or not check_null(models):
                             self.set_status(404)
                             return
-
                         zipname = "danger_finger_v%s_%s_%s.zip" % (DangerFinger().VERSION, prf, cfg)
-                        #TODO - license and readme
                         bf = BytesIO()
                         zf = zipfile.ZipFile(bf, "w")
                         zf.writestr("metadata/config_" + cfg + ".json", config)
@@ -163,14 +161,17 @@ class FingerHandler(tornado.web.RequestHandler):
                             zf.writestr(f, b)
                         for (f, b) in renders.items():
                             zf.writestr(f.replace("render/", ""), b)
+                        zf.write("LICENSE")
+                        zf.write("README.md")
                         zf.close()
                         self.set_header('Content-Type', 'application/zip')
                         self.set_header("Content-Disposition", "attachment; filename=%s" % zipname)
                         self.write(bf.getvalue())
                         bf.close()
-                        self.finish()
+                        self.set_status(200)
+                        return
         except Exception as e:
-            print("Failed to download %s: %s" % (cfg, e))
+            print("Failed to create download %s: %s" % (cfg, e))
         self.set_status(404)
 
     def get_file_list(self, items):
