@@ -117,6 +117,7 @@ class FingerHandler(tornado.web.RequestHandler):
                 if not cfg in profile["configs"] or profile["configs"][cfg] != cfghash:
                     profile["configs"][cfg] = cfghash
                     profile["updatedtime"] = time.time()
+                    profile["lastconfig"] = cfg
                     err = FingerServer().put("profiles/%s" % userhash, profile)
                     if err is not None:
                         self.set_status(502)
@@ -128,6 +129,8 @@ class FingerHandler(tornado.web.RequestHandler):
             if self.request.path.find("/preview") > -1 or self.request.path.find("/render") > -1:
                 if not FingerServer().queue(cfg, preview=self.request.path.find("/preview") > -1):
                     self.set_status(504)
+                profile["lastconfig"] = cfg
+                FingerServer().put("profiles/%s" % userhash, profile)
                 self.set_status(204)
                 return
 
@@ -139,61 +142,47 @@ class FingerHandler(tornado.web.RequestHandler):
             profile = FingerServer().get("profiles/" + prf, load=True)
             if profile and "configs" in profile:
                 for c in profile["configs"]:
-                    if c == cfg or profile["configs"][c] == cfg:
-                        cfghash = profile["configs"][c]
-                        config = FingerServer().get("configs/%s" % cfghash)
-                        models = self.get_config_models(cfghash)
-                        scad = self.get_file_list([models[x]["scadkey"] for x in models])
-                        preview = self.get_file_list([models[x]["previewkey"] for x in models])
-                        renders = self.get_file_list([models[x]["renderkey"] for x in models])
-                        if not check_null(renders) or not check_null(preview) or not check_null(scad) or not check_null(models):
-                            self.set_status(404)
-                            return
-                        zipname = "danger_finger_v%s_%s_%s.zip" % (DangerFinger().VERSION, prf, cfg)
-                        bf = BytesIO()
-                        zf = zipfile.ZipFile(bf, "w")
-                        zf.writestr("metadata/config_" + cfg + ".json", config)
-                        zf.writestr("metadata/profile_" + prf + ".json", json.dumps(profile, skipkeys=True))
-                        for (f, s) in {**models, **scad}.items():
-                            b = s if isinstance(s, bytes) else json.dumps(s, skipkeys=True)
-                            zf.writestr("metadata/" + f, b)
-                        for (f, b) in preview.items():
-                            zf.writestr(f, b)
-                        for (f, b) in renders.items():
-                            zf.writestr(f.replace("render/", ""), b)
-                        zf.write("LICENSE")
-                        zf.write("README.md")
-                        zf.close()
-                        self.set_header('Content-Type', 'application/zip')
-                        self.set_header("Content-Disposition", "attachment; filename=%s" % zipname)
-                        self.write(bf.getvalue())
-                        bf.close()
-                        self.set_status(200)
+                    if not cfg in (c, profile["configs"][c]):
+                        continue
+                    cfghash = profile["configs"][c]
+                    #pull files from s3
+                    config = FingerServer().get("configs/%s" % cfghash)
+                    models = get_config_models(cfghash)
+                    scad = get_file_list([models[x]["scadkey"] for x in models])
+                    preview = get_file_list([models[x]["previewkey"] for x in models])
+                    renders = get_file_list([models[x]["renderkey"] for x in models])
+                    #if any files are missing, 404 them
+                    if not check_null(renders) or not check_null(preview) or not check_null(scad) or not check_null(models):
+                        self.set_status(404)
                         return
+                    #create a big ol zip file
+                    zipname = "danger_finger_v%s_%s_%s.zip" % (DangerFinger().VERSION, prf, cfg)
+                    bf = BytesIO()
+                    zf = zipfile.ZipFile(bf, "w")
+                    zf.writestr("metadata/config_" + cfg + ".json", config)
+                    zf.writestr("metadata/profile_" + prf + ".json", json.dumps(profile, skipkeys=True))
+                    for (f, s) in {**models, **scad}.items():
+                        b = s if isinstance(s, bytes) else json.dumps(s, skipkeys=True)
+                        zf.writestr("metadata/" + f, b)
+                    for (f, b) in preview.items():
+                        zf.writestr(f, b)
+                    for (f, b) in renders.items():
+                        zf.writestr(f.replace("render/", ""), b)
+                    zf.write("LICENSE")
+                    zf.write("README.md")
+                    zf.close()
+                    self.set_header('Content-Type', 'application/zip')
+                    self.set_header("Content-Disposition", "attachment; filename=%s" % zipname)
+                    self.write(bf.getvalue())
+                    bf.close()
+
+                    profile["lastconfig"] = cfg
+                    FingerServer().put("profiles/%s" % prf, profile)
+                    self.set_status(200)
+                    return
         except Exception as e:
             print("Failed to create download %s: %s" % (cfg, e))
         self.set_status(404)
-
-    def get_file_list(self, items):
-        '''get files from a list of keys'''
-        objs = {}
-        for key in items:
-            obj = FingerServer().get(key, load=False)
-            objs[key] = obj
-        return objs
-
-    def get_config_models(self, cfg):
-        '''get models from a configuration'''
-        models = {}
-        for p in FingerPart:
-            if parts & p == 0 or parts & p == FingerPart.HARD or parts & p == FingerPart.ALL: continue
-            pn = str.lower(str(p.name))
-            v = DangerFinger.VERSION
-            pkey = get_key(cfg, v, pn)
-            modkey = "models/%s" % pkey + ".mod"
-            model = FingerServer().get(modkey, load=True)
-            models[modkey] = model
-        return models
 
     def serve_file(self, filename, mimetype, download=False):
         '''serve a file from disk to client'''
@@ -212,7 +201,7 @@ class FingerHandler(tornado.web.RequestHandler):
         self.write(data)
         print("200 OK response to: %s, %sb" %(self.request.uri, len(data)))
 
-parts = (FingerPart.TIP | FingerPart.BASE | FingerPart.LINKAGE | FingerPart.MIDDLE)
+parts = (FingerPart.TIP | FingerPart.BASE | FingerPart.LINKAGE | FingerPart.MIDDLE | FingerPart.TIPCOVER | FingerPart.SOCKET | FingerPart.PLUGS)
 
 handlers = [
         #get available parameters
@@ -254,8 +243,8 @@ class FingerServer(Borg):
         '''add models to queue'''
         path = "preview" if preview else "render"
         created = False
-        for p in FingerPart:
-            if parts & p == 0 or parts & p == FingerPart.HARD or parts & p == FingerPart.ALL: continue
+        for p in FingerPart.ALL:
+            if parts & p == 0: continue
             pn = str.lower(str(p.name))
             v = DangerFinger.VERSION
             pkey = get_key(cfghash, v, pn)
@@ -383,6 +372,27 @@ class FingerServer(Borg):
                 self.lock = False
                 time.sleep(timeout)
 
+def get_file_list(items):
+    '''get files from a list of keys'''
+    objs = {}
+    for key in items:
+        obj = FingerServer().get(key, load=False)
+        objs[key] = obj
+    return objs
+
+def get_config_models(cfg):
+    '''get models from a configuration'''
+    models = {}
+    for p in FingerPart:
+        if parts & p == 0 or parts & p == FingerPart.HARD or parts & p == FingerPart.ALL: continue
+        pn = str.lower(str(p.name))
+        v = DangerFinger.VERSION
+        pkey = get_key(cfg, v, pn)
+        modkey = "models/%s" % pkey + ".mod"
+        model = FingerServer().get(modkey, load=True)
+        models[modkey] = model
+    return models
+
 def check_null(obj):
     '''check dict for null members'''
     for i in obj:
@@ -442,8 +452,12 @@ def build(p, q=RenderQuality.HIGH):
     finger.render_quality = q#RenderQuality.STUPIDFAST #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
     finger.build(header=(q != RenderQuality.NONE))
     for _fp, model in finger.models.items():
-        if not iterable(model) and str(model.part) == p:
+        if iterable(model):
+            if str(model[0].part) == p:
+                return flatten([x.scad for x in model])
+        elif str(model.part) == p:
             return model.scad
+    return None
 
 async def make_app():
     ''' create server async'''
