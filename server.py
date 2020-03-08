@@ -58,20 +58,24 @@ class FingerHandler(tornado.web.RequestHandler):
     async def get(self, var, var2=None):
         '''Handle a metadata request'''
         print("  HTTP Request: %s %s %s" % (self.request, self.request.path, var))
-        if self.request.path.startswith(("/configs", "/profiles", "/models", "/preview", "/render", "/scad")):
+        if self.request.path.startswith(("/configs", "/profiles", "/models", "/preview", "/render", "/scad", "/downloads")):
             print("  Getting %s from s3 " % self.request.path[1:])
             b = FingerServer().get(self.request.path[1:], load=False)
             if b is None:
                 self.set_status(404)
                 return
-            self.serve_bytes(b, 'application/json')
+            mime = 'application/json' if self.request.path.startswith(("/configs", "/profiles", "/models")) else "application/txt" \
+                if self.request.path.startswith(("/preview", "/render", "/scad")) else 'application/zip'
+            self.serve_bytes(b, mime)
             return
 
         if self.request.path.startswith(("/profile")):
             if self.request.path.find("/download") > -1:
                 self.serve_download(var, var2)
+                return
             if self.request.path.find("/metadata") > -1:
                 self.serve_download(var, var2, metadata=True)
+                return
 
         if self.request.path.startswith("/param"):
             params = DangerFinger().params(adv=var.startswith("/adv"), allv=var.startswith("/all"), extended=True)
@@ -147,47 +151,29 @@ class FingerHandler(tornado.web.RequestHandler):
                     if not cfg in (c, profile["configs"][c]):
                         continue
                     cfghash = profile["configs"][c]
-                    #pull files from s3
-                    config = FingerServer().get("configs/%s" % cfghash)
-                    models = get_config_models(cfghash)
-                    scad = get_file_list([models[x]["scadkey"] for x in models])
-                    if not metadata:
-                        preview = get_file_list([models[x]["previewkey"] for x in models])
-                        renders = get_file_list([models[x]["renderkey"] for x in models])
-                    #if any files are missing, 404 them
-                    if not check_null(scad) or not check_null(models):
-                        self.set_status(404)
-                        return
-                    if not metadata and (not check_null(renders) or not check_null(preview)):
-                        self.set_status(404)
-                        return
-
-                    #create a big ol zip file
-                    zipname = "danger_finger_v%s_%s_%s%s.zip" % (DangerFinger().VERSION, prf, cfg, "_metadata" if metadata else "")
-                    bf = BytesIO()
-                    zf = zipfile.ZipFile(bf, "w")
-                    zf.writestr("metadata/config_" + cfg + ".json", config)
-                    zf.writestr("metadata/profile_" + prf + ".json", json.dumps(profile, skipkeys=True))
-                    for (f, s) in {**models, **scad}.items():
-                        b = s if isinstance(s, bytes) else json.dumps(s, skipkeys=True)
-                        zf.writestr("metadata/" + f, b)
-                    if not metadata:
-                        for (f, b) in preview.items():
-                            zf.writestr(f, b)
-                        for (f, b) in renders.items():
-                            zf.writestr(f.replace("render/", ""), b)
-                    zf.write("LICENSE")
-                    zf.write("README.md")
-                    zf.close()
-                    b = bf.getvalue()
-                    self.set_header('Content-Type', 'application/zip')
-                    self.set_header("Content-Disposition", "attachment; filename=%s" % zipname)
-                    self.write(b)
-                    bf.close()
-
+                    zipname = "danger_finger_v%s_%s%s.zip" % (DangerFinger().VERSION, cfg, "_metadata" if metadata else "")
+                    dlkey = "downloads/" + zipname
+                    dl = FingerServer().get(dlkey)
+                    if dl is None:
+                        #pull files from s3
+                        config = FingerServer().get("configs/%s" % cfghash)
+                        models = get_config_models(cfghash)
+                        files = get_assets(models, metadata)
+                        if files is None:
+                            self.set_status(404)
+                            return
+                        files["LICENSE"] = read_file("LICENSE")
+                        files["README.md"] = read_file("README.md")
+                        files["metadata/config_" + cfg + ".json"] = config
+                        dl = create_zip(files)
+                        FingerServer().put(dlkey, dl)
                     profile["lastconfig"] = cfg
                     FingerServer().put("profiles/%s" % prf, profile)
-                    self.set_status(200)
+
+                    self.set_header('Content-Type', 'application/zip')
+                    self.set_header('Content-Length', len(dl))
+                    self.set_header("Content-Disposition", "attachment; filename=%s" % zipname)
+                    self.write(dl)
                     return
         except Exception as e:
             print("Failed to create download %s: %s" % (cfg, e))
@@ -210,7 +196,7 @@ class FingerHandler(tornado.web.RequestHandler):
         self.write(data)
         print("200 OK response to: %s, %sb" %(self.request.uri, len(data)))
 
-parts = (FingerPart.TIP | FingerPart.BASE | FingerPart.LINKAGE | FingerPart.MIDDLE | FingerPart.TIPCOVER | FingerPart.SOCKET | FingerPart.PLUGS)
+parts = [FingerPart.TIP, FingerPart.BASE, FingerPart.LINKAGE, FingerPart.MIDDLE, FingerPart.TIPCOVER, FingerPart.SOCKET, FingerPart.PLUGS]
 
 handlers = [
         #get available parameters
@@ -232,6 +218,7 @@ handlers = [
         (r"/models/([a-zA-Z0-9.]+)", FingerHandler),
         (r"/render/([a-zA-Z0-9.]+)", FingerHandler),
         (r"/preview/([a-zA-Z0-9.]+)", FingerHandler),
+        (r"/downloads/([a-zA-Z0-9.]+)", FingerHandler),
         #fallback serves static files, include ones to supply preview page
         (r"/(.*)", StaticHandler, {"path": "./web/", "default_filename": "index.html"})
     ]
@@ -253,39 +240,34 @@ class FingerServer(Borg):
         '''add models to queue'''
         path = "preview" if preview else "render"
         created = False
-        for p in FingerPart.ALL:
-            if parts & p == 0: continue
+        for p in parts:
             pn = str.lower(str(p.name))
-            v = DangerFinger.VERSION
-            pkey = get_key(cfghash, v, pn)
+            pkey = get_key(cfghash, DangerFinger.VERSION, pn)
             modkey = "models/%s" % pkey + ".mod"
 
             #model file
             model = self.get(modkey, load=True)
             scadbytes = None
             if model is None:
-                model, scadbytes = create_model(pn, v, cfghash)
+                model, scadbytes = create_model(pn, DangerFinger.VERSION, cfghash)
                 created = True
             else:
                 scadbytes = self.get(model["scadkey"])
             if not scadbytes or len(scadbytes) < 16:
-                scad = build(pn, q=RenderQuality.NONE)
-                scadbytes = scad.encode('utf-8')
+                scadbytes = build(pn, q=RenderQuality.NONE).encode('utf-8')
                 model["scadhash"] = sha256(scadbytes).hexdigest()
                 model["scadkey"] = "scad/%s" % model["scadhash"] + ".scad"
                 created = True
 
             s3key = path + "/" + model["scadhash"]
-            tqkey = path + "queuedtime"
-            objs = self.dir(s3key)
             found = False
-            for obj in objs:
+            for obj in self.dir(s3key):
                 found = True
                 print("Found file: %s" % obj.key)
             if not found:
                 created = True
                 print("Part not found:: %s" % cfghash)
-                model[tqkey] = time.time()
+                model[path + "queuedtime"] = time.time()
                 self.put(s3key + ".mod", model)
                 print("Part uploaded: %s" % s3key + ".mod")
             if created:
@@ -340,47 +322,40 @@ class FingerServer(Borg):
         '''process a scad file in a loop'''
         time.sleep(timeout)
         while True:
-            try:
-                if self.lock: continue
-                for obj in FingerServer().dir(path):
-                    try:
-                        if obj.key.find(".mod") > -1:
-                            self.lock = True
-                            print("Processing: %s" % obj.key)
-                            scad_file = "output/" + obj.key.replace(path, "")
-                            stl_file = scad_file + ".stl"
-                            stl_key = obj.key.replace(".mod", ".stl")
-                            pkey = path.rstrip('/')
-                            tskey = pkey + "starttime"
-                            tfkey = pkey + "completedtime"
-                            #get the model
-                            model = FingerServer().get(obj.key, load=True)
-                            model[tskey] = time.time()
-                            #create the scad
-                            rq = RenderQuality.STUPIDFAST if path.find("preview") > -1 else RenderQuality.HIGH
-                            scad = DangerFinger().scad_header(rq) + "\n" + FingerServer().get(model["scadkey"], load=False).decode('utf-8')
-                            scadbytes = scad.encode('utf-8')
-                            write_file(scadbytes, scad_file)
-                            print("   Wrote SCAD file: %s" % scad_file)
-                            #render it!
-                            write_stl(scad_file, stl_file)
-                            with open(stl_file, 'rb') as file_h:
-                                data = file_h.read()
-                                FingerServer().put(stl_key, data)
-                                print("   uploaded %s" % stl_key)
-                                obj.delete()
-                                print("   deleted %s" % obj.key)
-                            model[tfkey] = time.time()
-                            model[pkey + "key"] = stl_key
-                            FingerServer().put(model["modkey"], model)
-                            print("   updated %s" % model["modkey"])
-                    except Exception as e:
-                        print("Error with %s: %s" % (obj.key, e))
-            except Exception as e:
-                print("Error: %s" % e)
-            finally:
-                self.lock = False
-                time.sleep(timeout)
+            if self.lock: continue
+            for obj in FingerServer().dir(path):
+                try:
+                    if obj.key.find(".mod") == -1:
+                        continue
+                    self.lock = True
+                    print("Processing: %s" % obj.key)
+                    scad_file = "output/" + obj.key.replace(path, "")
+                    stl_file = scad_file + ".stl"
+                    stl_key = obj.key.replace(".mod", ".stl")
+                    pkey = path.rstrip('/')
+                    #get the model
+                    model = FingerServer().get(obj.key, load=True)
+                    model[pkey + "starttime"] = time.time()
+                    #create the scad
+                    rq = RenderQuality.STUPIDFAST if path.find("preview") > -1 else RenderQuality.HIGH
+                    scad = DangerFinger().scad_header(rq) + "\n" + FingerServer().get(model["scadkey"], load=False).decode('utf-8')
+                    write_file(scad.encode('utf-8'), scad_file)
+                    print("   Wrote SCAD file: %s" % scad_file)
+                    #render it!
+                    write_stl(scad_file, stl_file)
+                    with open(stl_file, 'rb') as file_h:
+                        FingerServer().put(stl_key, file_h.read())
+                        print("   uploaded %s" % stl_key)
+                        obj.delete()
+                        print("   deleted %s" % obj.key)
+                    model[pkey + "completedtime"] = time.time()
+                    model[pkey + "key"] = stl_key
+                    FingerServer().put(model["modkey"], model)
+                    print("   updated %s" % model["modkey"])
+                except Exception as e:
+                    print("Error with %s: %s" % (obj.key, e))
+            self.lock = False
+            time.sleep(timeout)
 
 def get_file_list(items):
     '''get files from a list of keys'''
@@ -390,12 +365,35 @@ def get_file_list(items):
         objs[key] = obj
     return objs
 
+def get_assets(models, metadata):
+    '''get assets for a list of models'''
+    files = {}
+    scad = get_file_list([models[x]["scadkey"] for x in models])
+    for (f, s) in models.items():
+        if s is None: return None
+        b = json.dumps(s, skipkeys=True)
+        files["metadata/" + f] = b
+    for (f, s) in scad.items():
+        if s is None: return None
+        bs = DangerFinger().scad_header(RenderQuality.HIGH) + "\n" + s.decode('utf-8')
+        b = bs.encode('utf-8')
+        files["metadata/" + f] = b
+    if not metadata:
+        preview = get_file_list([models[x]["previewkey"] for x in models])
+        renders = get_file_list([models[x]["renderkey"] for x in models])
+        for (f, b) in preview.items():
+            if b is None: return None
+            files[f] = b
+        for (f, b) in renders.items():
+            if b is None: return None
+            files[f.replace("render/", "")] = b
+    return files
+
 def get_config_models(cfg):
     '''get models from a configuration'''
     models = {}
-    for p in FingerPart:
-        if parts & p == 0 or parts & p == FingerPart.HARD or parts & p == FingerPart.ALL: continue
-        pn = str.lower(str(p.name))
+    for p in list(parts):
+        pn = str.lower(str(FingerPart(p).name))
         v = DangerFinger.VERSION
         pkey = get_key(cfg, v, pn)
         modkey = "models/%s" % pkey + ".mod"
@@ -426,6 +424,23 @@ def create_model(pn, v, cfghash):
 def process_post(args):
     '''parse a post body'''
     return {k: v[0].decode('utf-8') for (k, v) in args.items()}
+
+def create_zip(files):
+    '''create a big ol zip file'''
+    bf = BytesIO()
+    zf = zipfile.ZipFile(bf, "w")
+    for (f, b) in files.items():
+        zf.writestr(f, b)
+    zf.close()
+    dl = bf.getvalue()
+    bf.close()
+    return dl
+
+def read_file(filename):
+    '''serve a file from disk to client'''
+    with open(filename, 'rb') as file_h:
+        print("serving %s" % filename)
+        return file_h.read()
 
 def remove_defaults(config):
     '''ensure defaults are not cluttering the config'''
