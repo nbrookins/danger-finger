@@ -250,7 +250,7 @@ class DangerFingerBase:
     def build(self, header=False):
         ''' build all models and render their scad code.  populates .models - this is very fast '''
         self._build_models()
-        self._build_preview()
+        #self._build_preview()
         self._build_scad(header=header)
 
     def _build_scad(self, header=False):

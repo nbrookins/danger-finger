@@ -70,6 +70,8 @@ class FingerHandler(tornado.web.RequestHandler):
         if self.request.path.startswith(("/profile")):
             if self.request.path.find("/download") > -1:
                 self.serve_download(var, var2)
+            if self.request.path.find("/metadata") > -1:
+                self.serve_download(var, var2, metadata=True)
 
         if self.request.path.startswith("/param"):
             params = DangerFinger().params(adv=var.startswith("/adv"), allv=var.startswith("/all"), extended=True)
@@ -136,7 +138,7 @@ class FingerHandler(tornado.web.RequestHandler):
 
         self.set_status(500)
 
-    def serve_download(self, prf, cfg):
+    def serve_download(self, prf, cfg, metadata=False):
         '''find all assets for a config and package into a download zip'''
         try:
             profile = FingerServer().get("profiles/" + prf, load=True)
@@ -149,14 +151,19 @@ class FingerHandler(tornado.web.RequestHandler):
                     config = FingerServer().get("configs/%s" % cfghash)
                     models = get_config_models(cfghash)
                     scad = get_file_list([models[x]["scadkey"] for x in models])
-                    preview = get_file_list([models[x]["previewkey"] for x in models])
-                    renders = get_file_list([models[x]["renderkey"] for x in models])
+                    if not metadata:
+                        preview = get_file_list([models[x]["previewkey"] for x in models])
+                        renders = get_file_list([models[x]["renderkey"] for x in models])
                     #if any files are missing, 404 them
-                    if not check_null(renders) or not check_null(preview) or not check_null(scad) or not check_null(models):
+                    if not check_null(scad) or not check_null(models):
                         self.set_status(404)
                         return
+                    if not metadata and (not check_null(renders) or not check_null(preview)):
+                        self.set_status(404)
+                        return
+
                     #create a big ol zip file
-                    zipname = "danger_finger_v%s_%s_%s.zip" % (DangerFinger().VERSION, prf, cfg)
+                    zipname = "danger_finger_v%s_%s_%s%s.zip" % (DangerFinger().VERSION, prf, cfg, "_metadata" if metadata else "")
                     bf = BytesIO()
                     zf = zipfile.ZipFile(bf, "w")
                     zf.writestr("metadata/config_" + cfg + ".json", config)
@@ -164,16 +171,18 @@ class FingerHandler(tornado.web.RequestHandler):
                     for (f, s) in {**models, **scad}.items():
                         b = s if isinstance(s, bytes) else json.dumps(s, skipkeys=True)
                         zf.writestr("metadata/" + f, b)
-                    for (f, b) in preview.items():
-                        zf.writestr(f, b)
-                    for (f, b) in renders.items():
-                        zf.writestr(f.replace("render/", ""), b)
+                    if not metadata:
+                        for (f, b) in preview.items():
+                            zf.writestr(f, b)
+                        for (f, b) in renders.items():
+                            zf.writestr(f.replace("render/", ""), b)
                     zf.write("LICENSE")
                     zf.write("README.md")
                     zf.close()
+                    b = bf.getvalue()
                     self.set_header('Content-Type', 'application/zip')
                     self.set_header("Content-Disposition", "attachment; filename=%s" % zipname)
-                    self.write(bf.getvalue())
+                    self.write(b)
                     bf.close()
 
                     profile["lastconfig"] = cfg
@@ -214,6 +223,7 @@ handlers = [
         (r"/profile/([a-zA-Z0-9.]+)/render/([a-zA-Z0-9.]+)", FingerHandler),
         #handle download of a config and all assets
         (r"/profile/([a-zA-Z0-9.]+)/download/([a-zA-Z0-9.]+)", FingerHandler),
+        (r"/profile/([a-zA-Z0-9.]+)/metadata/([a-zA-Z0-9.]+)", FingerHandler),
         #handle get or post of a profile
         (r"/profiles/([a-zA-Z0-9.]+)", FingerHandler),
         #handle gets from s3
