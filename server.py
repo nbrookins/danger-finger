@@ -53,7 +53,7 @@ class FingerHandler(tornado.web.RequestHandler):
         print("  HTTP Request: %s %s %s" % (self.request, self.request.path, var))
         if self.request.path.startswith(("/configs", "/profiles", "/models", "/preview", "/render", "/scad")):
             print("  Getting %s from s3 " % self.request.path[1:])
-            b = s3_get(self.request.path[1:], load=False)
+            b = FingerServer().get(self.request.path[1:], load=False)
             if b is None:
                 self.set_status(404)
                 return
@@ -72,13 +72,13 @@ class FingerHandler(tornado.web.RequestHandler):
         print("  HTTP Request: %s %s %s %s" % (self.request, self.request.path, userhash, cfg))
         if self.request.path.startswith("/profile"):
             pkey = "profiles/%s" % userhash
-            profile = s3_get(pkey)
+            profile = FingerServer().get(pkey)
             if not profile: profile = {"userhash" : userhash, "createdtime" :  time.time(), "configs" : {}}
             if "configs" not in profile: profile["configs"] = {}
 
             if cfg in profile["configs"]:
                 del profile["configs"][cfg]
-                s3_put(pkey, profile)
+                FingerServer().put(pkey, profile)
                 self.set_status(204)
         self.set_status(500)
 
@@ -86,7 +86,7 @@ class FingerHandler(tornado.web.RequestHandler):
         print("  HTTP Request: %s %s %s %s" % (self.request, self.request.path, userhash, cfg))
         if self.request.path.startswith("/profile"):
             pkey = "profiles/%s" % userhash
-            profile = s3_get(pkey)
+            profile = FingerServer().get(pkey)
             if not profile: profile = {"userhash" : userhash, "createdtime" :  time.time(), "configs" : {}}
             if "configs" not in profile: profile["configs"] = {}
 
@@ -94,9 +94,9 @@ class FingerHandler(tornado.web.RequestHandler):
                 _config, cfgbytes, cfghash = package_json(process_post(self.request.body_arguments))
                 print("ConfigHash: %s" % cfghash)
 
-                cfg_load = s3_get("configs/%s" % cfghash)
+                cfg_load = FingerServer().get("configs/%s" % cfghash)
                 if not cfg_load:
-                    err = s3_put("configs/%s" % cfghash, cfgbytes)
+                    err = FingerServer().put("configs/%s" % cfghash, cfgbytes)
                     if err is not None:
                         self.set_status(503)
                         return
@@ -104,7 +104,7 @@ class FingerHandler(tornado.web.RequestHandler):
                 if not cfg in profile["configs"] or profile["configs"][cfg] != cfghash:
                     profile["configs"][cfg] = cfghash
                     profile["updatedtime"] = time.time()
-                    err = s3_put("profiles/%s" % userhash, profile)
+                    err = FingerServer().put("profiles/%s" % userhash, profile)
                     if err is not None:
                         self.set_status(502)
                         return
@@ -174,14 +174,14 @@ def initiate_render(cfghash, preview=False):
         modkey = "models/%s" % pkey + ".mod"
 
         #model file
-        model = s3_get(modkey)
+        model = FingerServer().get(modkey)
         if model is None:
             model, scadbytes = create_model(pn, v, cfghash)
             created = True
 
         s3key = path + "/" + model["scadhash"]
         tqkey = path + "queuedtime"
-        objs = s3_list(s3key)
+        objs = FingerServer().list(s3key)
         found = False
         for obj in objs:
             found = True
@@ -190,11 +190,11 @@ def initiate_render(cfghash, preview=False):
             created = True
             print("Part not found:: %s" % cfghash)
             model[tqkey] = time.time()
-            s3_put(s3key + ".mod", model)
+            FingerServer().put(s3key + ".mod", model)
             print("Part uploaded: %s" % s3key + ".mod")
         if created:
-            s3_put(modkey, model)
-            s3_put(model["scadkey"], scadbytes)
+            FingerServer().put(modkey, model)
+            FingerServer().put(model["scadkey"], scadbytes)
             print("Model uploaded: %s, %s" % (modkey, model["scadkey"]))
     if not created:
         print("Found all parts for %s " % cfghash)
@@ -223,34 +223,6 @@ def package_json(obj):
     cfgbytes = json.dumps(config, skipkeys=True).encode('utf-8')
     cfghash = sha256(cfgbytes).hexdigest()
     return config, cfgbytes, cfghash
-
-def s3_get(key, load=True):
-    try:
-        resp = FingerServer().s3.Object("danger-finger", key).get()
-        print("Found object: %s " % key)
-        b = resp["Body"].read()
-        return json.loads(b) if load else b
-    except Exception as e:
-        print("Object %s not found:: %s" % (key, e))
-    return None
-
-def s3_list(key):
-    objs = []
-    try:
-        objs = FingerServer().bucket.objects.filter(Prefix=key)
-    except Exception as e:
-        print("Error: %s" % e)
-    return objs
-
-def s3_put(key, obj):
-    b = obj if isinstance(obj, bytes) else json.dumps(obj, skipkeys=True).encode('utf-8') #, cls=EnumEncoder
-    try:
-        FingerServer().s3.Object("danger-finger", key).put(Body=b)
-        print("Created object %s " % (key))
-    except Exception as e:
-        print("Failed to save %s: %s" % (key, e))
-        return e
-    return None
 
 def write_file(data, filename):
     ''' write bytes to file '''
@@ -301,6 +273,34 @@ class FingerServer(Borg):
     bucket = None
     lock = False
 
+    def dir(self, key):
+        objs = []
+        try:
+            objs = self.bucket.objects.filter(Prefix=key)
+        except Exception as e:
+            print("Error: %s" % e)
+        return objs
+
+    def put(self, key, obj):
+        b = obj if isinstance(obj, bytes) else json.dumps(obj, skipkeys=True).encode('utf-8') #, cls=EnumEncoder
+        try:
+            self.s3.Object(self.s3_bucket, key).put(Body=b)
+            print("Created object %s " % (key))
+        except Exception as e:
+            print("Failed to save %s: %s" % (key, e))
+            return e
+        return None
+
+    def get(self, key, load=True):
+        try:
+            resp = self.s3.Object(self.s3_bucket, key).get()
+            print("Found object: %s " % key)
+            b = resp["Body"].read()
+            return json.loads(b) if load else b
+        except Exception as e:
+            print("Object %s not found:: %s" % (key, e))
+        return None
+
     def setup(self):
         self.s3session = boto3.Session(aws_access_key_id=self.aws_id, aws_secret_access_key=self.aws_key)
         self.s3 = self.s3session.resource('s3')
@@ -314,7 +314,7 @@ class FingerServer(Borg):
         while True:
             try:
                 if self.lock: continue
-                for obj in s3_list(path):
+                for obj in FingerServer().dir(path):
                     try:
                         if obj.key.find(".mod") > -1:
                             self.lock = True
@@ -326,11 +326,11 @@ class FingerServer(Borg):
                             tskey = pkey + "starttime"
                             tfkey = pkey + "completedtime"
                             #get the model
-                            model = s3_get(obj.key)
+                            model = FingerServer().get(obj.key)
                             model[tskey] = time.time()
                             #create the scad
                             rq = RenderQuality.STUPIDFAST if path.find("preview") > -1 else RenderQuality.HIGH
-                            scad = DangerFinger().scad_header(rq) + "\n" + s3_get(model["scadkey"], load=False).decode('utf-8')
+                            scad = DangerFinger().scad_header(rq) + "\n" + FingerServer().get(model["scadkey"], load=False).decode('utf-8')
                             scadbytes = scad.encode('utf-8')
                             write_file(scadbytes, scad_file)
                             print("   Wrote SCAD file: %s" % scad_file)
@@ -338,13 +338,13 @@ class FingerServer(Borg):
                             write_stl(scad_file, stl_file)
                             with open(stl_file, 'rb') as file_h:
                                 data = file_h.read()
-                                s3_put(stl_key, data)
+                                FingerServer().put(stl_key, data)
                                 print("   uploaded %s" % stl_key)
                                 obj.delete()
                                 print("   deleted %s" % obj.key)
                             model[tfkey] = time.time()
                             model[pkey + "key"] = stl_key
-                            s3_put(model["modkey"], model)
+                            FingerServer().put(model["modkey"], model)
                             print("   updated %s" % model["modkey"])
                     except Exception as e:
                         print("Error with %s: %s" % (obj.key, e))
