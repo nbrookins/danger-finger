@@ -429,7 +429,6 @@ def write_file(data, filename):
 
 def write_stl(scad_file, stl_file):
     ''' render and write stl to file '''
-    #TODO - cache these with hash of config...
     start = time.time()
     print("  Beginning render of %s" %(stl_file))
     Renderer().scad_to_stl(scad_file, stl_file)#), trialrun=True)
@@ -454,7 +453,6 @@ async def make_app():
         debug=tornado.options.options.debug,
     )
     app = tornado.web.Application(handlers, **settings)
-    #app = tornado.web.Application(handlers, debug=True)
     app.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     app.counter = 0
     app.listen(fs.http_port)
