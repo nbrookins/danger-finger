@@ -202,7 +202,7 @@ class DangerFingerBase:
         return self._prop_offset(self._explode_offsets, self._animate_factor)#pass through ;amda to apply animate offsets
     _explode_factor = 12
     _explode_offsets = {FingerPart.MIDDLE:((0, _explode_factor, 0),), FingerPart.BASE : ((0, 0, 0),), FingerPart.TIP:((0, _explode_factor*2, 0),), FingerPart.SOCKET:((0, -_explode_factor, 0),), \
-        FingerPart.LINKAGE : ((_explode_factor/2, -_explode_factor, 0),), FingerPart.TIPCOVER : ((0, _explode_factor*3, 0),),
+        FingerPart.LINKAGE : ((_explode_factor/2, -_explode_factor, 0),), FingerPart.TIPCOVER : ((0, _explode_factor*3, 0),), \
         FingerPart.PLUGS:((0, 0, -_explode_factor/2), (0, 0, _explode_factor/2), (0, _explode_factor*2, -_explode_factor/2), (0, _explode_factor*2, _explode_factor*1.8))}
 
     @property
