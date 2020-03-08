@@ -22,7 +22,7 @@ class Orient(IntFlag):
 
 class RenderQuality(Flag):
     ''' Enum for passing an orientation '''
-    #AUTO = 0
+    NONE = 0
     INSANE = 2
     ULTRAHIGH = 5
     HIGH = 10
@@ -193,6 +193,7 @@ class DangerFingerBase:
 
     def scad_header(self, rq):
         ''' calculate header for top of scad file'''
+        if rq == RenderQuality.NONE: return ""
         return "$fa = %s; \n$fs = %s;\n" % (self.fa[rq], self.fs[rq])
     #*************************************** special properties **********************************
     @property
@@ -246,16 +247,16 @@ class DangerFingerBase:
         ''' model to cut from preview for cutaway previwe'''
         return cube((30, 200, 30)).translate((0, -75, 0))
 
-    def build(self):
+    def build(self, header=False):
         ''' build all models and render their scad code.  populates .models - this is very fast '''
         self._build_models()
         self._build_preview()
-        self._build_scad()
+        self._build_scad(header=header)
 
-    def _build_scad(self):
+    def _build_scad(self, header=False):
         for fp, model in self.models.items():
             obj = flatten(model)
-            header = self.scad_header(self.preview_quality if fp == FingerPart.PREVIEW else self.render_quality)
+            header = "" if not header else self.scad_header(self.preview_quality if fp == FingerPart.PREVIEW else self.render_quality)
             code = scad_render(obj, file_header=header) if not (self.animate and fp == FingerPart.PREVIEW) else \
                     scad_render_animated(self._animate_explosion(), steps=20, back_and_forth=True, file_header=header)#, include_orig_code=True)
             set_list_attr(model, "scad", code)

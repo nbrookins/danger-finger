@@ -51,7 +51,7 @@ class FingerHandler(tornado.web.RequestHandler):
     async def get(self, var, var2=None):
         '''Handle a metadata request'''
         print("  HTTP Request: %s %s %s" % (self.request, self.request.path, var))
-        if self.request.path.startswith(("/configs", "/profiles", "/models", "/preview", "/render")):
+        if self.request.path.startswith(("/configs", "/profiles", "/models", "/preview", "/render", "/scad")):
             print("  Getting %s from s3 " % self.request.path[1:])
             b = s3_get(self.request.path[1:], load=False)
             if b is None:
@@ -66,39 +66,27 @@ class FingerHandler(tornado.web.RequestHandler):
             self.serve_bytes(pbytes, 'application/json')
             return
 
-        #synchronous rendering for testing
-        if self.request.path.startswith(("/scad", "/render")):
-            rend = not self.request.path.startswith("/scad")
-            mime = 'model/stl' if render else 'text/scad'
-            p = var.split('.')[0]
-            l = asyncio.get_event_loop()
-            f = l.run_in_executor(self.application.executor, build, p, rend, q=RenderQuality.STUPIDFAST)
-            filename = await f
-            self.serve_file(filename, mime)
-            return
-
         self.set_status(500)
 
-#    def put(self, var, user=""):
-        # print("  HTTP Request: %s %s %s %s" % (self.request, self.request.path, var, user))
-        # if user != "":
-        #     #TODO - pull user profile
-        #     resp = FingerServer.s3.Object("danger-finger", "profiles/%s" % user).get()
-        #     profile = json.loads(resp["Body"].read())
-        #     print(profile)
+    def delete(self, userhash, cfg):
+        print("  HTTP Request: %s %s %s %s" % (self.request, self.request.path, userhash, cfg))
+        if self.request.path.startswith("/profile"):
+            pkey = "profiles/%s" % userhash
+            profile = s3_get(pkey)
+            if not profile: profile = {"userhash" : userhash, "createdtime" :  time.time(), "configs" : {}}
+            if "configs" not in profile: profile["configs"] = {}
 
-        #disable direct puts to S3, we'll do that only programmatically - leaving for testing
-        # if self.request.path.startswith(("/configs", "/profiles", "/models", "/preview", "/render")):
-        #     print("setting %s, %s" % (self.request.path[1:], self.request.body))
-        #     s3session.resource('s3').Object("danger-finger", self.request.path[1:]).put(Body=self.request.body)
-        #     self.set_status(204)
-        #     return
- #       self.write_error(500)
+            if cfg in profile["configs"]:
+                del profile["configs"][cfg]
+                s3_put(pkey, profile)
+                self.set_status(204)
+        self.set_status(500)
 
     def post(self, userhash, cfg):
         print("  HTTP Request: %s %s %s %s" % (self.request, self.request.path, userhash, cfg))
         if self.request.path.startswith("/profile"):
-            profile = s3_get("profiles/%s" % userhash)
+            pkey = "profiles/%s" % userhash
+            profile = s3_get(pkey)
             if not profile: profile = {"userhash" : userhash, "createdtime" :  time.time(), "configs" : {}}
             if "configs" not in profile: profile["configs"] = {}
 
@@ -154,12 +142,6 @@ parts = (FingerPart.TIP | FingerPart.BASE | FingerPart.LINKAGE | FingerPart.MIDD
 handlers = [
         #get available parameters
         (r"/params(/?\w*)", FingerHandler),
-        #synchronous rendering for testing purposes
-        (r"/render/([a-zA-Z0-9.]+)", FingerHandler),
-        #get scad output for a config
-        (r"/scad/([a-zA-Z0-9.]+)", FingerHandler),
-        #testing only
-        (r"/preview", FingerHandler),
         #handle post of config to a profile
         (r"/profile/([a-zA-Z0-9.]+)/config/([a-zA-Z0-9.]+)", FingerHandler),
         #handle initiation of preview render
@@ -170,6 +152,7 @@ handlers = [
         (r"/profiles/([a-zA-Z0-9.]+)", FingerHandler),
         #handle gets from s3
         (r"/configs/([a-zA-Z0-9.]+)", FingerHandler),
+        (r"/scad/([a-zA-Z0-9.]+)", FingerHandler),
         (r"/models/([a-zA-Z0-9.]+)", FingerHandler),
         (r"/render/([a-zA-Z0-9.]+)", FingerHandler),
         (r"/preview/([a-zA-Z0-9.]+)", FingerHandler),
@@ -188,40 +171,43 @@ def initiate_render(cfghash, preview=False):
         pn = str.lower(str(p.name))
         v = DangerFinger.VERSION
         pkey = get_key(cfghash, v, pn)
+        modkey = "models/%s" % pkey + ".mod"
 
         #model file
-        model = s3_get("/models/%s" % pkey)
+        model = s3_get(modkey)
         if model is None:
-            model = {"cdfghash": cfghash, "version": v, "part" : pn, "createdtime" : time.time()}
-            #resp = self.s3.Object("danger-finger", "preview/%s" % key).get()
+            model, scadbytes = create_model(pn, v, cfghash)
+            created = True
 
-        key = path + "/" + pkey
-
-        try:
-            #resp = self.s3.Object("danger-finger", "preview/%s" % key).get()
-            objs = FingerServer().bucket.objects.filter(Prefix=key)
-            found = False
-            for obj in objs:
-                found = True
-                print("Found file: %s" % obj.key)
-            if not found:
-                created = True
-                print("Part not found:: %s" % cfghash)
-                try:
-                    scad = build(pn, False)
-                    with open(scad, 'rb') as file_h:
-                        data = file_h.read()
-                        _resp = FingerServer().s3.Object("danger-finger", key + ".scad").put(Body=data)
-                        print("Part uploaded: %s" % key + ".scad")
-                except Exception as e:
-                    print("Part build failed: %s" % e)
-                    return False
-        except Exception as e:
-            print("Error: %s" % e)
-            return False
+        s3key = path + "/" + model["scadhash"]
+        tqkey = path + "queuedtime"
+        objs = s3_list(s3key)
+        found = False
+        for obj in objs:
+            found = True
+            print("Found file: %s" % obj.key)
+        if not found:
+            created = True
+            print("Part not found:: %s" % cfghash)
+            model[tqkey] = time.time()
+            s3_put(s3key + ".mod", model)
+            print("Part uploaded: %s" % s3key + ".mod")
+        if created:
+            s3_put(modkey, model)
+            s3_put(model["scadkey"], scadbytes)
+            print("Model uploaded: %s, %s" % (modkey, model["scadkey"]))
     if not created:
         print("Found all parts for %s " % cfghash)
     return True
+
+def create_model(pn, v, cfghash):
+    pkey = get_key(cfghash, v, pn)
+    modkey = "models/%s" % pkey + ".mod"
+    scad = build(pn, q=RenderQuality.NONE)
+    scadbytes = scad.encode('utf-8')
+    scadhash = sha256(scadbytes).hexdigest()
+    scadkey = "scad/%s" % scadhash + ".scad"
+    return {"cdfghash": cfghash, "version": v, "part" : pn, "createdtime" : time.time(), "scadkey" : scadkey, "scadhash" : scadhash, "modkey" : modkey}, scadbytes
 
 def process_post(args):
     return {k: v[0].decode('utf-8') for (k, v) in args.items()}
@@ -248,11 +234,19 @@ def s3_get(key, load=True):
         print("Object %s not found:: %s" % (key, e))
     return None
 
+def s3_list(key):
+    objs = []
+    try:
+        objs = FingerServer().bucket.objects.filter(Prefix=key)
+    except Exception as e:
+        print("Error: %s" % e)
+    return objs
+
 def s3_put(key, obj):
     b = obj if isinstance(obj, bytes) else json.dumps(obj, skipkeys=True).encode('utf-8') #, cls=EnumEncoder
     try:
         FingerServer().s3.Object("danger-finger", key).put(Body=b)
-        print("Created object %s : %s " % (key, obj))
+        print("Created object %s " % (key))
     except Exception as e:
         print("Failed to save %s: %s" % (key, e))
         return e
@@ -273,24 +267,14 @@ def write_stl(scad_file, stl_file):
     print("  Rendered %s in %s sec" % (stl_file, round(time.time()-start, 1)))
     return stl_file
 
-def build(p, rend, q=RenderQuality.HIGH):
-    scad_file = "output/dangerfinger_v4.2_" + p + ".scad"
-    stl_file = "output/dangerfinger_v4.2_" + p + ".stl"
-    if not os.path.exists(scad_file):
-        print("Building finger")
-        finger = DangerFinger()
-        finger.render_quality = q#RenderQuality.STUPIDFAST #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
-        finger.build()
-        for _fp, model in finger.models.items():
-            if not iterable(model):
-                model.scad_filename = "output/dangerfinger_v4.2_" + model.part + ".scad"
-                if not os.path.exists(model.scad_filename):
-                    write_file(model.scad.encode('utf-8'), model.scad_filename)
-    if rend:
-        if not os.path.exists(stl_file):
-            write_stl(scad_file, stl_file)
-        return stl_file
-    return scad_file
+def build(p, q=RenderQuality.HIGH):
+    print("Building finger")
+    finger = DangerFinger()
+    finger.render_quality = q#RenderQuality.STUPIDFAST #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
+    finger.build(header=(q != RenderQuality.NONE))
+    for _fp, model in finger.models.items():
+        if not iterable(model) and str(model.part) == p:
+            return model.scad
 
 async def make_app():
     ''' create server async'''
@@ -304,14 +288,6 @@ async def make_app():
     app.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     app.counter = 0
     app.listen(fs.http_port)
-
-# class EnumEncoder(json.JSONEncoder):
-#     '''simple encoder to support emuns generically'''
-#     def default(self, obj): #pylint: disable=method-hidden, arguments-differ
-#         if isinstance(obj, Enum):
-#             return {"__enum__": str(obj)}
-#             #return obj.name
-#         return json.JSONEncoder.default(self, obj)
 
 class FingerServer(Borg):
     preview_poll = Prop(val=10, minv=0, maxv=120, doc=''' Enable explode mode, only for preview ''', hidden=True)
@@ -338,25 +314,40 @@ class FingerServer(Borg):
         while True:
             try:
                 if self.lock: continue
-                for obj in self.bucket.objects.filter(Prefix=path):
-                    if obj.key.find(".scad") > -1:
-                        self.lock = True
-                        print("Processing: %s" % obj.key)
-                        scad_file = "output/" + obj.key.replace(path, "")
-                        stl_file = scad_file + ".stl"
-                        stl_key = obj.key.replace(".scad", ".stl")
-
-                        resp = self.s3.Object("danger-finger", obj.key).get()
-                        write_file(resp["Body"].read(), scad_file)
-                        print("Wrote file: %s" % scad_file)
-
-                        write_stl(scad_file, stl_file)
-                        with open(stl_file, 'rb') as file_h:
-                            data = file_h.read()
-                            self.s3.Object("danger-finger", stl_key).put(Body=data)
-                            print("uploaded %s" % stl_key)
-                            obj.delete()
-
+                for obj in s3_list(path):
+                    try:
+                        if obj.key.find(".mod") > -1:
+                            self.lock = True
+                            print("Processing: %s" % obj.key)
+                            scad_file = "output/" + obj.key.replace(path, "")
+                            stl_file = scad_file + ".stl"
+                            stl_key = obj.key.replace(".mod", ".stl")
+                            pkey = path.rstrip('/')
+                            tskey = pkey + "starttime"
+                            tfkey = pkey + "completedtime"
+                            #get the model
+                            model = s3_get(obj.key)
+                            model[tskey] = time.time()
+                            #create the scad
+                            rq = RenderQuality.STUPIDFAST if path.find("preview") > -1 else RenderQuality.HIGH
+                            scad = DangerFinger().scad_header(rq) + "\n" + s3_get(model["scadkey"], load=False).decode('utf-8')
+                            scadbytes = scad.encode('utf-8')
+                            write_file(scadbytes, scad_file)
+                            print("   Wrote SCAD file: %s" % scad_file)
+                            #render it!
+                            write_stl(scad_file, stl_file)
+                            with open(stl_file, 'rb') as file_h:
+                                data = file_h.read()
+                                s3_put(stl_key, data)
+                                print("   uploaded %s" % stl_key)
+                                obj.delete()
+                                print("   deleted %s" % obj.key)
+                            model[tfkey] = time.time()
+                            model[pkey + "key"] = stl_key
+                            s3_put(model["modkey"], model)
+                            print("   updated %s" % model["modkey"])
+                    except Exception as e:
+                        print("Error with %s: %s" % (obj.key, e))
             except Exception as e:
                 print("Error: %s" % e)
             finally:
