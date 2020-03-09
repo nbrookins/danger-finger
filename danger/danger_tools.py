@@ -237,6 +237,15 @@ class Params():
                     params[k] = config[k]
 
     @staticmethod
+    def apply_config(obj, params):
+        '''apply a config file'''
+        for k in params:
+            try:
+                setattr(obj, k, params[k])
+            except Exception:
+                print("param not found: %s" % k)
+
+    @staticmethod
     def save_config(params):
         '''save a config file'''
         try:
@@ -254,7 +263,7 @@ class Params():
         #lay down all of our potential options
         parser = argparse.ArgumentParser(
             prog="danger_finger.py",
-            description='''danger-finger.py v%s (c) 2015-2020 DangerCreations, Inself.
+            description='''danger-finger.py v%s (c) 2015-2020 DangerCreations, Inc.
                 code: knick@dangercreations.com''' % VERSION,
             epilog='''''', add_help=False)
 

@@ -16,6 +16,7 @@ from io import BytesIO
 import threading
 from collections import OrderedDict
 from hashlib import sha256
+import brotli
 import tornado.options
 import tornado.ioloop
 import tornado.web
@@ -166,14 +167,10 @@ class FingerHandler(tornado.web.RequestHandler):
                         files["README.md"] = read_file("README.md")
                         files["metadata/config_" + cfg + ".json"] = config
                         dl = create_zip(files)
-                        FingerServer().put(dlkey, dl)
+                        FingerServer().put(dlkey, dl, compress=False)
                     profile["lastconfig"] = cfg
                     FingerServer().put("profiles/%s" % prf, profile)
-
-                    self.set_header('Content-Type', 'application/zip')
-                    self.set_header('Content-Length', len(dl))
-                    self.set_header("Content-Disposition", "attachment; filename=%s" % zipname)
-                    self.write(dl)
+                    self.serve_bytes(dl, 'application/zip', filename=zipname)
                     return
         except Exception as e:
             print("Failed to create download %s: %s" % (cfg, e))
@@ -236,6 +233,15 @@ class FingerServer(Borg):
     bucket = None
     lock = False
 
+    def __init__(self):#, **kw):
+        Borg.__init__(self)
+
+    def setup(self):
+        '''setup the server - do this once to get a session'''
+        self.s3session = boto3.Session(aws_access_key_id=self.aws_id, aws_secret_access_key=self.aws_key)
+        self.s3 = self.s3session.resource('s3')
+        self.bucket = self.s3.Bucket(self.s3_bucket)
+
     def queue(self, cfghash, preview=False):
         '''add models to queue'''
         path = "preview" if preview else "render"
@@ -254,9 +260,8 @@ class FingerServer(Borg):
             else:
                 scadbytes = self.get(model["scadkey"])
             if not scadbytes or len(scadbytes) < 16:
-                scadbytes = build(pn, q=RenderQuality.NONE).encode('utf-8')
-                model["scadhash"] = sha256(scadbytes).hexdigest()
-                model["scadkey"] = "scad/%s" % model["scadhash"] + ".scad"
+                print("Wanring, missing scad")
+                scadbytes = compile_scad(pn, cfghash)
                 created = True
 
             s3key = path + "/" + model["scadhash"]
@@ -287,12 +292,13 @@ class FingerServer(Borg):
             print("Error: %s" % e)
         return objs
 
-    def put(self, key, obj):
+    def put(self, key, obj, compress=True):
         '''put an object to s3'''
         b = obj if isinstance(obj, bytes) else json.dumps(obj, skipkeys=True).encode('utf-8') #, cls=EnumEncoder
         try:
-            self.s3.Object(self.s3_bucket, key).put(Body=b)
-            print("Created object %s " % (key))
+            d = b'42' + brotli.compress(b) if compress else b
+            self.s3.Object(self.s3_bucket, key).put(Body=d)
+            print("Created object %s, %sb %s " % (key, len(b), "(%sb comp)"%len(d) if compress else ""))
         except Exception as e:
             print("Failed to save %s: %s" % (key, e))
             return e
@@ -304,19 +310,12 @@ class FingerServer(Borg):
             resp = self.s3.Object(self.s3_bucket, key).get()
             print("Found object: %s " % key)
             b = resp["Body"].read()
+            if b.startswith(b'42'):
+                b = brotli.decompress(b[2:])
             return json.loads(b) if load else b
         except Exception as e:
             print("Object %s not found:: %s" % (key, e))
         return None
-
-    def setup(self):
-        '''setup the server - do this once to get a session'''
-        self.s3session = boto3.Session(aws_access_key_id=self.aws_id, aws_secret_access_key=self.aws_key)
-        self.s3 = self.s3session.resource('s3')
-        self.bucket = self.s3.Bucket(self.s3_bucket)
-
-    def __init__(self):#, **kw):
-        Borg.__init__(self)
 
     def process_scad_loop(self, path, timeout):
         '''process a scad file in a loop'''
@@ -354,7 +353,9 @@ class FingerServer(Borg):
                     print("   updated %s" % model["modkey"])
                 except Exception as e:
                     print("Error with %s: %s" % (obj.key, e))
-            self.lock = False
+            if self.lock:
+                print("Completed process loop~")
+                self.lock = False
             time.sleep(timeout)
 
 def get_file_list(items):
@@ -415,11 +416,15 @@ def create_model(pn, v, cfghash):
     '''create a new model and scad'''
     pkey = get_key(cfghash, v, pn)
     modkey = "models/%s" % pkey + ".mod"
-    scad = build(pn, q=RenderQuality.NONE)
-    scadbytes = scad.encode('utf-8')
-    scadhash = sha256(scadbytes).hexdigest()
+    scadbytes, scadhash = compile_scad(pn, cfghash)
     scadkey = "scad/%s" % scadhash + ".scad"
     return {"cdfghash": cfghash, "version": v, "part" : pn, "createdtime" : time.time(), "scadkey" : scadkey, "scadhash" : scadhash, "modkey" : modkey}, scadbytes
+
+def compile_scad(pn, cfghash):
+    config = FingerServer().get("configs/" + cfghash, load=True)
+    scadbytes = build(pn, config).encode('utf-8')
+    hsh = sha256(scadbytes).hexdigest()
+    return scadbytes, hsh
 
 def process_post(args):
     '''parse a post body'''
@@ -446,11 +451,12 @@ def remove_defaults(config):
     '''ensure defaults are not cluttering the config'''
     params = DangerFinger().params()
     for k in params:
-        if k in config and str(params[k]) == str(config[k]):
+        if k in config and float(params[k]) == float(config[k]):
             config.pop(k)
 
 def package_config_json(obj):
     '''process a config file to sort it'''
+    remove_defaults(obj)
     config = OrderedDict(sorted(obj.items(), key=lambda t: t[0]))
     cfgbytes = json.dumps(config, skipkeys=True).encode('utf-8')
     cfghash = sha256(cfgbytes).hexdigest()
@@ -470,10 +476,16 @@ def write_stl(scad_file, stl_file):
     print("  Rendered %s in %s sec" % (stl_file, round(time.time()-start, 1)))
     return stl_file
 
-def build(p, q=RenderQuality.HIGH):
+def floatify(config):
+    for k in config:
+        config[k] = float(config[k])
+
+def build(p, config, q=RenderQuality.NONE):
     '''build a finger model and return scad'''
     print("Building finger")
     finger = DangerFinger()
+    floatify(config)
+    Params.apply_config(finger, config)
     finger.render_quality = q#RenderQuality.STUPIDFAST #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
     finger.build(header=(q != RenderQuality.NONE))
     for _fp, model in finger.models.items():
@@ -490,6 +502,7 @@ async def make_app():
         static_path=os.path.join(os.path.dirname(__file__), "static"),
         template_path=os.path.join(os.path.dirname(__file__), "templates"),
         debug=tornado.options.options.debug,
+        compress_response=True,
     )
     app = tornado.web.Application(handlers, **settings)
     app.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
