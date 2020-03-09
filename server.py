@@ -61,7 +61,14 @@ class FingerHandler(tornado.web.RequestHandler):
         print("  HTTP Request: %s %s %s" % (self.request, self.request.path, var))
         if self.request.path.startswith(("/configs", "/profiles", "/models", "/preview", "/render", "/scad", "/downloads")):
             print("  Getting %s from s3 " % self.request.path[1:])
-            b = FingerServer().get(self.request.path[1:], load=False)
+            b = None
+            if self.request.path.startswith(("/models", "/preview", "/render", "/scad")) and self.request.path.find(".") == -1:
+                l = []
+                for obj in FingerServer().dir(self.request.path[1:]):
+                    l.append(FingerServer().get(obj.key, load=True))
+                b = json.dumps(l).encode('utf-8')
+            else:
+                b = FingerServer().get(self.request.path[1:], load=False)
             if b is None:
                 self.set_status(404)
                 return
@@ -416,7 +423,7 @@ def check_null(obj):
 
 def get_key(cfg, v, pn):
     '''get a config key'''
-    return "%s_%s_%s" % (cfg, pn, v)
+    return "%s_%s_%s" % (cfg, v, pn)
 
 def create_model(pn, v, cfghash):
     '''create a new model and scad'''
