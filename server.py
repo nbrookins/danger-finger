@@ -231,7 +231,7 @@ class FingerServer(Borg):
     s3session = None
     s3 = None
     bucket = None
-    lock = False
+    lock = {}
 
     def __init__(self):#, **kw):
         Borg.__init__(self)
@@ -269,6 +269,9 @@ class FingerServer(Borg):
             for obj in self.dir(s3key):
                 found = True
                 print("Found file: %s" % obj.key)
+                if obj.key.endswith(".stl") and model.get(path + "key", "") != obj.key:
+                    model[path + "key"] = obj.key
+                    created = True
             if not found:
                 created = True
                 print("Part not found:: %s" % cfghash)
@@ -319,14 +322,17 @@ class FingerServer(Borg):
 
     def process_scad_loop(self, path, timeout):
         '''process a scad file in a loop'''
+        if not path in self.lock: self.lock[path] = False
         time.sleep(timeout)
         while True:
-            if self.lock: continue
+            if self.lock[path]:
+                time.sleep(timeout)
+                continue
             for obj in FingerServer().dir(path):
                 try:
-                    if obj.key.find(".mod") == -1:
-                        continue
-                    self.lock = True
+                    if obj.key.find(".mod") == -1: continue
+                    #start processing
+                    self.lock[path] = True
                     print("Processing: %s" % obj.key)
                     scad_file = "output/" + obj.key.replace(path, "")
                     stl_file = scad_file + ".stl"
@@ -335,7 +341,7 @@ class FingerServer(Borg):
                     #get the model
                     model = FingerServer().get(obj.key, load=True)
                     model[pkey + "starttime"] = time.time()
-                    #create the scad
+                    #create the scad, insert a custom quality header (defrags cache)
                     rq = RenderQuality.STUPIDFAST if path.find("preview") > -1 else RenderQuality.HIGH
                     scad = DangerFinger().scad_header(rq) + "\n" + FingerServer().get(model["scadkey"], load=False).decode('utf-8')
                     write_file(scad.encode('utf-8'), scad_file)
@@ -345,17 +351,17 @@ class FingerServer(Borg):
                     with open(stl_file, 'rb') as file_h:
                         FingerServer().put(stl_key, file_h.read())
                         print("   uploaded %s" % stl_key)
-                        obj.delete()
-                        print("   deleted %s" % obj.key)
+                    obj.delete()
+                    print("   deleted %s" % obj.key)
                     model[pkey + "completedtime"] = time.time()
                     model[pkey + "key"] = stl_key
                     FingerServer().put(model["modkey"], model)
                     print("   updated %s" % model["modkey"])
                 except Exception as e:
                     print("Error with %s: %s" % (obj.key, e))
-            if self.lock:
+            if self.lock[path]:
                 print("Completed process loop~")
-                self.lock = False
+                self.lock[path] = False
             time.sleep(timeout)
 
 def get_file_list(items):
@@ -421,6 +427,7 @@ def create_model(pn, v, cfghash):
     return {"cdfghash": cfghash, "version": v, "part" : pn, "createdtime" : time.time(), "scadkey" : scadkey, "scadhash" : scadhash, "modkey" : modkey}, scadbytes
 
 def compile_scad(pn, cfghash):
+    '''pull a config and properly create the scad'''
     config = FingerServer().get("configs/" + cfghash, load=True)
     scadbytes = build(pn, config).encode('utf-8')
     hsh = sha256(scadbytes).hexdigest()
@@ -432,14 +439,11 @@ def process_post(args):
 
 def create_zip(files):
     '''create a big ol zip file'''
-    bf = BytesIO()
-    zf = zipfile.ZipFile(bf, "w")
-    for (f, b) in files.items():
-        zf.writestr(f, b)
-    zf.close()
-    dl = bf.getvalue()
-    bf.close()
-    return dl
+    with BytesIO() as bf:
+        with zipfile.ZipFile(bf, "w") as zf:
+            for (f, b) in files.items():
+                zf.writestr(f, b)
+            return bf.getvalue()
 
 def read_file(filename):
     '''serve a file from disk to client'''
@@ -477,6 +481,7 @@ def write_stl(scad_file, stl_file):
     return stl_file
 
 def floatify(config):
+    '''change all values to floats.  we all float on, ok?'''
     for k in config:
         config[k] = float(config[k])
 
@@ -486,7 +491,7 @@ def build(p, config, q=RenderQuality.NONE):
     finger = DangerFinger()
     floatify(config)
     Params.apply_config(finger, config)
-    finger.render_quality = q#RenderQuality.STUPIDFAST #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
+    finger.render_quality = q  #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
     finger.build(header=(q != RenderQuality.NONE))
     for _fp, model in finger.models.items():
         if iterable(model):
@@ -499,16 +504,13 @@ def build(p, config, q=RenderQuality.NONE):
 async def make_app():
     ''' create server async'''
     settings = dict(
-        static_path=os.path.join(os.path.dirname(__file__), "static"),
-        template_path=os.path.join(os.path.dirname(__file__), "templates"),
-        debug=tornado.options.options.debug,
-        compress_response=True,
+        #debug=tornado.options.options.debug,
+        compress_response=True
     )
     app = tornado.web.Application(handlers, **settings)
     app.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     app.counter = 0
     app.listen(fs.http_port)
-
 
 if __name__ == "__main__":
     sys.stdout = UnbufferedStdOut(sys.stdout)
