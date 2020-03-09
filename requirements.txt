@@ -2,3 +2,5 @@
 solidpython
 tornado
 asyncio
+brotli
+boto3

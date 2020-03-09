@@ -124,19 +124,17 @@
 			add_model(model_name, model_name, null, true);
 		}
 
-		function get_params(url) {
+		function get_json(url) {
 			var xhttp = new XMLHttpRequest();
 			xhttp.onreadystatechange = function() {
 				if (this.readyState == 4 && this.status == 200) {
-					//console.log("received params");
-					params = JSON.parse( this.responseText)
-					CreateTableFromJSON(params);
+					json = JSON.parse(this.responseText)
+					handle_json(json);
 				}
 			};
 			xhttp.open("GET", baseurl + url, true);
 			xhttp.setRequestHeader("Content-type", "application/json");
 			xhttp.send("");
-			//console.log("GET" + url);
 		}
 
 		do_resize();
@@ -149,6 +147,12 @@
 
 		var params = {}
 		const hide_cols = ['Advanced', 'Hidden']
+
+		function handle_json(json){
+			if ('intermediate_length' in json){
+				CreateTableFromJSON(json);
+			}
+		}
 
 		function CreateTableFromJSON(dict) {
 			var table = document.createElement("table");
@@ -175,14 +179,10 @@
 			}
 
 			// ADD JSON DATA TO THE TABLE AS ROWS.
-			//var c = 0;
 			for (var k of Object.keys(dict)) {
 				if (dict[k]["Hidden"]){continue;}
-				//c++;
 				t = (dict[k]["Advanced"]) ? tablea : table;
-				//tr = (dict[k]["Advanced"] != true) ? table.insertRow(-1) : tablea.insertRow(-1);
 				tr = t.insertRow(-1);
-				//console.log(dict[k]["Advanced"] + " " + tr.parentElement);
 				for (var j = 0; j < col.length; j++) {
 					var tabCell = tr.insertCell(-1);
 					if (j==0){
@@ -201,7 +201,6 @@
 						parts[id]['pos'] = [parts[id]['posf'][0] * const_factor, parts[id]['posf'][1] * const_factor, parts[id]['posf'][2] * const_factor];
 					}
 				}
-				//slide_change();
 			}
 
 			// FINALLY ADD THE NEWLY CREATED TABLE WITH JSON DATA TO A CONTAINER.
@@ -219,11 +218,8 @@
 			button.onclick = function(){submit();};
 			divContainer.appendChild(button);
 
-			//divContainer.appendChild(table);
-
 			var div2 = document.getElementById("advData");
 			div2.innerHTML = "";
-			//div2.appendChild(document.createElement("br"));
 			div2.appendChild(tablea);
 
 			slide_change();
@@ -278,8 +274,8 @@
 			if (location.protocol != 'http:'){
 				location.href = 'http:' + window.location.href.substring(window.location.protocol.length);
 			}else{
-				add_models([0,1,2,3]);
-				get_params('/params/all');
+				//add_models([0,1,2,3]);
+				get_json('/params/all');
 			}};
 
 	</script>
