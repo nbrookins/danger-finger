@@ -320,7 +320,10 @@ class Params():
             #print("%s %s " % (param, params[param]))
 #            if param in arg_list:
             print("Setting %s %s " % (param, params[param]))
-            setattr(config_obj, param, params[param])
+            try:
+                setattr(config_obj, param, params[param])
+            except Exception as ex:
+                print(ex)
 
 class UnbufferedStdOut(object):
     '''Override to allow unbufferred std out to work with | tee'''

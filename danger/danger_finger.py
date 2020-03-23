@@ -26,7 +26,7 @@ class DangerFinger(DangerFingerBase):
         trim_offset = self.knuckle_proximal_thickness +self.intermediate_proximal_width + self.knuckle_side_clearance-.01
 
         mod_core = translate((0, -length, 0))(rotate((90, 0, 0))(rcylinder(r=self.socket_interface_radius[Orient.DISTAL]+self.socket_thickness_distal, h=self.distal_flange_height))) #
-        mod_hinge, mod_hinge_cut, mod_washers = self.knuckle_outer(orient=Orient.PROXIMAL, extend_cut=(-10, .75))
+        mod_hinge, mod_hinge_cut, mod_washers, mod_pin = self.knuckle_outer(orient=Orient.PROXIMAL, extend_cut=(-10, .5))
         mod_tunnel, _mod_bridge_cut = self.bridge(length=tunnel_length, tunnel_width=self.knuckle_inner_width[Orient.PROXIMAL] +0, orient=Orient.PROXIMAL | Orient.OUTER)
         mod_socket_interface = self.socket_interface(Orient.INNER)
         #TODO 3 allow resize of width for base/socket interface, once socket is done
@@ -44,7 +44,7 @@ class DangerFinger(DangerFingerBase):
         mod_main = hull()(mod_core + mod_hinge) + hull()(mod_tunnel + mod_core)
 
         #TODO - hardcoded hack
-        final = (mod_main - mod_plugs - mod_side_trim + mod_socket_interface - mod_hinge_cut.translate((self.tunnel_radius/2, 0, 0)) - mod_tendon_hole - mod_elastic - mod_breather- _mod_bridge_cut[0].translate((0.2, -2, 0)).resize((0, 0, self.knuckle_inner_width[Orient.PROXIMAL]))) - mod_extra + mod_washers
+        final = (mod_main - mod_plugs - mod_pin - mod_side_trim + mod_socket_interface - mod_hinge_cut.translate((self.tunnel_radius/2, 0, 0)) - mod_tendon_hole - mod_elastic - mod_breather- _mod_bridge_cut[0].translate((0.2, -2, 0)).resize((0, 0, self.knuckle_inner_width[Orient.PROXIMAL]))) - mod_extra + mod_washers - mod_pin
         return final.rotate((0, 0, 90))
 
     def part_tip(self):
@@ -52,7 +52,7 @@ class DangerFinger(DangerFingerBase):
         tunnel_length = self.intermediate_height[Orient.DISTAL]*.4
         plug_trans = diff(-self.knuckle_distal_width/2 + self.knuckle_plug_thickness/2 - 0.01, -self.knuckle_proximal_width/2 + self.knuckle_plug_thickness/2 - 0.01)
 
-        mod_hinge, mod_hinge_cut, mod_washers = self.knuckle_outer(orient=Orient.DISTAL)
+        mod_hinge, mod_hinge_cut, mod_washers, mod_pin = self.knuckle_outer(orient=Orient.DISTAL)
         mod_plugs = self.part_plugs(clearance=False)
         mod_plug_cut = mod_plugs[0].translate((0, 0, plug_trans)) + mod_plugs[1].translate((0, 0, -plug_trans))
 
@@ -73,7 +73,7 @@ class DangerFinger(DangerFingerBase):
         mod_tip_hole = cylinder(r=self.tendon_hole_radius*1.5, h=20, center=True).rotate((90, 0, 0)).translate((0, self.intermediate_distal_height, 0))
 
         #TODO 1 Hacky hard coded, paired to the 10 in bridge
-        final = ((mod_main + mod_interface + mod_top_detent - mod_plug_cut - mod_tip_hole - mod_hinge_cut - mod_bend_cut - bridge[1][1].translate((0, 9.0, 0)).resize((0, 0, self.knuckle_inner_width[Orient.DISTAL]))) - mod_extra.translate((-1, 0, 0)).mod("") + mod_washers)
+        final = ((mod_main + mod_interface + mod_top_detent - mod_plug_cut - mod_tip_hole - mod_hinge_cut - mod_bend_cut - mod_pin - bridge[1][1].translate((0, 9.0, 0)).resize((0, 0, self.knuckle_inner_width[Orient.DISTAL]))) - mod_extra.translate((-1, 0, 0)).mod("") + mod_washers - mod_pin)
         return final.rotate((0, 0, 90))
 
     def part_middle(self):
@@ -191,20 +191,39 @@ class DangerFinger(DangerFingerBase):
 
     def tip_detent(self):
         ''' create tendon detents '''
-        detent_thickness = 2.5
-        detent_width = 4
+        # detent_thickness = 2.5
+        # detent_width = 4
         detent_cut_width = .5
-        detent_narrow = 1.9
-        hole_offset = self.tip_interface_post_radius-2.5 + .3
+        # detent_narrow = 1.9
+        # hole_offset = self.tip_interface_post_radius-2.5 + .3
         shift = self.distal_base_length + self.tip_detent_height/2 + self.tip_interface_post_height *2 - .1+ self.tip_interface_ridge_height -1 + self.tip_interface_clearance
-        mod = rcylinder(r=detent_width/2, h=self.tip_detent_height-1.5, rnd=.2).rotate((90, 0, 0)).resize((detent_thickness, 0, 0)).translate((0, detent_narrow/2-.1, 0)) \
-            + rcylinder(r=detent_width/2, h=detent_narrow, rnd=0).rotate((90, 0, 0)).resize((detent_thickness, 0, detent_width/1.5)).translate((0, -self.tip_detent_height/2+detent_narrow/2, 0)) \
-            - cube(size=(detent_thickness+.1, self.tip_detent_height, detent_cut_width), center=True).translate((0, -self.tip_detent_height/2 + detent_narrow+.3, 0))
-            #cube(size=(detent_thickness, self.tip_detent_height, detent_width), center=True) \
-        return mod.rotate((0, 20, 0)).translate((-hole_offset + .75, shift, 1.6)) \
-             + mod.rotate((0, -20, 0)).translate((-hole_offset+.75, shift, -1.6)) \
-             + mod.rotate((0, 75, 0)).translate((-hole_offset+3.4, shift, 3.0)) \
-             + mod.rotate((0, -75, 0)).translate((-hole_offset+3.4, shift, -3.0))
+
+        c1r = self.tip_interface_post_radius *.7
+        h1r = self.tip_interface_post_radius *.45
+        c1r2 = c1r + .2
+        sl = self.tip_interface_post_radius *2
+
+        c1 = cylinder(r=c1r, h=self.tip_detent_height*.8).rotate((90, 0, 0))
+        c2 = cylinder(r=c1r2, h=self.tip_detent_height*.2).rotate((90, 0, 0)).translate((0, 0, 0))
+        h1 = cylinder(r=h1r, h=self.tip_detent_height*1.01).rotate((90, 0, 0)).translate((0, self.tip_detent_height*.11, 0))
+        b1 = cube((c1r*1.5, self.tip_detent_height, c1r*2.2), center=True).translate((c1r*1.1, -self.tip_detent_height*.36, 0))
+
+        slit = hull()(cylinder(d=detent_cut_width*.65, h=sl), \
+            cylinder(d=detent_cut_width, h=sl).translate((0, self.tip_detent_height*.6, 0))).translate((0, -self.tip_detent_height*.6, -sl/2))#.mod("%")
+        return ((c1 + c2) - h1 - b1 \
+            - slit - slit.rotate((0, -30, 0)) - slit.rotate((0, -60, 0)) - slit.rotate((0, 30, 0)) - slit.rotate((0, 60, 0)) - slit.rotate((0, 90, 0)) \
+            ).translate((0, shift, 0))
+
+        # mod = rcylinder(r=detent_width/2, h=self.tip_detent_height-1.5, rnd=.2).rotate((90, 0, 0)).resize((detent_thickness, 0, 0)).translate((0, detent_narrow/2-.1, 0)) \
+        #     + rcylinder(r=detent_width/2, h=detent_narrow, rnd=0).rotate((90, 0, 0)).resize((detent_thickness, 0, detent_width/1.5)).translate((0, -self.tip_detent_height/2+detent_narrow/2, 0)) \
+        #     - cube(size=(detent_thickness+.1, self.tip_detent_height, detent_cut_width), center=True).translate((0, -self.tip_detent_height/2 + detent_narrow+.3, 0))
+        #     #cube(size=(detent_thickness, self.tip_detent_height, detent_width), center=True) \
+        # return mod.rotate((0, 20, 0)).translate((-hole_offset + .75, shift, 1.6)) \
+        #      + mod.rotate((0, -20, 0)).translate((-hole_offset+.75, shift, -1.6)) \
+        #      + mod.rotate((0, 75, 0)).translate((-hole_offset+3.4, shift, 3.0)) \
+        #      + mod.rotate((0, -75, 0)).translate((-hole_offset+3.4, shift, -3.0))
+
+
 
     def tip_interface(self):
         ''' the snap-on interface section to the soft tip cover'''
@@ -280,7 +299,7 @@ class DangerFinger(DangerFingerBase):
             + (.01 if (orient_lat == Orient.DISTAL and inside) else 0)
 
         width_bottom_in = self.intermediate_width[orient_lat] / 2
-        width_bottom_out = self.knuckle_width[orient_lat] / 2  + (.01 if (orient_lat == Orient.DISTAL and inside) else 0)
+        width_bottom_out = self.knuckle_width[orient_lat] / 2  + (.01 if (orient_lat == Orient.DISTAL and inside) else -.5)
 
         if orient & Orient.OUTER:            #TODO 2 - unhardcode this based on tip width, when defined
             width = width_bottom_out - ((self.tunnel_outer_slant) if inside or (not inside and orient_lat == Orient.DISTAL) else 0) if not top else \
@@ -304,13 +323,13 @@ class DangerFinger(DangerFingerBase):
         ''' create the outer hinges for base or tip segments '''
         radius = self.intermediate_height[orient]/2
         width = self.knuckle_width[orient]
-        mod_pin = self.knuckle_pin(length=width + .01)
+        mod_pin = self.knuckle_pin(length=width + .01)#.mod("%")
         mod_washers = self.knuckle_washers(orient) - mod_pin
         mod_cut = cylinder(r=radius+self.knuckle_clearance, h=self.knuckle_inner_width[orient], center=True)
         if extend_cut != (0, 0):
             mod_cut = hull()(mod_cut, translate(extend_cut + (0,))(mod_cut))
         mod_main = rcylinder(r=radius, h=width, rnd=self.knuckle_rounding, center=True)
-        return (mod_main + mod_washers) - mod_pin - mod_cut, mod_cut + mod_pin, mod_washers
+        return ((mod_main + mod_washers) - mod_pin) - mod_cut, mod_cut, mod_washers, mod_pin
 
     def knuckle_washers(self, orient):
         ''' the little built-in washers to reduce hinge friction '''

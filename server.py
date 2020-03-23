@@ -431,7 +431,7 @@ def create_model(pn, v, cfghash):
     modkey = "models/%s" % pkey + ".mod"
     scadbytes, scadhash = compile_scad(pn, cfghash)
     scadkey = "scad/%s" % scadhash + ".scad"
-    return {"cdfghash": cfghash, "version": v, "part" : pn, "createdtime" : time.time(), "scadkey" : scadkey, "scadhash" : scadhash, "modkey" : modkey}, scadbytes
+    return {"cfghash": cfghash, "version": v, "part" : pn, "createdtime" : time.time(), "scadkey" : scadkey, "scadhash" : scadhash, "modkey" : modkey}, scadbytes
 
 def compile_scad(pn, cfghash):
     '''pull a config and properly create the scad'''

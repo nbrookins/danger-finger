@@ -27,8 +27,8 @@ def main():
     cores = 6
 
     Params.parse(finger)
-    finger.render_quality = RenderQuality.MEDIUM #  INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
-    finger.preview_quality = RenderQuality.MEDIUM #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
+    finger.render_quality = RenderQuality.ULTRAHIGH #  INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
+    finger.preview_quality = RenderQuality.ULTRAHIGH #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
    # finger.preview_explode = True
     #finger.preview_cut = True
     #finger.preview_rotate = 40
@@ -41,7 +41,8 @@ def main():
         if not iterable(model):
             filename = "output/dangerfinger_v4.2_" + model.part #TODO - fix template
             model.scad_filename = filename + ".scad"
-            write_file(model.scad.encode('utf-8'), model.scad_filename)
+            scad = DangerFinger().scad_header(finger.render_quality) + "\n" + model.scad
+            write_file(scad.encode('utf-8'), model.scad_filename)
 
     if render_stl:
         files = []
