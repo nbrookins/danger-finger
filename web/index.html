@@ -161,7 +161,8 @@
 			var table = document.createElement("table");
 			//first key is our parameter name, discover other headers
 			var col = ['#'];
-			for (var key of Object.keys(json)) {
+			j = json['configs'];
+			for (var key of Object.keys(j)) {
 				if (col.indexOf(key) === -1 && hide_cols.indexOf(key) < 0) {
 					col.push(key);
 				}
@@ -174,11 +175,28 @@
 				tr.appendChild(th);
 			}
 			console.log(json);
-			for (var k of Object.keys(json['configs'])) {
-				var tr = table.insertRow(-1);
-				var th = document.createElement("th");      // TABLE HEADER.
-				th.innerHTML = k + " - " + json['configs'][k];
-				tr.appendChild(th);
+			// for (var k of Object.keys(json['configs'])) {
+			// 	var tr = table.insertRow(-1);
+			// 	var th = document.createElement("th");      // TABLE HEADER.
+			// 	th.innerHTML = k + " - " + json['configs'][k];
+			// 	tr.appendChild(th);
+			// }
+
+			console.log(j)
+			// ADD JSON DATA TO THE TABLE AS ROWS.
+			for (var k of Object.keys(j)) {
+				t = table;
+				tr = t.insertRow(-1);
+				for (var j = 0; j < col.length; j++) {
+					var tabCell = tr.insertCell(-1);
+					if (j==0){
+						tabCell.innerHTML = t.rows.length-1;
+					} else if (j==1){
+						tabCell.innerHTML = k;
+					}else{
+						tabCell.innerHTML = j[k];//[col[j]];
+					}
+				}
 			}
 
 			var divContainer = document.getElementById("profiles");
@@ -200,6 +218,23 @@
 				th.innerHTML = col[i];
 				tr.appendChild(th);
 			}
+
+			// ADD JSON DATA TO THE TABLE AS ROWS.
+			for (var k of Object.keys(json)) {
+				t = table;
+				tr = t.insertRow(-1);
+				for (var j = 0; j < col.length; j++) {
+					var tabCell = tr.insertCell(-1);
+					if (j==0){
+						tabCell.innerHTML = t.rows.length-1;
+					} else if (j==1){
+						tabCell.innerHTML = k;
+					}else{
+						tabCell.innerHTML = json[k][col[j]];
+					}
+				}
+			}
+
 			var divContainer = document.getElementById("models");
 			divContainer.innerHTML = "";
 			divContainer.appendChild(table);
