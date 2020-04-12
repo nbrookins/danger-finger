@@ -191,39 +191,25 @@ class DangerFinger(DangerFingerBase):
 
     def tip_detent(self):
         ''' create tendon detents '''
-        # detent_thickness = 2.5
-        # detent_width = 4
-        detent_cut_width = .5
-        # detent_narrow = 1.9
-        # hole_offset = self.tip_interface_post_radius-2.5 + .3
         shift = self.distal_base_length + self.tip_detent_height/2 + self.tip_interface_post_height *2 - .1+ self.tip_interface_ridge_height -1 + self.tip_interface_clearance
 
-        c1r = self.tip_interface_post_radius *.7
-        h1r = self.tip_interface_post_radius *.45
-        c1r2 = c1r + .2
+        c1r = self.tip_interface_post_radius *.8
+        h1r = c1r - self.tip_detent_thickness
+        c1r2 = c1r + .2 #ridge
         sl = self.tip_interface_post_radius *2
 
         c1 = cylinder(r=c1r, h=self.tip_detent_height*.8).rotate((90, 0, 0))
         c2 = cylinder(r=c1r2, h=self.tip_detent_height*.2).rotate((90, 0, 0)).translate((0, 0, 0))
         h1 = cylinder(r=h1r, h=self.tip_detent_height*1.01).rotate((90, 0, 0)).translate((0, self.tip_detent_height*.11, 0))
-        b1 = cube((c1r*1.5, self.tip_detent_height, c1r*2.2), center=True).translate((c1r*1.1, -self.tip_detent_height*.36, 0))
+        b1 = cube((c1r*1.5, self.tip_detent_height, c1r*2.2), center=True).translate((c1r*1.05, -self.tip_detent_height*.36, 0))
 
-        slit = hull()(cylinder(d=detent_cut_width*.65, h=sl), \
-            cylinder(d=detent_cut_width, h=sl).translate((0, self.tip_detent_height*.6, 0))).translate((0, -self.tip_detent_height*.6, -sl/2))#.mod("%")
+        slit = hull()(cylinder(d=self.tip_detent_cut_width*.65, h=sl), \
+            cylinder(d=self.tip_detent_cut_width, h=sl).translate((0, self.tip_detent_height*.57, 0))).translate((0, -self.tip_detent_height*.6, -sl/2))#.mod("%")
+       # lh = cylinder(d=1, h=self.tip_interface_post_radius*2, center=True).translate((0, -self.tip_detent_height*.45, 0))#.mod("%")
+
         return ((c1 + c2) - h1 - b1 \
-            - slit - slit.rotate((0, -30, 0)) - slit.rotate((0, -60, 0)) - slit.rotate((0, 30, 0)) - slit.rotate((0, 60, 0)) - slit.rotate((0, 90, 0)) \
+           - slit.rotate((0, -30, 0)) - slit.rotate((0, 30, 0)) - slit.rotate((0, -70, 0)) - slit.rotate((0, 70, 0)) \
             ).translate((0, shift, 0))
-
-        # mod = rcylinder(r=detent_width/2, h=self.tip_detent_height-1.5, rnd=.2).rotate((90, 0, 0)).resize((detent_thickness, 0, 0)).translate((0, detent_narrow/2-.1, 0)) \
-        #     + rcylinder(r=detent_width/2, h=detent_narrow, rnd=0).rotate((90, 0, 0)).resize((detent_thickness, 0, detent_width/1.5)).translate((0, -self.tip_detent_height/2+detent_narrow/2, 0)) \
-        #     - cube(size=(detent_thickness+.1, self.tip_detent_height, detent_cut_width), center=True).translate((0, -self.tip_detent_height/2 + detent_narrow+.3, 0))
-        #     #cube(size=(detent_thickness, self.tip_detent_height, detent_width), center=True) \
-        # return mod.rotate((0, 20, 0)).translate((-hole_offset + .75, shift, 1.6)) \
-        #      + mod.rotate((0, -20, 0)).translate((-hole_offset+.75, shift, -1.6)) \
-        #      + mod.rotate((0, 75, 0)).translate((-hole_offset+3.4, shift, 3.0)) \
-        #      + mod.rotate((0, -75, 0)).translate((-hole_offset+3.4, shift, -3.0))
-
-
 
     def tip_interface(self):
         ''' the snap-on interface section to the soft tip cover'''
