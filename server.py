@@ -24,6 +24,9 @@ import solid
 import boto3
 from danger import *
 
+#TODO 1 - get new image running with auth variables
+#TODO 1 - implement API in index.html
+
 tornado.options.define('port', type=int, default=8081, help='server port number (default: 9000)')
 tornado.options.define('debug', type=bool, default=False, help='run in debug mode with autoreload (default: False)')
 
@@ -335,37 +338,40 @@ class FingerServer(Borg):
             if self.lock[path]:
                 time.sleep(timeout)
                 continue
-            for obj in FingerServer().dir(path):
-                try:
-                    if obj.key.find(".mod") == -1: continue
-                    #start processing
-                    self.lock[path] = True
-                    print("Processing: %s" % obj.key)
-                    scad_file = "output/" + obj.key.replace(path, "")
-                    stl_file = scad_file + ".stl"
-                    stl_key = obj.key.replace(".mod", ".stl")
-                    pkey = path.rstrip('/')
-                    #get the model
-                    model = FingerServer().get(obj.key, load=True)
-                    model[pkey + "starttime"] = time.time()
-                    #create the scad, insert a custom quality header (defrags cache)
-                    rq = RenderQuality.STUPIDFAST if path.find("preview") > -1 else RenderQuality.HIGH
-                    scad = DangerFinger().scad_header(rq) + "\n" + FingerServer().get(model["scadkey"], load=False).decode('utf-8')
-                    write_file(scad.encode('utf-8'), scad_file)
-                    print("   Wrote SCAD file: %s" % scad_file)
-                    #render it!
-                    write_stl(scad_file, stl_file)
-                    with open(stl_file, 'rb') as file_h:
-                        FingerServer().put(stl_key, file_h.read())
-                        print("   uploaded %s" % stl_key)
-                    obj.delete()
-                    print("   deleted %s" % obj.key)
-                    model[pkey + "completedtime"] = time.time()
-                    model[pkey + "key"] = stl_key
-                    FingerServer().put(model["modkey"], model)
-                    print("   updated %s" % model["modkey"])
-                except Exception as e:
-                    print("Error with %s: %s" % (obj.key, e))
+            try:
+                for obj in FingerServer().dir(path):
+                    try:
+                        if obj.key.find(".mod") == -1: continue
+                        #start processing
+                        self.lock[path] = True
+                        print("Processing: %s" % obj.key)
+                        scad_file = "output/" + obj.key.replace(path, "")
+                        stl_file = scad_file + ".stl"
+                        stl_key = obj.key.replace(".mod", ".stl")
+                        pkey = path.rstrip('/')
+                        #get the model
+                        model = FingerServer().get(obj.key, load=True)
+                        model[pkey + "starttime"] = time.time()
+                        #create the scad, insert a custom quality header (defrags cache)
+                        rq = RenderQuality.STUPIDFAST if path.find("preview") > -1 else RenderQuality.HIGH
+                        scad = DangerFinger().scad_header(rq) + "\n" + FingerServer().get(model["scadkey"], load=False).decode('utf-8')
+                        write_file(scad.encode('utf-8'), scad_file)
+                        print("   Wrote SCAD file: %s" % scad_file)
+                        #render it!
+                        write_stl(scad_file, stl_file)
+                        with open(stl_file, 'rb') as file_h:
+                            FingerServer().put(stl_key, file_h.read())
+                            print("   uploaded %s" % stl_key)
+                        obj.delete()
+                        print("   deleted %s" % obj.key)
+                        model[pkey + "completedtime"] = time.time()
+                        model[pkey + "key"] = stl_key
+                        FingerServer().put(model["modkey"], model)
+                        print("   updated %s" % model["modkey"])
+                    except Exception as e:
+                        print("Error with %s: %s" % (obj.key, e))
+            except Exception as e:
+                print("Error listing %s: %s" % (path, e))
             if self.lock[path]:
                 print("Completed process loop~")
                 self.lock[path] = False

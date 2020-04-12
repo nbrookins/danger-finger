@@ -152,7 +152,9 @@ class DangerFingerBase:
     tip_interface_ridge_radius = Prop(val=.875, minv=0, maxv=5, adv=True, doc=''' ''')
     tip_interface_ridge_height = Prop(val=1.55, minv=0, maxv=5, adv=True, doc=''' ''')
     tip_interface_post_height = Prop(val=1.7, minv=0, maxv=5, adv=True, doc=''' ''')
-    tip_detent_height = 3.3
+    tip_detent_height = Prop(val=3.3, minv=0, maxv=5, adv=True, doc=''' ''')
+    tip_detent_thickness = Prop(val=1.65, minv=0, maxv=5, adv=True, doc=''' ''')
+    tip_detent_cut_width = Prop(val=.65, minv=0, maxv=2, adv=True, doc=''' ''')
 
     strut_height_ratio = Prop(val=.85, minv=.1, maxv=3, adv=True, doc=''' ratio of strut height to width (auto-controlled).  fractions make the strut thinner ''')
     strut_rounding = Prop(val=.4, minv=.5, maxv=2, adv=True, doc=''' 0 for no rounding, 1 for fullly round ''')

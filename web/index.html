@@ -3,11 +3,11 @@
 <html>
 <head>
 	<title>Danger-Finger - Configure and Preview</title>
-	<link rel="stylesheet" type="text/css" href="style.css">
+	<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+	<!--<link rel="stylesheet" type="text/css" href="style.css">-->
 	<script src="/stl_viewer.min.js"></script>
 </head>
-<!---->
-<!--<script src="/stl_viewer.min.js"></script>-->
 <body>
 	<div id="wrap" style="width:100%; margin:0 auto;position:relative;">
 		<div id="stl_cont" style="width:100%;visibility:hidden;border:1px dashed #202020;"></div>
@@ -220,6 +220,7 @@
 			}
 
 			// ADD JSON DATA TO THE TABLE AS ROWS.
+			id = 0;
 			for (var k of Object.keys(json)) {
 				t = table;
 				tr = t.insertRow(-1);
@@ -230,7 +231,13 @@
 					} else if (j==1){
 						tabCell.innerHTML = k;
 					}else{
-						tabCell.innerHTML = json[k][col[j]];
+						h = json[k][col[j]];
+						tabCell.innerHTML = h;
+						if (String(h).search('preview/') > -1){
+							//ADD MODEL
+							add_model(id, h);
+							id++;
+						}
 					}
 				}
 			}
@@ -238,6 +245,16 @@
 			var divContainer = document.getElementById("models");
 			divContainer.innerHTML = "";
 			divContainer.appendChild(table);
+		}
+
+		function add_model(id, url){
+			console.log(id + " - model - " + url);
+			//document.getElementById("loader").src=baseurl + "loader.gif";
+			//	const id = parseInt(k)
+			stl_viewer.add_model({'id': id, 'filename': url, 'rotationz': degtorad(rotationz)});
+
+			const tdobj=$id(button_name(id));
+			if (tdobj) tdobj.onclick = function() {rem_models([id]);}
 		}
 
 		function fill_params(json, url) {
@@ -375,6 +392,8 @@
 			}};
 
 	</script>
-
+	<script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>
+	<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
+	<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
 </body>
 </html>

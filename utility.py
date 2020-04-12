@@ -23,12 +23,12 @@ def main():
     finger = DangerFinger()
 
     render_stl = FingerPart.NONE
-    render_stl = FingerPart.HARD # HARD PREVIEW ALL
+   # render_stl = FingerPart.TIP #HARD # HARD PREVIEW ALL
     cores = 6
 
     Params.parse(finger)
-    finger.render_quality = RenderQuality.ULTRAHIGH #  INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
-    finger.preview_quality = RenderQuality.ULTRAHIGH #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
+    finger.render_quality = RenderQuality.HIGH #  INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
+    finger.preview_quality = RenderQuality.MEDIUM #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
    # finger.preview_explode = True
     #finger.preview_cut = True
     #finger.preview_rotate = 40
