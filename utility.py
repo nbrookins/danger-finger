@@ -56,6 +56,7 @@ def main():
 def write_file(data, filename):
     ''' write bytes to file '''
     print("  writing %s bytes to %s" %(len(data), filename))
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     with open(filename, 'wb') as file_h:
         file_h.write(data)
 

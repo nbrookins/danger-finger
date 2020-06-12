@@ -3,12 +3,12 @@ Source code for the DangerCreations danger-finger, a DIY 3D-printable prosthetic
 
 This is a pre-release, in progress.  Use at own risk.  Latest stable version is available at: http://www.thingiverse.com/thing:1340624
 
-You'll need to install Python3, and then once you have Python and Pip, do "pip3 install SolidTools"
-then simply run "python3 danger_finger.py" to compile the project.  It will output a .scad file, depending on flags and configuration.  By default, it will output all objects to a *preview.scad file.
+You'll need to install Python3, and then once you have Python and Pip, do "pip3 install SolidPython"
+then simply run "python3 utility.py" to compile the project.  It will output a .scad file, depending on flags and configuration.  By default, it will output all objects to a *preview.scad file.
 
 To view the output install OpenScad from openscad.org, and open the scad file.  It can auto-preview, so that each time you compile the Pytyhon, you'll get an automatic preview.  
 
-Lastly, RENDER the scad which will allow you to export an STL file for your printer.  In the future a web-interface and auto-render script will be provided for automating this part of the process.
+Lastly, RENDER the scad and then export an STL file for your printer.  In the future a web-interface and auto-render script will be provided for automating this part of the process.
 
 -----------------------------------------------------------------------------------
 
