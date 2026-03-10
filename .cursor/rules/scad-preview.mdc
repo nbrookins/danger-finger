@@ -14,13 +14,13 @@ OpenSCAD can render a preview PNG of each SCAD model. Use this to verify the ide
 
 | Goal | Command | What it does |
 |------|---------|--------------|
-| **Verify SCAD + viewer** | `make verify-web-ui` | Starts server; builds SCAD + PNGs to output/ at startup, then captures viewer-screenshot.png. |
+| **Verify SCAD + viewer** | `make verify-web-ui` | Starts server; builds SCAD + PNGs to output/ at startup, then captures output/viewer-screenshot.png. |
 
 ## Output location
 
 - **output/** — SCAD, STL, and preview PNGs
 - **output/dangerfinger_v*_all.png** — part_all assembly (canonical ideal layout reference)
-- **viewer-screenshot.png** — web viewer screenshot
+- **output/viewer-screenshot.png** — web viewer screenshot
 
 ## Critical: read the actual output
 

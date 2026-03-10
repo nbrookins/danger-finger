@@ -98,13 +98,13 @@ kbr-test:
 	done
 	USE_EXISTING_SERVER=1 TEST_PORT=8081 ./scripts/test_web.sh
 
-# Inspect live UI in headless browser; writes ui-inspect.txt. App must be running (e.g. make kbr).
-# Tighter feedback loop: after UI changes run this and check ui-inspect.txt; exit 1 = UI error.
+# Inspect live UI in headless browser; writes output/ui-inspect.txt. App must be running (e.g. make kbr).
+# Tighter feedback loop: after UI changes run this and check output/ui-inspect.txt; exit 1 = UI error.
 # Requires: pip install -r requirements-dev.txt && python -m playwright install chromium
 inspect-ui:
-	@BASE_URL=http://127.0.0.1:8081 UI_INSPECT_OUTPUT=ui-inspect.txt $(or $(PYTHON),python3) scripts/inspect_ui.py
+	@BASE_URL=http://127.0.0.1:8081 UI_INSPECT_OUTPUT=output/ui-inspect.txt $(or $(PYTHON),python3) scripts/inspect_ui.py
 
-# Single verify run: start server (builds SCAD + PNGs at startup) + viewer screenshot (viewer-screenshot.png).
+# Single verify run: start server (builds SCAD + PNGs at startup) + viewer screenshot (output/viewer-screenshot.png).
 # Server creates output/ SCAD+PNGs as part of normal workflow. Use Docker (make build first) to avoid macOS OpenSCAD issues.
 # Requires: make build (for Docker), pip install -r requirements-dev.txt, python -m playwright install chromium
 verify-web-ui:

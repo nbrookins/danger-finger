@@ -35,7 +35,7 @@ The center values ARE the correct `_preview_position_offsets`. No theory needed.
 **Step 2 — check the print rotation inverses** in `_preview_rotate_offsets`:
 Each entry should be the inverse of `_rotate_offsets[name]`. For single-axis, negate. For multi-axis (middle), verify visually.
 
-**Step 3 — verify by running `make verify-web-ui`** and reading `viewer-screenshot.png`.
+**Step 3 — verify by running `make verify-web-ui`** and reading `output/viewer-screenshot.png`.
 
 ## Known baseline values (default params)
 

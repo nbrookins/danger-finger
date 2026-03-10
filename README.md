@@ -14,7 +14,7 @@ For more information about how to build or have a prosthetic finger built, visit
 
 **Docs**: [Parameters](docs/PARAMETERS.md) · [Product requirements and design decisions](docs/PRODUCT.md)
 
-**Web tests**: `make test-web` runs e2e against a fresh server. `make verify-web-ui` starts the server (Docker or local); the server builds SCAD + preview PNGs to `output/` at startup, then captures `viewer-screenshot.png`. Use `make build` first for Docker (avoids macOS OpenSCAD issues). For inspect only with an already-running app: `make inspect-ui` (writes `ui-inspect.txt`). Requires `pip install -r requirements-dev.txt`, `python -m playwright install chromium`, and OpenSCAD.
+**Web tests**: `make test-web` runs e2e against a fresh server. `make verify-web-ui` starts the server (Docker or local); the server builds SCAD + preview PNGs to `output/` at startup, then captures `output/viewer-screenshot.png`. Use `make build` first for Docker (avoids macOS OpenSCAD issues). For inspect only with an already-running app: `make inspect-ui` (writes `output/ui-inspect.txt`). Requires `pip install -r requirements-dev.txt`, `python -m playwright install chromium`, and OpenSCAD.
 
 **Auto-run on commit** (optional): To run web tests automatically when you commit changes under `web/`, install the hook: `cp scripts/pre-commit-web-test.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`.
 

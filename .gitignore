@@ -9,6 +9,3 @@ output/*
 *.env
 # Playwright browser cache
 .pw-browsers/
-# Transient inspection/screenshot outputs
-ui-inspect.txt
-viewer-screenshot.png

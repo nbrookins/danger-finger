@@ -68,7 +68,7 @@ This document is the running record of product requirements and design decisions
 | **`make kbr-test`** | Build, run container in background, then run e2e test against it so we test the real Docker stack. |
 | **`USE_EXISTING_SERVER=1` in test script** | Allows hitting an already-running server (e.g. Docker on 8081) without starting a second process. |
 | **Test port 8091 when starting server in script** | Avoids clashing with Docker on 8081. |
-| **`make inspect-ui` (Playwright)** | Headless browser loads the live UI, captures `#preview_status`, `#viewer_error`, and console; writes `ui-inspect.txt`. Exit 1 if the UI shows an error. Use when debugging “error and no preview” or to capture exactly what the page shows. Requires `pip install -r requirements-dev.txt` and `python -m playwright install chromium`. |
+| **`make inspect-ui` (Playwright)** | Headless browser loads the live UI, captures `#preview_status`, `#viewer_error`, and console; writes `output/ui-inspect.txt`. Exit 1 if the UI shows an error. Use when debugging “error and no preview” or to capture exactly what the page shows. Requires `pip install -r requirements-dev.txt` and `python -m playwright install chromium`. |
 
 ---
 

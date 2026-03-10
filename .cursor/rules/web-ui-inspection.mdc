@@ -18,14 +18,14 @@ When verifying web, API, or preview changes, **do not** assume a server the user
 | Goal | Command | What it does |
 |------|---------|--------------|
 | **Verify API + e2e (fresh server)** | `make test-web` | Starts a fresh server on port 8091, runs e2e, then stops. |
-| **Verify visual output (SCAD + viewer in one run)** | `make verify-web-ui` | Starts server (builds SCAD + preview PNGs to output/ at startup), writes viewer-screenshot.png and ui-inspect.txt, then stops. Use Docker (`make build` first) to avoid macOS OpenSCAD issues. |
+| **Verify visual output (SCAD + viewer in one run)** | `make verify-web-ui` | Starts server (builds SCAD + preview PNGs to output/ at startup), writes output/viewer-screenshot.png and output/ui-inspect.txt, then stops. Use Docker (`make build` first) to avoid macOS OpenSCAD issues. |
 | **Test full Docker stack** | `make kbr-test` | Build image, run container, then runs test with `USE_EXISTING_SERVER=1 TEST_PORT=8081`. |
-| **Inspect already-running app** | `make inspect-ui` | Runs Playwright against existing server on 8081. Only use when you just started that server. |
+| **Inspect already-running app** | `make inspect-ui` | Runs Playwright against existing server on 8081. Writes output/ui-inspect.txt. Only use when you just started that server. |
 
 ## Iterating on preview / viewer / visual behavior
 
 1. Run `make verify-web-ui`.
-2. **Read the image `viewer-screenshot.png`** to see what actually rendered. Do not assume changes applied.
+2. **Read the image `output/viewer-screenshot.png`** to see what actually rendered. Do not assume changes applied.
 3. If the screenshot is unchanged, your changes did not take effect. Investigate why.
 4. Repeat until the screenshot shows intended result.
 
