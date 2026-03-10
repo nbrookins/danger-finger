@@ -1,63 +1,56 @@
 #!/bin/python
 # pylint: disable=C0302, line-too-long, unused-wildcard-import, wildcard-import, invalid-name, broad-except
 '''
-The danger_finger copyright 2014-2020 Nicholas Brookins and Danger Creations, LLC
+The danger_finger copyright 2014-2026 Nicholas Brookins and Danger Creations, LLC
 http://dangercreations.com/prosthetics :: http://www.thingiverse.com/thing:1340624
 Released under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/
 Source code licensed under Apache 2.0:  https://www.apache.org/licenses/LICENSE-2.0
 '''
-import os
 import sys
-import json
-import time
-import solid
+import os
 from danger import *
+from danger.Scad_Renderer import *
 
 def main():
     '''main'''
-
-    config = {}
-    Params.parse(config)
-
     print("running CLI")
+
     finger = DangerFinger()
+    parser = argparse.ArgumentParser(prog="danger_finger.py",
+        description='''danger-finger.py v%s (c) 2015-2020 DangerCreations, Inc.
+        code: knick@dangercreations.com''' % finger.VERSION, add_help=False)
+    parser.add_argument("-r", "--render", help="render STL", action="store_true")
+    Params.parse(finger, parser=parser)
 
-    render_stl = FingerPart.NONE
-   # render_stl = FingerPart.TIP #HARD # HARD PREVIEW ALL
-    cores = 6
-
-    Params.parse(finger)
+    cores = os.cpu_count()
+    render_stl = FingerPart.NONE if not finger.render else FingerPart.ALL | FingerPart.EXPLODE#.HARD | FingerPart.SOFT | FingerPart.STAND | FingerPart.PINS#FingerPart.ALL# HARD PREVIEW ALL
+    print ("Found cores: ", cores, render_stl)
     finger.render_quality = RenderQuality.HIGH #  INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
-    finger.preview_quality = RenderQuality.MEDIUM #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
-   # finger.preview_explode = True
     #finger.preview_cut = True
-    #finger.preview_rotate = 40
-    #finger.animate_explode = True
-    #finger.animate_rotate = True
-    finger.build()
 
-    for _fp, model in finger.models.items():
-        #flat = flatten(model)
+    finger.build()#header=True)
+    files = []
+
+    for name, model in finger.models.items():
+        if model == None: continue
+        fp = FingerPart.from_str(name)
         if not iterable(model):
-            filename = "output/dangerfinger_v4.2_" + model.part #TODO - fix template
+            print ("Processing ", fp)
+            #write SCAD files
+            filename = "output/dangerfinger_v" + str(finger.VERSION) + "_" + model.part
             model.scad_filename = filename + ".scad"
-            scad = DangerFinger().scad_header(finger.render_quality) + "\n" + model.scad
-            write_file(scad.encode('utf-8'), model.scad_filename)
+            write_file(model.scad.encode('utf-8'), model.scad_filename)
 
-    if render_stl:
-        files = []
-        for fp, model in finger.models.items():
-            if fp & render_stl == fp and not iterable(model): #TODO - make expanded one for non unioned plugs
+            if render_stl == fp or ((fp & render_stl == fp)):# and (fp & FingerPart.PREVIEW == 0)): #TODO - make expanded one for non unioned plugs
+                print ("** queing for render ", fp)
                 files.append(model.scad_filename)
-        if files:
-            Renderer().scad_parallel_to_stl(files, max_concurrent_tasks=cores)
-    print("Complete")
+            else:
+                print ("skipping ", fp)
 
-def write_file(data, filename):
-    ''' write bytes to file '''
-    print("  writing %s bytes to %s" %(len(data), filename))
-    with open(filename, 'wb') as file_h:
-        file_h.write(data)
+    if files and render_stl:
+        Scad_Renderer().scad_parallel(files, max_concurrent_tasks=cores)
+
+    print("-- Complete, exiting --")
 
 if __name__ == "__main__":
     sys.stdout = UnbufferedStdOut(sys.stdout)

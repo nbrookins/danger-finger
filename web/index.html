@@ -19,16 +19,16 @@
 	<table id="mdata">
 		<tr id="mrow">
 			<td id="preview">Part:</td>
-			<td id="tip"><input id="b_tip" type="button" value="Tip" onclick=""></td>
-			<td id="middle"><input id="b_middle" type="button" value="Middle" onclick=""></td>
-			<td id="base"><input id="b_base" type="button" value="Base" onclick=""></td>
-			<td id="linkage"><input id="b_linkage" type="button" value="Linkage" onclick=""></td>
+			<td id="tip"><input id="b_tip" type="button" value="Tip"></td>
+			<td id="middle"><input id="b_middle" type="button" value="Middle"></td>
+			<td id="base"><input id="b_base" type="button" value="Base"></td>
+			<td id="linkage"><input id="b_linkage" type="button" value="Linkage"></td>
 		</tr>
 		<tr id="mrow">
 			<td id="params-basic">Parameters:</td>
-			<td id="params-basic"><input id="b_ph" type="button" value="Hide" onclick="$id('advData').hidden = $id('showData').hidden = true;"></td>
-			<td id="params-basic"><input id="b_pb" type="button" value="Standard" onclick="$id('advData').hidden = true; $id('showData').hidden = false;"></td>
-			<td id="params-basic"><input id="b_pa" type="button" value="Advanced" onclick="$id('advData').hidden = false; $id('showData').hidden = true;"></td>
+			<td id="params-basic"><input id="b_ph" type="button" value="Hide"></td>
+			<td id="params-basic"><input id="b_pb" type="button" value="Standard"></td>
+			<td id="params-basic"><input id="b_pa" type="button" value="Advanced"></td>
 			<td id="params-basic">Explode:<br/><input type="range" min="0" max="100" value="0" class="slider" id="explode" oninput="slide_change();">
 				<!--<br/>Rotate:<br/><input type="range" min="0" max="100" value="0" class="slider" id="rotate" oninput="slide_change();">-->
 			</td> <!--TODO show params as table, omit default matches feature?-->
@@ -60,6 +60,7 @@
 		const rot_factor = .65;
 		const expl_factor = 25;
 		var const_factor = 0;
+		var username = "nick"; // Global username variable
 
 		//convert from degrees to radians
 		function degtorad(deg){ if (deg==0) {return 0; }else{return deg / 57.3;}}
@@ -105,7 +106,7 @@
 				console.log("add" + id);
 				const tdobj=$id(button_name(id));
 				stl_viewer.add_model({'id': id, 'filename': file_name(id), 'rotationz': degtorad(rotationz)});
-				tdobj.onclick = function() {rem_models([id]);}
+				tdobj.onclick = () => rem_models([id]);
 			}
 		}
 
@@ -117,7 +118,7 @@
 				console.log("rem" + id);
 				const tdobj=$id(button_name(id));
 				stl_viewer.remove_model(id);
-				tdobj.onclick = function() {add_models([id]);}
+				tdobj.onclick = () => add_models([id]);
 			}
 		}
 
@@ -309,21 +310,23 @@
 			var divContainer = document.getElementById("showData");
 			divContainer.innerHTML = "";
 
-			var form = document.createElement("form");
+			const form = document.createElement("form");
 			form.id = "form";
   			form.method = "POST";
 			divContainer.appendChild(form);
 			form.appendChild(table);
 
-			var name = document.createElement('input');
-			name.id = 'configname';
+			const nameInput = document.createElement('input');
+			nameInput.id = 'configname';
+			nameInput.type = 'text';
 			l = url.replace(/\/+$/,'').split('/');
-			name.innerHTML = l[l.length-1];
+			nameInput.value = l[l.length-1];
+			form.appendChild(nameInput);
 
-			var button = document.createElement('button');
+			const button = document.createElement('button');
 			button.innerHTML = 'Save';
-			button.onclick = function(){submit();};
-			divContainer.appendChild(button);
+			button.onclick = () => submit();
+			form.appendChild(button);
 
 			var div2 = document.getElementById("advData");
 			div2.innerHTML = "";
@@ -341,9 +344,9 @@
 					//TODO create render button
 				}
 			}
-			var cfg = $id(configname).value;
-			form = document.getElementById("form");
-			form.action = "/profile/nick/config/" + cfg;
+			var cfg = $id('configname').value;
+			const form = document.getElementById("form");
+			form.action = "/profile/" + username + "/config/" + cfg;
 			form.submit();
 		}
 
@@ -380,16 +383,24 @@
 			return val;
 		}
 
-		window.onload = function() {
-			if (location.protocol != 'http:'){
-				location.href = 'http:' + window.location.href.substring(window.location.protocol.length);
-			}else{
-				//add_models([0,1,2,3]);
-				var username = "nick";
-				get_json('/params/all');
-				get_json('/profiles/nick');
-				get_json('/models/44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a');
-			}};
+window.addEventListener('load', () => {
+				if (location.protocol != 'http:'){
+					location.href = 'http:' + window.location.href.substring(window.location.protocol.length);
+				}else{
+					//add_models([0,1,2,3]);
+					const username = "nick";
+					// Setup button handlers
+					const hideBtn = $id('b_ph');
+					const stdBtn = $id('b_pb');
+					const advBtn = $id('b_pa');
+					if (hideBtn) hideBtn.onclick = () => { $id('advData').hidden = $id('showData').hidden = true; };
+					if (stdBtn) stdBtn.onclick = () => { $id('advData').hidden = true; $id('showData').hidden = false; };
+					if (advBtn) advBtn.onclick = () => { $id('advData').hidden = false; $id('showData').hidden = true; };
+					get_json('/params/all');
+					get_json('/profiles/nick');
+					get_json('/models/44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a');
+				}
+			});
 
 	</script>
 	<script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>

@@ -6,6 +6,7 @@ http://dangercreations.com/prosthetics :: http://www.thingiverse.com/thing:13406
 Released under Creative Commons Attribution-NonCommercial-ShareAlike 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/
 Source code licensed under Apache 2.0:  https://www.apache.org/licenses/LICENSE-2.0
 '''
+import asyncio
 import os
 import sys
 import json
@@ -18,11 +19,16 @@ from collections import OrderedDict
 from hashlib import sha256
 import brotli
 import tornado.options
-import tornado.ioloop
 import tornado.web
-import solid
 import boto3
+
+# Add parent directory to path so we can import danger module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from danger import *
+#from danger.Borg import Borg
+from danger.Params import Params
+from danger.tools import *
+from danger.Scad_Renderer import *
 
 #TODO 1 - get new image running with auth variables
 #TODO 1 - implement API in index.html
@@ -203,7 +209,7 @@ class FingerHandler(tornado.web.RequestHandler):
         self.write(data)
         print("200 OK response to: %s, %sb" %(self.request.uri, len(data)))
 
-parts = [FingerPart.TIP, FingerPart.BASE, FingerPart.LINKAGE, FingerPart.MIDDLE, FingerPart.TIPCOVER, FingerPart.SOCKET, FingerPart.PLUGS]
+parts = [FingerPart.TIP, FingerPart.BASE, FingerPart.LINKAGE, FingerPart.MIDDLE, FingerPart.TIPCOVER, FingerPart.SOCKET, FingerPart.PLUG, FingerPart.STAND, FingerPart.PINS]
 
 handlers = [
         #get available parameters
@@ -232,12 +238,12 @@ handlers = [
 
 class FingerServer(Borg):
     '''server to handle s3 actions including queing of preview and render, and dequeue / processing of stl'''
-    preview_poll = Prop(val=10, minv=0, maxv=120, doc=''' Enable explode mode, only for preview ''', hidden=True)
-    render_poll = Prop(val=30, minv=0, maxv=120, doc=''' rotate the finger ''', hidden=True)
-    http_port = Prop(val=8081, minv=80, maxv=65500, doc=''' Enable explode animation, only for preview ''', hidden=True)
-    s3_bucket = Prop(val='danger-finger', doc=''' Enable rotate animation, only for preview ''', hidden=True)
-    aws_id = Prop(val="", doc=''' Enable rotate animation, only for preview ''', hidden=True)
-    aws_key = Prop(val="", doc=''' Enable rotate animation, only for preview ''', hidden=True)
+    preview_poll = Prop(val=10, minv=0, maxv=120, doc='''  ''', hidden=True)
+    render_poll = Prop(val=30, minv=0, maxv=120, doc='''  ''', hidden=True)
+    http_port = Prop(val=8081, minv=80, maxv=65500, doc='''  ''', hidden=True)
+    s3_bucket = Prop(val='danger-finger', doc='''  ''', hidden=True)
+    aws_id = Prop(val="", doc=''' ''', hidden=True)
+    aws_key = Prop(val="", doc=''' ''', hidden=True)
     s3session = None
     s3 = None
     bucket = None
@@ -421,15 +427,10 @@ def get_config_models(cfg):
         models[modkey] = model
     return models
 
-def check_null(obj):
-    '''check dict for null members'''
-    for i in obj:
-        if obj[i] is None: return False
-    return True
-
-def get_key(cfg, v, pn):
-    '''get a config key'''
-    return "%s_%s_%s" % (cfg, v, pn)
+# Utility lambdas
+check_null = lambda obj: all(obj[i] is not None for i in obj)
+get_key = lambda cfg, v, pn: "%s_%s_%s" % (cfg, v, pn)
+process_post = lambda args: {k: v[0].decode('utf-8') for (k, v) in args.items()}
 
 def create_model(pn, v, cfghash):
     '''create a new model and scad'''
@@ -445,10 +446,6 @@ def compile_scad(pn, cfghash):
     scadbytes = build(pn, config).encode('utf-8')
     hsh = sha256(scadbytes).hexdigest()
     return scadbytes, hsh
-
-def process_post(args):
-    '''parse a post body'''
-    return {k: v[0].decode('utf-8') for (k, v) in args.items()}
 
 def create_zip(files):
     '''create a big ol zip file'''
@@ -489,20 +486,18 @@ def write_stl(scad_file, stl_file):
     ''' render and write stl to file '''
     start = time.time()
     print("  Beginning render of %s" %(stl_file))
-    Renderer().scad_to_stl(scad_file, stl_file)#), trialrun=True)
+    Scad_Renderer().scad_to_stl(scad_file, stl_file)#), trialrun=True)
     print("  Rendered %s in %s sec" % (stl_file, round(time.time()-start, 1)))
     return stl_file
 
-def floatify(config):
-    '''change all values to floats.  we all float on, ok?'''
-    for k in config:
-        config[k] = float(config[k])
+# Convert config values to floats
+floatify = lambda config: {k: float(v) for k, v in config.items()}
 
 def build(p, config, q=RenderQuality.NONE):
     '''build a finger model and return scad'''
     print("Building finger")
     finger = DangerFinger()
-    floatify(config)
+    config = floatify(config)
     Params.apply_config(finger, config)
     finger.render_quality = q  #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
     finger.build(header=(q != RenderQuality.NONE))

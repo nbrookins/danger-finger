@@ -1,3 +1,10 @@
-*file
 /env
+/output/*
+/upload/*
+/test
+/old
 docker-compose.*
+Dockerfile
+Makefile
+*.env
+.*

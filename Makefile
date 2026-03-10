@@ -4,16 +4,20 @@ environ=dev
 env=""
 #now also parse any other files they passed in env=
 ifeq ($(env),"")
-	#automatic detect environ
-	include env/$(environ).env
-	export $(shell sed 's/=.*//' env/$(environ).env)
-	env_file_param=--env-file env/$(environ).env
+	# automatic detect environ
+	include docker/$(environ).env
+	export $(shell sed 's/=.*//' docker/$(environ).env)
+	env_file_param=--env-file docker/$(environ).env
 else
-	#manually passed env param
+	# manually passed env param
 	include $(env)
 	export $(shell sed 's/=.*//' $(env))
 	env_file_param=--env-file $(env)
 endif
+
+DOCKER_REGISTRY ?= # harbor.smartdrivesystems.com/
+# This will be overrdden with an actual build number in Jenkins CI
+BUILD_NUMBER ?= $(environ)
 
 # If the first argument is "run" then fix other params to pass along
 ifeq (run,$(firstword $(MAKECMDGOALS)))
@@ -23,55 +27,32 @@ ifeq (run,$(firstword $(MAKECMDGOALS)))
   $(eval $(RUN_ARGS):;@:)
 endif
 
-# This will be overrdden with harbor.smartdrivesystems.com in Jenkins CI
-# if we leave blank, seems to work well for targeting locally when disconnected.  needs trailing slash however!
-DOCKER_REGISTRY ?= # harbor.smartdrivesystems.com/
-
-# This will be overrdden with an actual build number in Jenkins CI
-BUILD_NUMBER ?= $(environ)
-
-# This will be overridden with 'common' in Jenkins CI
-HARBOR_PROJECT ?= sandbox
-
-DOCKER_TAG ?= $(DOCKER_REGISTRY)$(HARBOR_PROJECT)/$(project):$(version)-$(BUILD_NUMBER)
+DOCKER_TAG ?= $(DOCKER_REGISTRY)$(project):$(version)-$(BUILD_NUMBER)
 
 build:
-	make build_cmd
+	make build_internal
 	make list
 
-build_cmd:
-	#make build_script_prep
-	make build_internal
-
 build_internal:
-	docker build --rm --compress \
-		--build-arg .
-	#	--tag $(DOCKER_TAG) .
-	docker build --rm --compress \
-		--build-arg .
-	#	--tag $(project):latest .
-
-#build_script_prep::
-	#pwd
-	#do something special
-
+	docker build --rm --compress  -f docker/Dockerfile --tag $(DOCKER_TAG) . #\
+	
 list:
 	#Checking for running instances
 	docker ps -q | grep "$(project)"; echo
 	#Checking built images
 	docker image list | grep "$(project)"; echo
 
-#removed run-service, as there's no difference.  can always be added in child makefile if desired.
 run:
+	echo $(DOCKER_TAG) $(RUN_ARGS) && \
 	docker run \
 	  -e project=$(project) \
 	  -e script=$(script) \
-	  -p 8081:8081/tcp \
+	  -p $(ports) \
 	  --log-opt tag="project=$(project)," \
 	  -e domain=$(domain) \
 	  $(env_file_param) $(DOCKER_TAG) $(RUN_ARGS)
 
-run-shell:
+shell:
 	docker run \
 	  -it --entrypoint /bin/bash \
 	  -e project=$(project) \
@@ -89,23 +70,23 @@ kill:
 	killall Python
 	docker kill $(shell docker ps | grep "$(project)" | awk '{print $$1}')  ; echo
 
-kill-all:
+killall:
 	docker kill $$(docker ps -q ) ; echo
 
 kbr:
-	make kill-all
+	make killall
 	make build
 	make run
 
 kbrs:
-	make kill-all
+	make killall
 	make build
-	make run-shell
+	make shell
 
 stop:
 	echo $(shell docker ps | grep "$(project)" | awk '{print $$1}') | xargs docker stop ; echo
 
-stop-all:
+stopall:
 	echo $$(docker ps -q) | xargs docker stop ; echo
 
 # Run this to start the service via docker compose   -q | grep "$(project)" | awk '{print $$1}'

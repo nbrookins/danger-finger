@@ -1,5 +1,13 @@
-#example for hello.py.  replace with your won requirements.txt in your project folder
-solidpython
+# use the following command to install all python3 dependencies
+# pip3 install -r ./requirements.txt
+#   or
+# python3 -m venv .venv
+# source .venv/bin/activate
+# .venv/bin/python3 -m pip install -r ./requirements.txt
+#
+solidpython2
+
+#the following are only required for running the webserver, not for local operation
 tornado
 asyncio
 brotli
