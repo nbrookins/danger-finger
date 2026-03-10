@@ -10,6 +10,21 @@ from solid2 import *
 from danger.constants import *
 from danger.finger_base import *
 
+# RGB 0-1 for SCAD color(); matches web PREVIEW_PART_COLORS for comparing part_all STL to web preview
+PART_COLORS = {
+    "tip": [0.753, 0.224, 0.169],       # #c0392b
+    "base": [0.161, 0.502, 0.725],      # #2980b9
+    "linkage": [0.153, 0.682, 0.376],   # #27ae60
+    "middle": [0.827, 0.329, 0.0],     # #d35400
+    "tipcover": [0.557, 0.267, 0.678], # #8e44ad
+    "socket": [0.086, 0.627, 0.522],   # #16a085
+    "stand": [0.498, 0.549, 0.553],    # #7f8c8d
+    "pins": [0.173, 0.243, 0.314],     # #2c3e50
+    "plug": [0.902, 0.494, 0.133],     # #e67e22
+    "peg": [0.902, 0.494, 0.133],      # same as plug
+    "bumper": [0.498, 0.549, 0.553],   # same as stand (gray)
+}
+
 #TODO - make snap knucles instead of pins?
 # ********************************** The danger finger *************************************
 class DangerFinger(DangerFingerBase):
@@ -102,7 +117,7 @@ class DangerFinger(DangerFingerBase):
                     mod_socket_interface - mod_hinge_cut.translate(self.tunnel_radius/2, .001, 0) \
                     - mod_tendon_hole - mod_elastic - mod_breather - _mod_bridge_cut[0].translate(bridge_cut_translate_x, bridge_cut_translate_y, 0).resize(0, 0, self.knuckle_inner_width_[Orient.PROXIMAL])
                     ) - mod_extra + mod_washers - mod_pin    - front_cut #- mod_cut_fist.debug()+ mod_shell
-        return final#.rotate((0, 0, 90))
+        return final.color(PART_COLORS["base"])#.rotate((0, 0, 90))
 
     tip_bottom_trim_x_extra = -2
 
@@ -156,7 +171,7 @@ class DangerFinger(DangerFingerBase):
         final = ((mod_main  + mod_interface  - mod_plug_cut - mod_tip_hole - mod_hinge_cut -  mod_pin \
                   - cut[1].translate(0, 9.0, 0).resize(0, 0, self.knuckle_inner_width_[Orient.DISTAL])) \
                     - mod_extra + mod_washers - mod_pin) #.mod("")
-        return final.translate((0,self.intermediate_length,0))#.rotate((0, 0, 90))
+        return final.translate((0,self.intermediate_length,0)).color(PART_COLORS["tip"])#.rotate((0, 0, 90))
 
     def part_middle(self):
         ''' Generate the middle/intermediate finger section '''
@@ -224,7 +239,7 @@ class DangerFinger(DangerFingerBase):
         final = ((mod_dist_hinge + bridge_d).translate((0, self.distal_offset_, 0)) + mod_prox_hinge + mod_strut_tl + mod_strut_tr + mod_strut_b \
                  + bridge_p) - (mod_side_trim_d.translate((0, self.distal_offset_, 0))+  mod_side_trim_p) + mod_brace + mod_mid_round #.debug()
 
-        return final -tendon #- mid_cut#.debug()#+ fc.debug()#.rotate((0, 0, 90))
+        return (final - tendon).color(PART_COLORS["middle"]) #- mid_cut#.debug()#+ fc.debug()#.rotate((0, 0, 90))
 
     def _create_cover_bumper(self, rwid, l, avgk, avg, t):
         ''' Create the cover-style bumper geometry for the middle section '''
@@ -270,7 +285,7 @@ class DangerFinger(DangerFingerBase):
              mod_slit.translate((0, self.linkage_length/3 + cross_hole_dist, self.linkage_width/1.85))#.debug()
 
         final = mod_core + mod_hook + mod_core_hull - mod_hole - mod_cut#.mod("%")
-        return final#.rotate((0, 0, 90))
+        return final.color(PART_COLORS["linkage"])#.rotate((0, 0, 90))
 
     def part_socket(self):
         ''' create the interface socket '''
@@ -291,7 +306,7 @@ class DangerFinger(DangerFingerBase):
         c= translate((0, -length - self.distal_flange_height -.01 - self.socket_interface_length, 0))(rotate((90, 0, 0))(c))
         mod_bottom_cut = cylinder(r=self.socket_bottom_cut*1.2 , h = 40).translate(-self.socket_bottom_cut,-self.socket_depth-self.socket_bottom_cut*1.2,-20) #.debug()
         scallops = self._socket_scallop()
-        final = color("blue")(
+        final = color(PART_COLORS["socket"])(
             (mod_core - mod_socket_interface_cut +mod_bottom  - bottom_cut  + c - mod_cut_tendon).rotate((0,20,0)) - mod_bottom_cut  - scallops)
 
             #TODO - hack hack hack
@@ -337,11 +352,11 @@ class DangerFinger(DangerFingerBase):
 
         #TODO better fist bottom cut
         final = intersection()(mod_core - d- mod_int, bot_sp) + (prints)
-        return final.translate((0,self.intermediate_length ,0)).color("blue")#.rotate((0, 0, 90))
+        return final.translate((0,self.intermediate_length ,0)).color(PART_COLORS["tipcover"])#.rotate((0, 0, 90))
 
     def part_plug(self, clearance=True, extra=False):
         ''' plug covers for the knuckle pins'''
-        return color("blue")(self.knuckle_plug(clearance=clearance, extra=extra))
+        return color(PART_COLORS["plug"])(self.knuckle_plug(clearance=clearance, extra=extra))
 
     def part_plugs(self, clearance=True, extra=False):
         ''' plug covers for the knuckle pins'''
@@ -359,13 +374,14 @@ class DangerFinger(DangerFingerBase):
         peg_hollow_radius = 0.5
         peg = cylinder(r1=self.tendon_hole_radius*2.0,r2=self.tendon_hole_radius*1.3, h= self.distal_base_length+2, center=True, _fn=fs)
         if (hollow): peg -= cylinder(r=peg_hollow_radius, h=self.distal_base_length+.5).translate((0,0,-1.5))
-        return peg.rotate((90, 0, 0)).translate((0, self.intermediate_distal_height-self.distal_base_length/2.5, 0)).color("blue")
+        return peg.rotate((90, 0, 0)).translate((0, self.intermediate_distal_height-self.distal_base_length/2.5, 0)).color(PART_COLORS["peg"])
 
     def part_pins(self):
         # local translate for pins
         pins_translate_y = 10
-        return self.knuckle_pin(length=self.knuckle_width_[Orient.DISTAL] - self.knuckle_plug_thickness*2 + .01, shrink=.1) + \
+        mod = self.knuckle_pin(length=self.knuckle_width_[Orient.DISTAL] - self.knuckle_plug_thickness*2 + .01, shrink=.1) + \
             self.knuckle_pin(length=self.knuckle_width_[Orient.PROXIMAL] - self.knuckle_plug_thickness*2 + .01, shrink=.1).translate((0, pins_translate_y, 0))
+        return mod.color(PART_COLORS["pins"])
 
     def part_stand(self):
         ''' create a display stand for the finger socket '''
@@ -381,7 +397,7 @@ class DangerFinger(DangerFingerBase):
             cylinder(r=self.socket_radius_[Orient.PROXIMAL]*2, h=self.socket_depth).translate((0,0,depth + 5.99))#.debug()
         mod = rotate((90,0,0))((mod_inner + mod_base + mod_text) - cut)
 
-        return mod
+        return mod.color(PART_COLORS["stand"])
 
     def part_bumper(self):
         l=self.intermediate_distal_height+self.tunnel_height*2
@@ -392,7 +408,7 @@ class DangerFinger(DangerFingerBase):
         cut = self._create_cover_bumper(rwid=1.8, l=l, avgk=avgk-1.0, avg=1, t=t ).hull()#.debug()#.translate(1,self.intermediate_length/2,0).
         cut2 = self._create_cover_bumper(rwid=10, l=l-3, avgk=avgk-3, avg=1, t=t*.6).hull()#.debug()#.translate(1,self.intermediate_length/2,0).
         mod = cover - cut - cut2
-        return mod.color("blue")
+        return mod.color(PART_COLORS["bumper"])
 
     def part_oldbumper(self):
         bridge_p = self.create_bridgesh(r=self.tunnel_radius, length=self.intermediate_tunnel_length,width=self.intermediate_proximal_width_-.023,
@@ -434,7 +450,7 @@ class DangerFinger(DangerFingerBase):
         mod_side = hull()((c1 + c2).translate((-1,0,0)), c3, c4)#.debug()
 
         mod_bumper= hull()(bridge_p + bridge_d + mod_side) - mod_cut  - hull()(cc1, cc2) + hull()(c3, c4).scale((.8,1,.9)).translate((-.55,0,0)) -mod_strut_b#- bridge_p.scale(1.1, 1.1,1.01) - bridge_d.scale(1.1, 1.1,1.01)
-        return mod_bumper.color("blue") #.rotate((0, 0, 90))
+        return mod_bumper.color(PART_COLORS["bumper"]) #.rotate((0, 0, 90))
 
     #**************************************** Primitives ***************************************
 

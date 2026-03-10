@@ -18,7 +18,7 @@ class DangerFingerParams:
     # ************************************* control params *****************************************
     preview_cut = Prop(val=False, doc=''' cut the preview for inset view ''', hidden=True)
     preview_rotate = Prop(val=True, doc=''' rotate the preview for All/explode view ''', hidden=True)
-    preview_cut = True
+    #preview_cut = True
     preview_rotate = False
     scad_render = True
 
@@ -153,6 +153,33 @@ class DangerFingerParams:
 
         "all":{"middle":((0, 0, 35),), "base" : ((0, 0, 0),), "bumper":((0, 0, 35),), "tip":((0, 0, 35),), "socket":((0, 0, 0),),
             "linkage" : ((0, 0, 0),), "tipcover" : ((0, 0, 35),)}}
+
+    # Web viewer preview: inverse print rotations to show parts in assembled orientation
+    _preview_rotate_offsets = {
+        "socket": (90, 0, 0), "base": (-90, 0, 0), "tip": (90, 0, 0), "tipcover": (-90, 0, 0),
+        "linkage": (0, 180, 0), "stand": (-90, 0, 0), "peg": (90, 0, 0), "middle": (-90, 50, -90),
+        "bumper": (0, 0, 0), "plug": (0, 0, 0), "pins": (0, 0, 0),
+    }
+
+    # Web viewer preview: world-space Y-axis positions (mm) from v5.1 STL bounding-box centers
+    _preview_position_offsets = {
+        "socket":   (0, -25, 0),
+        "base":     (0, -3, 0),
+        "middle":   (1, 12, 0),
+        "tip":      (1, 26, 0),
+        "tipcover": (0, 39, 0),
+        "linkage":  (0, 0, 20),
+        "stand":    (0, -30, 0),
+        "pins":     (0, 0, 0),
+    }
+
+    # Multiple plug placements for the web preview
+    _preview_plug_instances = [
+        {"position": (9, -8, 0), "rotation": (0, 0, 0)},
+        {"position": (-9, -8, 0), "rotation": (0, 0, 0)},
+        {"position": (8, 12, 0), "rotation": (0, 0, 0)},
+        {"position": (-8, 12, 0), "rotation": (0, 0, 0)},
+    ]
 
     #**************************************** dynamic properties ******************************
 

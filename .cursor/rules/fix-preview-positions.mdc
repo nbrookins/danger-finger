@@ -1,0 +1,59 @@
+---
+description: How to efficiently diagnose and fix viewer preview positioning/orientation issues — read this BEFORE theorizing
+globs: danger/finger_params.py, web/server.py, web/index.html
+alwaysApply: false
+---
+
+# Diagnosing and fixing viewer preview positioning
+
+**Read `docs/VIEWER_ASSEMBLY.md` first.** It documents stl_viewer's exact centering and rotation behaviour, assembled coordinate baselines, and known issues.
+
+## The three-step empirical fix (do not skip to theory)
+
+When the viewer doesn't look like `dangerfinger_v*_all.png`:
+
+**Step 1 — measure bounding boxes of the v5.1 STLs** (natural/assembled orientation, no print rotation):
+
+```bash
+python3 -c "
+import struct, glob, os
+def bbox(p):
+    with open(p,'rb') as f:
+        f.read(80); n = struct.unpack('<I',f.read(4))[0]; verts=[]
+        for _ in range(n):
+            f.read(12)
+            for _ in range(3): verts.append(struct.unpack('<fff',f.read(12)))
+            f.read(2)
+    xs,ys,zs=zip(*verts); return (min(xs)+max(xs))/2,(min(ys)+max(ys))/2,(min(zs)+max(zs))/2
+for p in sorted(glob.glob('output/dangerfinger_v5.1_*.stl')):
+    cx,cy,cz=bbox(p); print(f'{os.path.basename(p)}: ({cx:.1f},{cy:.1f},{cz:.1f})')
+"
+```
+
+The center values ARE the correct `_preview_position_offsets`. No theory needed.
+
+**Step 2 — check the print rotation inverses** in `_preview_rotate_offsets`:
+Each entry should be the inverse of `_rotate_offsets[name]`. For single-axis, negate. For multi-axis (middle), verify visually.
+
+**Step 3 — verify by running `make verify-web-ui`** and reading `viewer-screenshot.png`.
+
+## Known baseline values (default params)
+
+```python
+_preview_position_offsets = {
+    "socket":   (0,  -25,  0),
+    "base":     (0,   -3,  0),
+    "middle":   (1,   12,  0),
+    "tip":      (1,   26,  0),
+    "tipcover": (0,   39,  0),
+    "linkage":  (0,    0, 20),
+    "stand":    (0,  -30,  0),
+    "pins":     (0,    0,  0),
+}
+```
+
+## What NOT to do
+
+- Do not re-read stl_viewer source — it is documented in `docs/VIEWER_ASSEMBLY.md`.
+- Do not compute positions from SCAD offsets — stl_viewer centers geometry so SCAD origin is irrelevant.
+- Do not theorize before measuring v5.1 STL bounding boxes.

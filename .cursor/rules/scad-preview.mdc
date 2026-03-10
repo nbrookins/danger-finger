@@ -1,0 +1,70 @@
+---
+description: SCAD preview PNG verification and viewer assembly — use to visually compare part_all (ideal layout) with web viewer output, and reference for preview coordinate system
+globs: danger/**/*.py, web/server.py, scripts/verify_web_ui.sh
+alwaysApply: false
+---
+
+# SCAD preview and viewer assembly
+
+## Purpose
+
+OpenSCAD can render a preview PNG of each SCAD model. Use this to verify the ideal part layout (part_all) and compare with the web viewer. Full coordinate system and tool behaviours documented in `docs/VIEWER_ASSEMBLY.md`.
+
+## Verification commands
+
+| Goal | Command | What it does |
+|------|---------|--------------|
+| **Verify SCAD + viewer** | `make verify-web-ui` | Starts server; builds SCAD + PNGs to output/ at startup, then captures viewer-screenshot.png. |
+
+## Output location
+
+- **output/** — SCAD, STL, and preview PNGs
+- **output/dangerfinger_v*_all.png** — part_all assembly (canonical ideal layout reference)
+- **viewer-screenshot.png** — web viewer screenshot
+
+## Critical: read the actual output
+
+1. Run `make verify-web-ui`.
+2. **Read the images** using the read_file tool.
+3. If OpenSCAD fails (e.g. "Incompatible processor"), see OpenSCAD ARM64 section below.
+
+---
+
+## SCAD all view — how it works
+
+`preview_rotate = False` is hard-coded in `finger_params.py`. With this flag:
+- `_part_composite` skips `_rotate_offsets["all"]` rotations and the tip special transform.
+- Parts are in natural/assembled orientation at `translate_offsets["all"]` (mostly zero).
+- `part_tip()` bakes `translate((0, intermediate_length, 0))` into geometry.
+- The diagonal in the PNG is OpenSCAD's default camera angle, not a part rotation.
+
+---
+
+## Viewer assembly — key facts
+
+Full reference: `docs/VIEWER_ASSEMBLY.md`.
+
+### stl_viewer.min.js behaviour
+
+1. **center_models = true**: `geometry.center()` moves bbox center to origin. SCAD coordinates are gone.
+2. **Rotation around world axis**: `rotateAroundWorldAxis` pre-multiplies. Effectively rotates around part's own center.
+3. **Position from mod_loaded overrides add_model**: Final position is always `preview_position_offsets`.
+
+### preview_position_offsets
+
+Must be **assembled-space bounding box centers**, not SCAD translate offsets. Correct values (default params, from v5.1 STLs):
+
+```
+socket: (0, -25, 0), base: (0, -3, 0), middle: (1, 12, 0),
+tip: (1, 26, 0), tipcover: (0, 39, 0), linkage: (0, 0, 20)
+```
+
+### preview_rotate_offsets
+
+Each entry is the inverse of the print rotation. Tip/tipcover use pure inverse without the legacy 35 deg Z (which was for preview_rotate=True).
+
+---
+
+## OpenSCAD on macOS ARM64
+
+Qt runtime check fails on native ARM64. Fix: `Scad_Renderer.py` prepends `arch -x86_64` on `darwin/arm64`. Disable with `OPENSCAD_USE_ROSETTA=0`. Headless PNG needs Xvfb (`DISPLAY=:99`).

@@ -144,12 +144,14 @@ class Scad_Renderer(Borg):
 
     def _try_detect_openscad_exec(self, kw):
         self.openscad_exec = None
-        if 'OPENSCAD_EXEC' in os.environ: self.openscad_exec = os.environ['OPENSCAD_EXEC']
+        if 'OPENSCAD_EXEC' in os.environ:
+            self.openscad_exec = os.environ['OPENSCAD_EXEC']  # path or name (subprocess resolves via PATH)
         if 'OPENSCAD_TMP_DIR' in os.environ: self.openscad_tmp_dir = os.environ['OPENSCAD_TMP_DIR']
         if 'openscad_exec' in kw: self.openscad_exec = kw['openscad_exec']
         platfm = platform.system()
         if platfm == 'Linux':
-            self._try_executable('/usr/bin/openscad')
+            if self.openscad_exec is None:
+                self._try_executable('/usr/bin/openscad')
             if self.openscad_exec is None:
                 self._try_executable('/usr/local/bin/openscad')
             if self.openscad_exec is None:

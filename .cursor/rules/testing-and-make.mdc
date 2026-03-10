@@ -1,0 +1,16 @@
+---
+description: Use project make targets for testing; do not reinvent
+globs: scripts/*.sh, Makefile, tests/**/*
+alwaysApply: false
+---
+
+# Testing and make targets
+
+Use the existing make targets. Do not create ad-hoc test scripts.
+
+| Goal | Command |
+|------|---------|
+| Verify SCAD + viewer | `make verify-web-ui` |
+| API + e2e test | `make test-web` |
+| Full Docker stack | `make kbr-test` |
+| Inspect running app | `make inspect-ui` |

@@ -21,6 +21,12 @@ RUN /app/.venv/bin/python3 -m pip install --no-cache-dir -r requirements.txt && 
 
 COPY / /app/
 
+# Ensure OpenSCAD is available (base image is openscad/openscad)
+RUN which openscad && echo "OpenSCAD: $(which openscad)" || (echo "OpenSCAD not in PATH" && exit 1)
+ENV OPENSCAD_EXEC=openscad
+# Working dir for preview temp files
+RUN mkdir -p /app/output/preview_temp
+
 #fill vars, copy our source and make executable
 ENV script='python3 -u /app/web/server.py $@'
 ENV project='danger-finger'

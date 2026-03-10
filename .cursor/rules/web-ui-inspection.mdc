@@ -1,0 +1,34 @@
+---
+description: Web UI and preview testing — use project make/scripts; never trust a running server; verify visual output via screenshot
+globs: web/**/*, danger/finger_params.py, scripts/*.sh, scripts/*.py
+alwaysApply: false
+---
+
+# Web UI and preview testing
+
+## Critical: never trust an already-running server
+
+When verifying web, API, or preview changes, **do not** assume a server the user has running is running your current code. **Always** use the project flow that **starts a fresh server**.
+
+- **Do not** curl or hit an existing server to "verify" your changes.
+- **Do** use `make verify-web-ui` or `make test-web` so a **new** server is started, then torn down after the test.
+
+## Testing strategies
+
+| Goal | Command | What it does |
+|------|---------|--------------|
+| **Verify API + e2e (fresh server)** | `make test-web` | Starts a fresh server on port 8091, runs e2e, then stops. |
+| **Verify visual output (SCAD + viewer in one run)** | `make verify-web-ui` | Starts server (builds SCAD + preview PNGs to output/ at startup), writes viewer-screenshot.png and ui-inspect.txt, then stops. Use Docker (`make build` first) to avoid macOS OpenSCAD issues. |
+| **Test full Docker stack** | `make kbr-test` | Build image, run container, then runs test with `USE_EXISTING_SERVER=1 TEST_PORT=8081`. |
+| **Inspect already-running app** | `make inspect-ui` | Runs Playwright against existing server on 8081. Only use when you just started that server. |
+
+## Iterating on preview / viewer / visual behavior
+
+1. Run `make verify-web-ui`.
+2. **Read the image `viewer-screenshot.png`** to see what actually rendered. Do not assume changes applied.
+3. If the screenshot is unchanged, your changes did not take effect. Investigate why.
+4. Repeat until the screenshot shows intended result.
+
+## Critical: unchanged visual output means your changes did not work
+
+The screenshot is the source of truth; exit code 0 or status text is not sufficient.

@@ -78,6 +78,38 @@ kbr:
 	make build
 	make run
 
+# Run web e2e tests against a freshly started local server (current code). No Docker, no reuse.
+test-web:
+	@./scripts/test_web.sh
+
+# Build, run container in background, then run e2e test against that container only (for CI).
+kbr-test:
+	make killall
+	make build
+	@echo "Starting container in background..."
+	$(MAKE) run &
+	@echo "Waiting for server on port 8081..."
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12; do \
+	  if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8081/ 2>/dev/null | grep -q 200; then \
+	    echo "Server up."; \
+	    break; \
+	  fi; \
+	  sleep 2; \
+	done
+	USE_EXISTING_SERVER=1 TEST_PORT=8081 ./scripts/test_web.sh
+
+# Inspect live UI in headless browser; writes ui-inspect.txt. App must be running (e.g. make kbr).
+# Tighter feedback loop: after UI changes run this and check ui-inspect.txt; exit 1 = UI error.
+# Requires: pip install -r requirements-dev.txt && python -m playwright install chromium
+inspect-ui:
+	@BASE_URL=http://127.0.0.1:8081 UI_INSPECT_OUTPUT=ui-inspect.txt $(or $(PYTHON),python3) scripts/inspect_ui.py
+
+# Single verify run: start server (builds SCAD + PNGs at startup) + viewer screenshot (viewer-screenshot.png).
+# Server creates output/ SCAD+PNGs as part of normal workflow. Use Docker (make build first) to avoid macOS OpenSCAD issues.
+# Requires: make build (for Docker), pip install -r requirements-dev.txt, python -m playwright install chromium
+verify-web-ui:
+	@export DOCKER_TAG="$(DOCKER_TAG)" && ./scripts/verify_web_ui.sh
+
 kbrs:
 	make killall
 	make build
