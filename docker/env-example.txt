@@ -1,0 +1,8 @@
+environ=dev
+project=dangerfinger
+version=5.3
+script="python3 -u /app/web/server.py"
+domain=example.com
+ports=8081:8081/tcp
+aws_id=
+aws_key=
