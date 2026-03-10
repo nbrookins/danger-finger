@@ -1,0 +1,4 @@
+# Dev/test dependencies (pip install -r requirements-dev.txt)
+# Then: python -m playwright install chromium
+playwright
+pytest

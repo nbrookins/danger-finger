@@ -138,8 +138,6 @@ class Prop(object):
         self._adv = adv
         self._default = val
         self.name = name
-       # if (custom == CustomType.SLIDER and name): self._var = CustomizerSliderVariable(name, val, str(minv), str(maxv), label=doc )
-        #else: self._var = ScadVariable()
 
     advanced = property(lambda self: self._adv)
     value = property(lambda self: self._value)
@@ -148,7 +146,6 @@ class Prop(object):
     docs = property(lambda self: self.__doc__)
     default = property(lambda self: self._default)
     hidden = property(lambda self: self._hidden)
-    var = property(lambda self: self._var)
 
     @staticmethod
     def minmax(value, minv=None, maxv=None):

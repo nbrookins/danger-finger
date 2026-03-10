@@ -90,6 +90,13 @@ class Scad_Renderer(Borg):
     You can set the path with the OPENSCAD_EXEC environment variable, or with the 'openscad_exec'
     keyword in the constructor.  If these are omitted, the class makes an attempt at finding the executable itself.
     '''
+    CAMERA_PRESETS = {
+        "iso": "0,0,0,55,0,25,200",
+        "front": "0,0,0,0,0,0,200",
+        "side": "0,0,0,0,0,90,200",
+        "top": "0,0,0,90,0,0,200",
+    }
+
     def __init__(self, **kw):
         Borg.__init__(self)
         self.openscad_exec = None
@@ -98,15 +105,20 @@ class Scad_Renderer(Borg):
         if self.openscad_exec is None:
             raise Exception('openscad exec not found!')
 
-    def scad_parallel(self, scad_filenames, png_size=None, max_concurrent_tasks=2):
+    def scad_parallel(self, scad_filenames, png_size=None, max_concurrent_tasks=2, camera=None):
         ''' run up to max concurrent tasks to render a list of scad files in parallel '''
         start = time.time()
 
 #'--enable', 'fast-csg', '--enable', 'manifold', '--enable', 'lazy-union', '--enable', 'vertex-object-renderers', '--enable', 'vertex-object-renderers-indexing', \
 #'--enable', 'fast-csg', '--enable', 'manifold', '--enable', 'lazy-union', '--enable', 'vertex-object-renderers', '--enable', 'vertex-object-renderers-indexing',
-        commandsp = [] if not png_size or png_size == "" else \
-                    [[self.openscad_exec, '-q',
-                      '--imgsize', '1024,768', '--preview', '-o', scad_filename.replace(".scad", ".png"), scad_filename] for scad_filename in scad_filenames]
+        def _png_cmd(scad_filename):
+            cmd = [self.openscad_exec, '-q', '--imgsize', png_size or '1024,768', '--preview', '-o',
+                   scad_filename.replace(".scad", ".png"), scad_filename]
+            if camera:
+                cmd = cmd[:2] + ['--camera', camera] + cmd[2:]
+            return cmd
+
+        commandsp = [] if not png_size or png_size == "" else [_png_cmd(sf) for sf in scad_filenames]
 #TODO - param for quiet mode
         commands = [[self.openscad_exec,
                       '--export-format', 'binstl', '-o', scad_filename.replace(".scad", ".stl"), scad_filename] for scad_filename in scad_filenames]
@@ -129,14 +141,30 @@ class Scad_Renderer(Borg):
         except Exception as e:
             raise e
 
-    def scad_to_png(self, scad_filename, png_filename):#, **kw):
+    def scad_to_png(self, scad_filename, png_filename, camera=None, imgsize=None):
         '''render a scad file to png'''
         try:
             cmd = [self.openscad_exec, '--preview', '-o', png_filename, scad_filename]
+            if camera:
+                cmd = cmd[:1] + ['--camera', camera] + cmd[1:]
+            if imgsize:
+                cmd = cmd[:1] + ['--imgsize', imgsize] + cmd[1:]
             out = subprocess.check_output(cmd)
             if out != b'': print(out)
         except Exception as e:
             raise e
+
+    def render_multi_view(self, scad_filename, output_dir, imgsize="1024,768"):
+        '''Render a SCAD file to multiple PNG views using camera presets.
+        Returns list of generated PNG paths.'''
+        os.makedirs(output_dir, exist_ok=True)
+        basename = os.path.splitext(os.path.basename(scad_filename))[0]
+        generated = []
+        for view_name, camera_str in self.CAMERA_PRESETS.items():
+            png_path = os.path.join(output_dir, "%s_%s.png" % (basename, view_name))
+            self.scad_to_png(scad_filename, png_path, camera=camera_str, imgsize=imgsize)
+            generated.append(png_path)
+        return generated
 
     def _try_executable(self, executable_path):
         if os.path.isfile(executable_path):

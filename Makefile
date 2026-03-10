@@ -146,3 +146,25 @@ cleanf:
 	docker ps -a -q | xargs docker rm -f ; echo
 	docker images -a | awk '{print $$3}' | xargs docker rmi -f ; echo
 	docker image list | grep "$(project)" | awk '{print $$3}' | xargs docker rmi -f ; echo
+
+# --- Regression and validation targets ---
+
+# Build reference STLs at default params for regression baseline
+reference-stls:
+	@$(or $(PYTHON),python3) scripts/reference_stls.py
+
+# Check current STL output against reference baseline
+regression-check:
+	@$(or $(PYTHON),python3) scripts/regression_check.py
+
+# Validate a derived formula by sweeping params
+# Usage: make validate-formula PART=tip PARAMS=tip_circumference STEPS=5
+PART ?= tip
+PARAMS ?= tip_circumference
+STEPS ?= 5
+validate-formula:
+	@$(or $(PYTHON),python3) scripts/validate_formula.py --part $(PART) --params $(PARAMS) --steps $(STEPS)
+
+# Validate formula with multi-view PNG generation
+validate-formula-png:
+	@$(or $(PYTHON),python3) scripts/validate_formula.py --part $(PART) --params $(PARAMS) --steps $(STEPS) --render-png

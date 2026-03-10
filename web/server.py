@@ -97,7 +97,7 @@ class FingerHandler(tornado.web.RequestHandler):
                 return
 
         if self.request.path.startswith("/param"):
-            params = DangerFinger().params(adv=var.startswith("/adv"), allv=var.startswith("/all"), extended=True)
+            params = DangerFinger().get_params(adv=var.startswith("/adv"), allv=var.startswith("/all"), extended=True)
             pbytes = json.dumps(params, default=str, skipkeys=True).encode('utf-8')
             self.serve_bytes(pbytes, 'application/json')
             return
@@ -257,13 +257,27 @@ class FingerHandler(tornado.web.RequestHandler):
         print("200 OK response to: %s, %sb" %(self.request.uri, len(data)))
 
 
-def _preview_config():
-    """Build preview layout config from DangerFingerParams for the web viewer."""
+_position_cache = {}
+
+def _preview_config(config_dict=None):
+    """Build preview layout config from DangerFingerParams for the web viewer.
+    If config_dict is provided, computes dynamic positions for that config (cached by cfghash)."""
     from danger.finger_params import DangerFingerParams as P
     from danger.finger import PART_COLORS
+
+    if config_dict:
+        cache_key = sha256(json.dumps(config_dict, sort_keys=True).encode()).hexdigest()[:16]
+        if cache_key not in _position_cache:
+            finger = DangerFinger()
+            Params.apply_config(finger, config_dict)
+            _position_cache[cache_key] = finger.compute_preview_positions()
+        positions = _position_cache[cache_key]
+    else:
+        positions = P._preview_position_offsets
+
     return {
         "rotateOffsets": {k: list(v) for k, v in P._preview_rotate_offsets.items()},
-        "positionOffsets": {k: list(v) for k, v in P._preview_position_offsets.items()},
+        "positionOffsets": {k: list(v) for k, v in positions.items()},
         "plugInstances": [{"position": list(p["position"]), "rotation": list(p["rotation"])} for p in P._preview_plug_instances],
         "partColors": {k: v for k, v in PART_COLORS.items()},
     }
@@ -360,11 +374,17 @@ class ApiPreviewHandler(tornado.web.RequestHandler):
             self.write(json.dumps({"error": err_msg, "detail": tb}))
             return
         cfghash, config, stl_urls = result
+        finger_check = DangerFinger()
+        Params.apply_config(finger_check, dict(config))
+        param_warnings = finger_check.validate_params()
+        preview_cfg = _preview_config(dict(config))
         self.set_header("Content-Type", "application/json")
         self.write(json.dumps({
             "cfghash": cfghash,
             "config": dict(config),
             "stl_urls": stl_urls,
+            "warnings": param_warnings,
+            "previewConfig": preview_cfg,
         }))
 
 

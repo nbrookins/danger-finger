@@ -175,7 +175,7 @@
 		function get_current_params() {
 			var out = {};
 			for (var k in params) {
-				if (params[k] && params[k]["Value"] !== undefined) out[k] = parseFloat(params[k]["Value"]) || params[k]["Value"];
+				if (params[k] && params[k]["Value"] !== undefined) { var n = parseFloat(params[k]["Value"]); out[k] = isNaN(n) ? params[k]["Value"] : n; }
 			}
 			return out;
 		}

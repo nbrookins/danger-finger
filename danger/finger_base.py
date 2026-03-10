@@ -265,5 +265,5 @@ def circular_text(txt, radius, size, thickness, spacing, rot, reverse=False):
             positioned_char = rotate([0, 0, angle * (-1 if reverse else 1)])(
                                 translate([0, radius, 0])(oriented_char_3d))
             scad_objects.append(positioned_char)
-        return union()(scad_objects).debug()
+        return union()(scad_objects)
 
