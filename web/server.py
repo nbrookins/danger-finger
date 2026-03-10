@@ -119,7 +119,7 @@ class FingerHandler(tornado.web.RequestHandler):
                 self.set_status(204)
         self.set_status(500)
 
-    def post(self, userhash, cfg):
+    async def post(self, userhash, cfg):
         '''support post for several actions'''
         print("  HTTP Request: %s %s %s %s" % (self.request, self.request.path, userhash, cfg))
         if self.request.path.startswith("/profile"):
@@ -146,20 +146,19 @@ class FingerHandler(tornado.web.RequestHandler):
                         self.set_status(503)
                         return
 
-                # Sync render and store STLs in S3 (10s timeout)
+                # Run render in executor so the IO loop is not blocked (matches ApiPreviewHandler/ApiRenderHandler).
+                loop = asyncio.get_event_loop()
                 try:
-                    executor = getattr(self.application, "executor", None)
-                    if executor:
-                        future = executor.submit(
-                            _run_sync_preview_or_render,
-                            config_dict,
-                            preview_quality=False,
-                            store_in_s3=True,
-                        )
-                        future.result(timeout=PREVIEW_TIMEOUT_SEC)
-                    else:
-                        _run_sync_preview_or_render(config_dict, preview_quality=False, store_in_s3=True)
-                except concurrent.futures.TimeoutError:
+                    await asyncio.wait_for(
+                        loop.run_in_executor(
+                            getattr(self.application, "executor", None),
+                            lambda: _run_sync_preview_or_render(
+                                config_dict, preview_quality=False, store_in_s3=True
+                            ),
+                        ),
+                        timeout=PREVIEW_TIMEOUT_SEC,
+                    )
+                except asyncio.TimeoutError:
                     self.set_status(504)
                     self.write(json.dumps({"error": "Render timed out (max %s s)" % PREVIEW_TIMEOUT_SEC}))
                     return

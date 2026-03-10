@@ -80,6 +80,7 @@
 			'8' : {'name': "pins",     'posf': [0, 0, 0], 'exp' : [0, 0, 0], 'pos': [0, 0, 0], 'rotf': [0, 0, 0] },
 		}
 		var previewConfig = null;
+		var last_stl_urls = {};
 		var rotationx = 0;
 		var rotationy = 0;
 		var rotationz = 0;
@@ -149,7 +150,7 @@
 				console.log("rem" + id);
 				const tdobj=$id(button_name(id));
 				stl_viewer.remove_model(id);
-				tdobj.onclick = () => add_models([id]);
+				tdobj.onclick = () => add_model(id, last_stl_urls[id] || file_name(id));
 			}
 		}
 
@@ -183,9 +184,14 @@
 			if (!stl_viewer || !stl_urls) return;
 			var ids = Object.keys(parts).map(Number).filter(function(id) { return parts[id]; });
 			ids.forEach(function(id) { try { stl_viewer.remove_model(id); } catch(e) {} });
+			last_stl_urls = {};
 			for (var partName in stl_urls) {
 				var id = partNameToId[partName];
-				if (id !== undefined) add_model(id, baseurl + stl_urls[partName]);
+				if (id !== undefined) {
+					var url = baseurl + stl_urls[partName];
+					last_stl_urls[id] = url;
+					add_model(id, url);
+				}
 			}
 		}
 
