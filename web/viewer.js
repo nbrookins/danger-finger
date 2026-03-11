@@ -195,6 +195,15 @@ var Viewer = (function () {
         }
     }
 
+    function setPlugVisibility(visible, partVisibility) {
+        // Remove plug instances regardless; re-add them if visible
+        for (var i = 0; i < 4; i++) { try { _stlViewer.remove_model(PLUG_BASE_ID + i); } catch (e) {} }
+        _plugPositions = {};
+        if (visible) {
+            _respawnPlugInstances(partVisibility || {});
+        }
+    }
+
     function getLastStlUrls() { return _lastStlUrls; }
     function getPartNameToId() { return _partNameToId; }
     function getStlViewer() { return _stlViewer; }
@@ -207,6 +216,7 @@ var Viewer = (function () {
         updateFromStlUrls: updateFromStlUrls,
         applyPreviewConfig: applyPreviewConfig,
         slideChange: slideChange,
+        setPlugVisibility: setPlugVisibility,
         setStatus: setStatus,
         getLastStlUrls: getLastStlUrls,
         getPartNameToId: getPartNameToId,

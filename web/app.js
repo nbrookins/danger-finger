@@ -77,6 +77,10 @@
         } else {
             Viewer.remModels([id]);
         }
+        // Plug instances (IDs 100-103) follow the plug part's visibility
+        if (partName === "plug") {
+            Viewer.setPlugVisibility(visible, Params.getPartVisibility());
+        }
     }
 
     function onSaveSuccess(cfgName) {
