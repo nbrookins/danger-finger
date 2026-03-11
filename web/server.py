@@ -275,15 +275,11 @@ def _preview_config(config_dict=None):
     else:
         positions = P._preview_position_offsets
 
-    # Explode offsets: take first tuple from each part's explode list
-    explode_raw = P._translate_offsets.get("explode", {})
-    explode_offsets = {k: list(v[0]) for k, v in explode_raw.items() if v}
-
     return {
         "rotateOffsets": {k: list(v) for k, v in P._preview_rotate_offsets.items()},
         "positionOffsets": {k: list(v) for k, v in positions.items()},
-        "explodeOffsets": explode_offsets,
         "plugInstances": [{"position": list(p["position"]), "rotation": list(p["rotation"])} for p in P._preview_plug_instances],
+        "explodeOffsets": {k: list(v) for k, v in P._preview_explode_offsets.items()},
         "partColors": {k: v for k, v in PART_COLORS.items()},
     }
 
@@ -294,12 +290,11 @@ class ApiPartsHandler(tornado.web.RequestHandler):
         set_def_headers(self)
 
     def get(self):
-        import os
         part_list = [{"id": str(p.name).lower(), "label": str(p.name).capitalize()} for p in parts]
         self.set_header("Content-Type", "application/json")
         self.write(json.dumps({
             "parts": part_list,
-            "version": os.environ.get("version", ""),
+            "version": DangerFinger.VERSION,
             "previewConfig": _preview_config(),
         }))
 
@@ -745,13 +740,8 @@ def remove_defaults(config):
     # params can be dict of name -> value or name -> {Value, ...}
     for k in params:
         pv = params[k] if not isinstance(params[k], dict) else params[k].get("Value", params[k])
-        try:
-            if k in config and float(pv) == float(config[k]):
-                config.pop(k)
-        except (TypeError, ValueError):
-            # Non-numeric param (e.g. enum): compare as strings
-            if k in config and str(pv) == str(config[k]):
-                config.pop(k)
+        if k in config and float(pv) == float(config[k]):
+            config.pop(k)
 
 def package_config_json(obj):
     '''process a config file to sort it'''
@@ -775,15 +765,8 @@ def write_stl(scad_file, stl_file):
     print("  Rendered %s in %s sec" % (stl_file, round(time.time()-start, 1)))
     return stl_file
 
-def floatify(config):
-    """Convert numeric config values to float; leave strings/enums unchanged."""
-    out = {}
-    for k, v in config.items():
-        try:
-            out[k] = float(v)
-        except (TypeError, ValueError):
-            out[k] = v  # enum name or other non-numeric value
-    return out
+# Convert config values to floats
+floatify = lambda config: {k: float(v) for k, v in config.items()}
 
 def build(p, config, q=RenderQuality.NONE):
     '''build a finger model and return scad'''

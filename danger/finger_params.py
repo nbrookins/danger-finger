@@ -163,9 +163,10 @@ class DangerFingerParams:
             "linkage" : ((0, 0, 0),), "tipcover" : ((0, 0, 35),)}}
 
     # Web viewer preview: inverse print rotations to show parts in assembled orientation
+    # middle: true matrix inverse of Rx(90)*Ry(-50)*Rz(90) gives py=-90, pz+px=-140; start (0,-90,-140)
     _preview_rotate_offsets = {
         "socket": (90, 0, 0), "base": (-90, 0, 0), "tip": (90, 0, 0), "tipcover": (-90, 0, 0),
-        "linkage": (0, 180, 0), "stand": (-90, 0, 0), "peg": (90, 0, 0), "middle": (-90, 50, -90),
+        "linkage": (0, 180, 0), "stand": (-90, 0, 0), "peg": (90, 0, 0), "middle": (0, -90, -140),
         "bumper": (0, 0, 0), "plug": (0, 0, 0), "pins": (0, 0, 0),
     }
 
@@ -216,12 +217,27 @@ class DangerFingerParams:
         }
 
     # Multiple plug placements for the web preview
+    # Y=0 = proximal hinge, Y=intermediate_length(24) = distal hinge
+    # Z offsets = hinge half-width (~knuckle_proximal_width/2 and knuckle_distal_width/2)
     _preview_plug_instances = [
-        {"position": (9, -8, 0), "rotation": (0, 0, 0)},
-        {"position": (-9, -8, 0), "rotation": (0, 0, 0)},
-        {"position": (8, 12, 0), "rotation": (0, 0, 0)},
-        {"position": (-8, 12, 0), "rotation": (0, 0, 0)},
+        {"position": (0,  0, -8.6), "rotation": (0,   0, 0)},   # proximal left
+        {"position": (0,  0,  8.6), "rotation": (0, 180, 0)},   # proximal right
+        {"position": (0, 24, -7.5), "rotation": (0,   0, 0)},   # distal left
+        {"position": (0, 24,  7.5), "rotation": (0, 180, 0)},   # distal right
     ]
+
+    # Explode offsets: unit direction vectors away from middle (Y≈12) in assembled space
+    _preview_explode_offsets = {
+        "middle":   (0,    0, 0),
+        "socket":   (0,   -1, 0),
+        "base":     (0, -0.5, 0),
+        "tip":      (0,    1, 0),
+        "tipcover": (0,  1.5, 0),
+        "linkage":  (0,    0, 1),
+        "stand":    (0, -1.5, 0),
+        "plug":     (0,    0, 0),
+        "pins":     (0,    0, 0),
+    }
 
     #**************************************** dynamic properties ******************************
 
@@ -318,21 +334,12 @@ class DangerFingerParams:
                     if not extended:
                         params[name] = inst_val
                     else:
-                        # Serialize enum values as their member name (strip class prefix)
-                        def _ser(v):
-                            return v.name if isinstance(v, _Enum) else v
-                        entry = {
-                            "Value": _ser(inst_val),
-                            "Default": _ser(prop.default),
-                            "Minimum": prop.minimum,
-                            "Maximum": prop.maximum,
-                            "Advanced": prop.advanced,
-                            "Documentation": prop.docs,
-                            "Hidden": prop.hidden,
-                        }
-                        if isinstance(prop.default, _Enum):
-                            entry["EnumOptions"] = [e.name for e in type(prop.default)]
-                        params[name] = entry
+                        row = {"Value": inst_val, "Default": prop.default, "Minimum": prop.minimum, "Maximum": prop.maximum, "Advanced": prop.advanced, "Documentation": prop.docs, "Hidden": prop.hidden}
+                        if isinstance(inst_val, _Enum):
+                            row["EnumOptions"] = list(type(inst_val).__members__.keys())
+                            row["Value"] = inst_val.name
+                            row["Default"] = prop.default.name if isinstance(prop.default, _Enum) else prop.default
+                        params[name] = row
         return params
 
     @property
