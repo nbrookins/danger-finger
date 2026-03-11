@@ -32,38 +32,25 @@ class DangerFinger(DangerFingerBase):
     # #**************************************** finger bits ****************************************
     VERSION = 5.3
 
-    # Bridge dimensions  # TODO: derive from knuckle_thickness or tunnel_radius
-    BRIDGE_WIDTH = 3
-    BRIDGE_CLEARANCE = 2  # TODO: derive from knuckle_rounding or strut_rounding
-    BRIDGE_CUT_HEIGHT_ADJ = 1.75  # TODO: derive from tunnel_height or knuckle_inset_depth
-
-    # Knuckle inner anchor offsets  # TODO: derive from knuckle_inset_depth, knuckle_clearance
-    ANCHOR_OFFSET_PROXIMAL = 0.12
+    # Knuckle inner anchor offsets
     ANCHOR_OFFSET_DISTAL = -0.485  # TODO: derive from strut_height_ratio, knuckle_clearance
 
-    # Socket tendon cut  # TODO: derive from socket_radius, socket_depth
+    # Socket tendon cut
     TENDON_CUT_ROTATE = -80
-    TENDON_CUT_X = 19.2  # TODO: derive from socket_interface_radius, socket_depth
-    TENDON_CUT_Y = -6.8  # TODO: derive from socket_interface_radius
 
-    # Socket bottom / ridge  # TODO: derive from socket_thickness
+    # Socket bottom / ridge
     SOCKET_RIDGE_SPACING_FACTOR = 0.0015
-    SOCKET_RIDGE_RADIUS_OFFSET = 0.85  # TODO: derive from socket_thickness
-    SOCKET_RIDGE_Z_SPACING = 1.5
-    SOCKET_BOTTOM_CUT_FACTOR = 1.2  # TODO: derive from socket geometry
+    SOCKET_BOTTOM_CUT_FACTOR = 1.2
 
-    # Socket scallop  # TODO: derive from socket_thickness, socket_interface_length
+    # Socket scallop
     SCALLOP_RADIUS_ADJ = 1
-    SCALLOP_HEIGHT = 9
+    SCALLOP_HEIGHT = 9  # TODO: may be derivable from socket_bottom_cut
 
-    # Tip fist trim  # TODO: derive from distal_base_length, intermediate_distal_height
+    # Tip fist trim
     TIP_FIST_TRIM_ROTATE = -25
-    TIP_FIST_TRIM_Y_OFFSET = -4.05
 
     # Peg support  # TODO: derive from tendon_hole_radius, distal_base_length
     PEG_SUPPORT_RADIUS = 1.2
-    PEG_SUPPORT_H = 10
-    PEG_SUPPORT_TRANSLATE_Y = 10
     PEG_SUPPORT_TRANSLATE_Z = 3.4
     PEG_SUPPORT_SIDE_X_OFFSET = 1.65
 
@@ -86,16 +73,16 @@ class DangerFinger(DangerFingerBase):
             trim_dim = self.intermediate_proximal_height
             trim_z = self.knuckle_width_[Orient.PROXIMAL] - self.knuckle_rounding * 4
             if scale_z is None: scale_z = 1.1
-            if translate_z is None: translate_z = self.BRIDGE_WIDTH/3 + self.strut_rounding + 0.1
+            if translate_z is None: translate_z = self.knuckle_distal_thickness/3 + self.strut_rounding + 0.1
         else:  # DISTAL
             trim_dim = self.intermediate_distal_height#+3
             trim_z = self.intermediate_width_[Orient.DISTAL]
             if scale_z is None: scale_z = 1.0
-            if translate_z is None: translate_z = -self.BRIDGE_WIDTH/3 - self.strut_rounding
+            if translate_z is None: translate_z = -self.knuckle_distal_thickness/3 - self.strut_rounding
             if scale_x == 1.0: scale_x = 0.9
 
         # Build core bridge
-        bridge = rcubecyl(h=self.BRIDGE_WIDTH, l=l, w=avgk/2+self.BRIDGE_CLEARANCE, t=self.intermediate_distal_height*.5,
+        bridge = rcubecyl(h=self.knuckle_distal_thickness, l=l, w=avgk/2+self.knuckle_inset_border, t=self.intermediate_distal_height*.5,
                           rnd1=rnd1, rnd2=rnd2, center=True)
         bridge = bridge.scaleZ(scale_z).scaleX(scale_x).translate((1, translate_z, 0))
         bridge = bridge.trim((trim_dim+3, 0, trim_z), offset=(trim_dim, 0, 0))
@@ -125,10 +112,10 @@ class DangerFinger(DangerFingerBase):
         mod_trim = cylinder(h=self.intermediate_proximal_width_-5, r=self.intermediate_proximal_height/2 - self.knuckle_rounding, center=True)#.debug()
         mod_side_trim = mod_trim.translate((0, 0, trim_offset)) + mod_trim.translate((0, 0, -trim_offset))#.debug()
         # local values (previously class-level Props)
-        breather_radius_factor = 0.2
-        breather_height = 20
-        breather_translate_y = -10
-        bridge_cut_translate_x = 0.2
+        breather_radius_factor = 0.2 #TODO this can be extracted as a param to control the size of the breather hole in relation to the base width, zero to disable
+        breather_height = 20 #TODO this is a value hardcoded arbritrarily long to use subtractively - could be instead based on base_length, which drives the thickness of object this one needs to subtract from
+        breather_translate_y = -10 #TODO similar to above, but used to offset the object to line it up with the surface of base (inbetween hinge and socket interface, that we are removing from)
+        bridge_cut_translate_x = 0.2 
         bridge_cut_translate_y = -2.0
 
         mod_breather = cylinder(r=self.knuckle_inner_width_[Orient.PROXIMAL]*breather_radius_factor, h=breather_height, center=True).rotate((90, 0, 0)).translate((0, breather_translate_y, 0))
@@ -171,8 +158,9 @@ class DangerFinger(DangerFingerBase):
             (-self.knuckle_plug_radius -self.intermediate_distal_height/2 + self.tip_bottom_trim_x_extra, self.distal_base_length-.25, 0))#.debug()
 
 #TODO - HACK
+        tip_fist_trim_y = -(self.intermediate_distal_height/2 - self.knuckle_rounding + self.strut_inset_distal)
         mod_fist_trim = cube((self.intermediate_distal_height, 10, self.knuckle_inner_width_[Orient.DISTAL]), center=True).rotate((0,0,self.TIP_FIST_TRIM_ROTATE)).translate(
-            (-self.knuckle_plug_radius -self.intermediate_distal_height/2-1, self.distal_base_length + self.TIP_FIST_TRIM_Y_OFFSET , 0)) #.debug()
+            (-self.knuckle_plug_radius -self.intermediate_distal_height/2-1, self.distal_base_length + tip_fist_trim_y , 0)) #.debug()
 
         #TODO 3 allow resize of width for tip
         mod_core = rcylinder(r=self.tip_radius, h=0.1).rotate((90, 0, 0)).translate((0, self.distal_base_length, 0)) - mod_bottom_trim
@@ -183,7 +171,8 @@ class DangerFinger(DangerFingerBase):
         mod_extra = hull()(mod_extra +mod_extra.translate((-3,-.5,0)))#.debug()
 
         mod_main = (mod_core + mod_hinge).hull() + (mod_tunnel + mod_core).hull() - mod_fist_trim
-        cy = cylinder(r=self.PEG_SUPPORT_RADIUS,h=self.PEG_SUPPORT_H).rotate((90,0,0)).translate((0,self.PEG_SUPPORT_TRANSLATE_Y,0))
+        peg_h = self.intermediate_distal_height + self.distal_flange_height
+        cy = cylinder(r=self.PEG_SUPPORT_RADIUS,h=peg_h).rotate((90,0,0)).translate((0,peg_h,0))
         mod_tip_hole = (self.part_peg(fs=60, hollow=False).translate((0.5,1,0))
                 + cy.translate((self.PEG_SUPPORT_SIDE_X_OFFSET,0,-self.PEG_SUPPORT_TRANSLATE_Z))
                 + cy.translate((self.PEG_SUPPORT_SIDE_X_OFFSET,0,self.PEG_SUPPORT_TRANSLATE_Z))
@@ -211,14 +200,15 @@ class DangerFinger(DangerFingerBase):
         #TODO - param for cross strut width
 
         #mid rounded bumper. self.intermediate_bumper_width #(self.knuckle_width_[Orient.PROXIMAL])
-        rwid = self.BRIDGE_WIDTH #(self.knuckle_proximal_thickness + self.knuckle_distal_thickness)/2 + self.intermediate_width_[Orient.DISTAL] + self.knuckle_side_clearance-.01
+        bridge_width = self.knuckle_distal_thickness
+        rwid = bridge_width
         mid_cut = cube(0)
         avg = (self.intermediate_width_[Orient.DISTAL] +self.intermediate_width_[Orient.PROXIMAL])/2
         avgk = (self.knuckle_width_[Orient.DISTAL] +self.knuckle_width_[Orient.PROXIMAL])/2
         if self.intermediate_bumper_style==BumperStyle.NONE or self.intermediate_bumper_width <= 0:
             mod_mid_round = cube(0)
         else:
-            rwid = self.BRIDGE_WIDTH
+            rwid = bridge_width
             mod_mid_round = rcylinder(r=avg/2, h=rwid, rnd=self.strut_rounding*2, center=True).hull()#.debug()
 
             mid_cut =      (cylinder(r=avg/2-1.7, h=rwid+.1, center=True).scale(.95,1.15,1) +\
@@ -256,9 +246,9 @@ class DangerFinger(DangerFingerBase):
 
         trim_c_d = cylinder(r=self.intermediate_height_[Orient.DISTAL]/2 + self.knuckle_side_clearance*2, h=4, center=True)#.debug()
         trim_c_p = cylinder(r=self.intermediate_height_[Orient.PROXIMAL]/2 + self.knuckle_side_clearance*2, h=4, center=True).scaleX(1.3)
-        SIDE_TRIM_OFFSET = 1.99  # TODO: derive from knuckle_thickness and knuckle_side_clearance
-        mod_side_trim_d = trim_c_d.translate((0, 0, self.intermediate_width_[Orient.DISTAL]/2+SIDE_TRIM_OFFSET)) + trim_c_d.translate((0, 0, -self.intermediate_width_[Orient.DISTAL]/2-SIDE_TRIM_OFFSET))
-        mod_side_trim_p = trim_c_p.translate((0, 0, self.intermediate_width_[Orient.PROXIMAL]/2+SIDE_TRIM_OFFSET)) + trim_c_p.translate((0, 0, -self.intermediate_width_[Orient.PROXIMAL]/2-SIDE_TRIM_OFFSET))
+        side_trim_offset = 2 * self.knuckle_inset_depth - 0.01
+        mod_side_trim_d = trim_c_d.translate((0, 0, self.intermediate_width_[Orient.DISTAL]/2+side_trim_offset)) + trim_c_d.translate((0, 0, -self.intermediate_width_[Orient.DISTAL]/2-side_trim_offset))
+        mod_side_trim_p = trim_c_p.translate((0, 0, self.intermediate_width_[Orient.PROXIMAL]/2+side_trim_offset)) + trim_c_p.translate((0, 0, -self.intermediate_width_[Orient.PROXIMAL]/2-side_trim_offset))
 
         final = ((mod_dist_hinge + bridge_d).translate((0, self.distal_offset_, 0)) + mod_prox_hinge + mod_strut_tl + mod_strut_tr + mod_strut_b \
                  + bridge_p) - (mod_side_trim_d.translate((0, self.distal_offset_, 0))+  mod_side_trim_p) + mod_brace + mod_mid_round #.debug()
@@ -316,7 +306,9 @@ class DangerFinger(DangerFingerBase):
         ''' create the interface socket '''
         #TODO 3 Socket texture
         #mod_cut_fist = self._mod_cut_fist() #TODO - hardcoding bullshit
-        mod_cut_tendon = cube((20,20,20), center=True).translate(0,0,0).rotate(0,0,self.TENDON_CUT_ROTATE).translate(self.TENDON_CUT_X,self.TENDON_CUT_Y,0)#.debug()
+        tendon_cut_x = self.socket_depth / 2 + self.tendon_hole_width
+        tendon_cut_y = -(self.distal_base_length + self.knuckle_clearance + self.strut_inset_distal)
+        mod_cut_tendon = cube((20,20,20), center=True).translate(0,0,0).rotate(0,0,self.TENDON_CUT_ROTATE).translate(tendon_cut_x,tendon_cut_y,0)#.debug()
         length = (self.proximal_length + self.intermediate_height_[Orient.PROXIMAL]/2)
         mod_core = cylinder(r1=self.socket_interface_radius_[Orient.DISTAL] + self.socket_thickness_[Orient.DISTAL], \
             r2=self.socket_interface_radius_[Orient.PROXIMAL] + self.socket_thickness_[Orient.MIDDLE],
@@ -343,10 +335,9 @@ class DangerFinger(DangerFingerBase):
 
     def part_tipcover(self):
         ''' the finger tip flexible portion '''
-        # Named constants for tipcover geometry (Phase 3a parametric overhaul)
         TIP_CORE_RESIZE_INSET = 2  # TODO: derive proportional to tip_radius if needed
-        NAIL_CUT_Y_OFFSET = 2.8  # ≈ tip_radius * 0.374 at defaults; scales with tip geometry
-        NAIL_CUT_CUBE_X = 9.0  # nail cut cube X translation (derived: 5+4.0 at defaults)
+        nail_cut_y_offset = self.knuckle_distal_thickness - self.strut_rounding + self.knuckle_plug_clearance
+        nail_cut_cube_x = self.distal_base_length + self.knuckle_distal_thickness
 
         sr = self.tip_radius*self.tip_print_factor
         mod_core = hull()(cylinder(r1=self.tip_radius, r2=self.tip_radius, h=self.distal_base_length).rotate((90, 90, 0)).translate((0, self.distal_base_length*2, 0)), # #self.intermediate_length
@@ -354,9 +345,9 @@ class DangerFinger(DangerFingerBase):
 
         #Nail cuts
         mod_sphere = sphere(r=sr) \
-            .translate((-sr + self.tip_radius*.8, sr/2 -self.distal_base_length*2+NAIL_CUT_Y_OFFSET,0))#.debug() #self.intermediate_length + self.distal_length-sr, 0))
+            .translate((-sr + self.tip_radius*.8, sr/2 -self.distal_base_length*2+nail_cut_y_offset,0))#.debug() #self.intermediate_length + self.distal_length-sr, 0))
         c = cube((self.tip_radius*3, self.distal_length + 1.0, self.tip_radius*3), center=True) \
-            .rotate((0,0,40)) .translate((NAIL_CUT_CUBE_X, self.distal_length + 1.0,0))#.debug()
+            .rotate((0,0,40)) .translate((nail_cut_cube_x, self.distal_length + 1.0,0))#.debug()
         d = intersection()((mod_core - mod_sphere), c).translate((.1,0,0)).scale((1,1,1.1))#.debug()
 
         #INNER CUT
@@ -446,10 +437,11 @@ class DangerFinger(DangerFingerBase):
     def _front_cut(self):
         """Shared front cut geometry for base and socket. Cuts notched area for knuckle clearance."""
         FRONT_CUT_ROTATE = 10
-        FRONT_CUT_X_OFFSET = 1.7  # TODO: derive from intermediate_height/knuckle_rounding
+        front_cut_x_offset = self.tunnel_height - self.strut_rounding
+        front_cut_y_clearance = self.knuckle_clearance + self.knuckle_plug_clearance / 2
         return cube((1, 1.5, self.knuckle_width_[Orient.PROXIMAL]), center=True).rotate((0, 0, FRONT_CUT_ROTATE)) \
-            .translate((-self.intermediate_proximal_height/2 - FRONT_CUT_X_OFFSET,
-                        -self.intermediate_proximal_height/2 + self.knuckle_clearance + 0.05, 0))
+            .translate((-self.intermediate_proximal_height/2 - front_cut_x_offset,
+                        -self.intermediate_proximal_height/2 + front_cut_y_clearance, 0))
 
     def _tendon_bulge(self, mod_core):
         h=self.knuckle_tendon_offset+1
@@ -473,7 +465,7 @@ class DangerFinger(DangerFingerBase):
         d = (self.socket_radius_[Orient.PROXIMAL] - self.socket_radius_[Orient.DISTAL]) / self.socket_depth
         for i in range(1, self.socket_depth):
             dd += d + i*self.SOCKET_RIDGE_SPACING_FACTOR
-            c=c+ circle(r = 1).translate(self.socket_radius_[Orient.DISTAL]+self.SOCKET_RIDGE_RADIUS_OFFSET+ dd, 0, 0).rotate_extrude(convexity = 10).translate(0,0,i*self.SOCKET_RIDGE_Z_SPACING + self.socket_interface_depth)# .debug()
+            c=c+ circle(r = 1).translate(self.socket_radius_[Orient.DISTAL]+self.socket_thickness_proximal+ dd, 0, 0).rotate_extrude(convexity = 10).translate(0,0,i*(self.socket_interface_thickness + self.socket_thickness_proximal) + self.socket_interface_depth)# .debug()
         c = intersection()(c.rotate((0, 0, 0)), bottom_cut)#.debug()
         return mod_bottom +c, c#, bottom_cut
 
@@ -592,7 +584,7 @@ class DangerFinger(DangerFingerBase):
         mod_tunnel = anchors.hull()
 
         #TODO - 2 make bridge height configurable
-        mod_cut_a = rcylinder(h=tunnel_width, rnd=self.tunnel_inner_rounding, center=True, r=self.tunnel_inner_cutheight_[orient_lat] - (self.BRIDGE_CUT_HEIGHT_ADJ if orient == (Orient.DISTAL | Orient.OUTER) else 0)) \
+        mod_cut_a = rcylinder(h=tunnel_width, rnd=self.tunnel_inner_rounding, center=True, r=self.tunnel_inner_cutheight_[orient_lat] - (self.knuckle_washer_radius if orient == (Orient.DISTAL | Orient.OUTER) else 0)) \
             .translate((0, bridge_cut_a_y_offset + (length if orient == (Orient.DISTAL | Orient.INNER) else 0), 0))#TODO 2 - unhardcode this later
         mod_cut_b = rcylinder(r=self.tunnel_inner_cutheight_[orient_lat], h=tunnel_width, rnd=self.tunnel_inner_rounding, center=True) \
             .translate((0, bridge_cut_b_y_offset + (length if orient == (Orient.DISTAL | Orient.INNER) else 0), 0))#.mod("%")
@@ -659,7 +651,9 @@ class DangerFinger(DangerFingerBase):
             - cylinder(r=r+.01, h=self.knuckle_inner_width_[orient] - self.knuckle_washer_thickness, center=True) \
             -cylinder(r=(r-self.knuckle_washer_width), h=self.knuckle_width_[orient] - self.knuckle_plug_thickness*3, center=True)
 
-    knuckle_inner_rounding = 1.35  # TODO: derive from knuckle_rounding (possibly knuckle_rounding * 1.5)
+    @property
+    def knuckle_inner_rounding(self):
+        return self.knuckle_rounding * 1.5
 
     def knuckle_inner(self, orient, cutout=False, holes=False):
         ''' create the hinges at either end of a intermediate/middle segment '''
@@ -678,7 +672,7 @@ class DangerFinger(DangerFingerBase):
         mod_flare = mod_flare.rotate((0,180,0)).translate((0,0,width/2-self.knuckle_inset_border+.1)) +\
                         mod_flare.translate((0,0,-width/2+self.knuckle_inset_border-.1))#.debug()
         mod_inset = self.knuckle_inset(radius, width)
-        mod_cutin = cylinder(h=width-3, r=radius-2.15, center=True)
+        mod_cutin = cylinder(h=width-3, r=radius-(self.knuckle_washer_radius + self.knuckle_washer_width), center=True)
         mod_pin = self.knuckle_pin(length=width + .01)
 
         #create anchor points for the struts
@@ -687,7 +681,7 @@ class DangerFinger(DangerFingerBase):
         #bottom anchor
         anchor_b = self.strut(height=st_height, width=self.bottom_strut_width_[orient]).rotate(90, 0, 0) \
             .translate(-radius +st_offset * self.strut_height_ratio + self.knuckle_inset_depth + \
-                       (self.ANCHOR_OFFSET_PROXIMAL if orient==Orient.PROXIMAL else self.ANCHOR_OFFSET_DISTAL), 1.0, 0)#.debug() #+width*.05
+                       (self.knuckle_side_clearance if orient==Orient.PROXIMAL else self.ANCHOR_OFFSET_DISTAL), 1.0, 0)#.debug() #+width*.05
                         #TODO ^set these as params
 
         return ((mod_hinge - mod_inset + mod_flare - mod_pin - mod_cutin),#.debug(),
