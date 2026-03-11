@@ -745,8 +745,13 @@ def remove_defaults(config):
     # params can be dict of name -> value or name -> {Value, ...}
     for k in params:
         pv = params[k] if not isinstance(params[k], dict) else params[k].get("Value", params[k])
-        if k in config and float(pv) == float(config[k]):
-            config.pop(k)
+        try:
+            if k in config and float(pv) == float(config[k]):
+                config.pop(k)
+        except (TypeError, ValueError):
+            # Non-numeric param (e.g. enum): compare as strings
+            if k in config and str(pv) == str(config[k]):
+                config.pop(k)
 
 def package_config_json(obj):
     '''process a config file to sort it'''
