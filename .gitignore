@@ -9,3 +9,5 @@ output/*
 *.env
 # Playwright browser cache
 .pw-browsers/
+ui-inspect.txt
+viewer-screenshot.png

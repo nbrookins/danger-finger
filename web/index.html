@@ -88,7 +88,6 @@
 		var extra_rotate = 0;
 		const rot_factor = .65;
 		const expl_factor = 25;
-		var const_factor = 0;
 		var username = "nick"; // Global username variable
 		var partNameToId = { "base": 0, "middle": 1, "tip": 2, "linkage": 3, "tipcover": 4, "socket": 5, "plug": 6, "stand": 7, "pins": 8 };
 		var previewDebounceTimer = null;
@@ -214,6 +213,7 @@
 					if (this.status === 200) {
 						var res = JSON.parse(this.responseText || "{}");
 						if (res.stl_urls && Object.keys(res.stl_urls).length) {
+							if (res.previewConfig) apply_preview_config({ previewConfig: res.previewConfig });
 							update_viewer_from_stl_urls(res.stl_urls);
 							set_preview_status('Preview ready.');
 						} else {
@@ -250,6 +250,7 @@
 				var stl_urls = {};
 				for (var p in partNameToId) stl_urls[p] = "/render/" + cfghash + "/" + p + ".stl";
 				update_viewer_from_stl_urls(stl_urls);
+				request_preview();
 			};
 			xhttp.open("GET", baseurl + "configs/" + cfghash, true);
 			xhttp.setRequestHeader("Content-type", "application/json");
@@ -437,12 +438,7 @@
 						tabCell.innerHTML = json[k][col[j]];
 					}
 				}
-				if (k == 'intermediate_length'){
-					const_factor = json[k]['Value']/2 + 2;
-					for (id in Object.keys(parts)){
-						parts[id]['pos'] = [parts[id]['posf'][0] * const_factor, parts[id]['posf'][1] * const_factor, parts[id]['posf'][2] * const_factor];
-					}
-				}
+				// Position offsets now come from previewConfig (apply_preview_config); do not overwrite with legacy posf formula.
 			}
 
 			// FINALLY ADD THE NEWLY CREATED TABLE WITH JSON DATA TO A CONTAINER.
