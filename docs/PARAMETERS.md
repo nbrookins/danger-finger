@@ -28,7 +28,7 @@ Preview vs print orientation
 - **`_rotate_offsets`** (in `danger/finger_params.py`): Applied at export so STLs are in print orientation for slicing. Do not change for preview display.
 - **`_translate_offsets["all"]`**: Used by part_all and assembly; do **not** use for viewer layout or you will break the all.stl output.
 - **`_preview_position_offsets`**: Viewer-only positions (part name → (x,y,z)). Used only by the web API for preview; part_all and STL export are unchanged. Proximal→distal along +Y; linkage behind finger (-Z). Tune here to fix stacked preview without touching `_translate_offsets`.
-- **`_preview_rotate_offsets`**: Per-part (rx, ry, rz) in degrees applied only in the web viewer so the same STLs appear as an assembled finger. Tune these if preview alignment looks wrong.
+- **`_preview_rotate_offsets`**: Per-part (rx, ry, rz) in degrees applied only in the web viewer so the same STLs appear as an assembled finger. Tune these if preview alignment looks wrong. `middle` is set to `(-90, 50, -90)` (approximate inverse of its print rotation `(90, -50, 90)`; see `docs/VIEWER_ASSEMBLY.md` section 6).
 - **`_preview_hidden`** *(planned)*: Set of part names (e.g. `{"stand"}`) hidden by default in the preview UI.
 - **`_preview_plug_instances`**: List of four `{ "position": (x,y,z), "rotation": (rx,ry,rz) }` entries for the four plug instances (proximal L/R, distal L/R). Same plug STL is shown four times in the viewer at these positions/rotations so plugs appear in their tip holes.
 - **`_preview_position_override`** *(planned)*: Optional overrides on top of `_preview_position_offsets` for a single part (viewer only).

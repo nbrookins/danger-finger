@@ -16,8 +16,8 @@ else
 endif
 
 DOCKER_REGISTRY ?= # harbor.smartdrivesystems.com/
-# This will be overrdden with an actual build number in Jenkins CI
-BUILD_NUMBER ?= $(environ)
+# Overridden by Jenkins CI; locally defaults to environ + git short SHA for traceability
+BUILD_NUMBER ?= $(environ)-$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 # If the first argument is "run" then fix other params to pass along
 ifeq (run,$(firstword $(MAKECMDGOALS)))

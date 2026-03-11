@@ -2,6 +2,8 @@
 """
 Playwright-based UI inspection for danger-finger web app.
 Captures #preview_status, #viewer_error, #loader, /api/parts, stl_viewer positions, console.
+Also checks: title/h1 encoding, part toggle count vs API, plugInstances in previewConfig,
+advanced-section collapse, and explode slider state.
 Writes output to UI_INSPECT_OUTPUT and screenshot to SCREENSHOT_OUTPUT.
 Exit 0 if preview_status does not contain "error", else 1.
 """
@@ -27,9 +29,7 @@ def main():
         context = browser.new_context()
 
         def on_console(msg):
-            kind = msg.type
-            text = msg.text
-            console_logs.append(f"[{kind}] {text}")
+            console_logs.append(f"[{msg.type}] {msg.text}")
 
         page = context.new_page()
         page.on("console", on_console)
@@ -41,7 +41,6 @@ def main():
             browser.close()
             sys.exit(1)
 
-        # Wait up to 30 seconds for #preview_status to contain text
         try:
             page.wait_for_function(
                 """() => {
@@ -51,11 +50,9 @@ def main():
                 timeout=30000,
             )
         except Exception:
-            pass  # Proceed even if timeout; we'll capture current state
+            pass
 
-        # Capture DOM elements
-        preview_status = page.locator("#preview_status").first
-        preview_status_text = preview_status.text_content() or ""
+        preview_status_text = (page.locator("#preview_status").first.text_content() or "")
 
         viewer_error_el = page.locator("#viewer_error").first
         viewer_error_text = "(none)"
@@ -66,10 +63,12 @@ def main():
         loader_el = page.locator("#loader").first
         loader_visible = "visible" if loader_el.is_visible() else "hidden"
 
-        # Fetch /api/parts and summarize
-        parts_summary = _fetch_parts_summary(page, base_url)
+        title_checks = _check_title_encoding(page)
+        parts_checks = _check_parts_and_toggles(page, base_url)
+        preview_config_checks = _check_preview_config(page, base_url)
+        advanced_checks = _check_advanced_collapse(page)
+        explode_checks = _check_explode_slider(page)
 
-        # Get viewer positions from stl_viewer.get_model_info()
         viewer_positions = page.evaluate("""
             () => {
                 const out = {};
@@ -78,12 +77,12 @@ def main():
                     try {
                         const info = stl_viewer.get_model_info(id);
                         if (info) {
-                            const pos = info.pos || info.position || (info.matrix && info.matrix.elements ? [info.matrix.elements[12], info.matrix.elements[13], info.matrix.elements[14]] : null);
-                            if (pos && Array.isArray(pos)) {
-                                out[String(id)] = [pos[0], pos[1], pos[2]];
-                            } else {
-                                out[String(id)] = info;
-                            }
+                            const pos = info.pos || info.position ||
+                                (info.matrix && info.matrix.elements
+                                    ? [info.matrix.elements[12], info.matrix.elements[13], info.matrix.elements[14]]
+                                    : null);
+                            out[String(id)] = (pos && Array.isArray(pos))
+                                ? [pos[0], pos[1], pos[2]] : info;
                         }
                     } catch (e) {}
                 }
@@ -91,18 +90,19 @@ def main():
             }
         """)
 
-        # Take screenshot
         page.screenshot(path=screenshot_output)
-
         browser.close()
 
-    # Build output
     report = _build_report(
         base_url=base_url,
         preview_status=preview_status_text,
         viewer_error=viewer_error_text,
         loader_status=loader_visible,
-        parts_summary=parts_summary,
+        title_checks=title_checks,
+        parts_checks=parts_checks,
+        preview_config_checks=preview_config_checks,
+        advanced_checks=advanced_checks,
+        explode_checks=explode_checks,
         viewer_positions=viewer_positions,
         console_logs=console_logs[-50:],
     )
@@ -110,56 +110,129 @@ def main():
     with open(ui_output, "w", encoding="utf-8") as f:
         f.write(report)
 
-    # Exit 1 if preview_status contains "error" (case-insensitive)
     if "error" in preview_status_text.lower():
         sys.exit(1)
     sys.exit(0)
 
 
-def _fetch_parts_summary(page, base_url):
-    """Fetch /api/parts and return count, sample part, tip position."""
+def _check_title_encoding(page):
+    checks = {}
+    try:
+        title_text = page.title()
+        checks["title_text"] = title_text
+        checks["title_has_mojibake"] = any(c in title_text for c in ["\u00e2\u20ac", "\u00c3", "\ufffd"])
+        checks["title_ok"] = "Danger Finger" in title_text and not checks["title_has_mojibake"]
+    except Exception as e:
+        checks["title_error"] = str(e)
+    try:
+        h1_text = (page.locator("h1").first.text_content() or "")
+        checks["h1_text"] = h1_text
+        checks["h1_has_mojibake"] = any(c in h1_text for c in ["\u00e2\u20ac", "\u00c3", "\ufffd"])
+        checks["h1_ok"] = "Danger Finger" in h1_text and not checks["h1_has_mojibake"]
+    except Exception as e:
+        checks["h1_error"] = str(e)
+    return checks
+
+
+def _check_parts_and_toggles(page, base_url):
     try:
         resp = page.request.get(f"{base_url.rstrip('/')}/api/parts")
         if resp.status != 200:
             return {"error": f"HTTP {resp.status}"}
         data = resp.json()
         parts = data.get("parts", [])
+        api_part_ids = [p.get("id") for p in parts]
+
+        toggle_results = {}
+        for part_id in api_part_ids:
+            btn_el = page.locator(f"#b_{part_id}").first
+            toggle_results[part_id] = "present" if btn_el.count() > 0 else "MISSING"
+
         cfg = data.get("previewConfig", {})
         pos_offsets = cfg.get("positionOffsets", {})
+        sample_name = api_part_ids[0] if api_part_ids else None
 
-        sample = None
-        if parts:
-            first = parts[0]
-            name = first.get("id") or first.get("label", "").lower()
-            pos = pos_offsets.get(name) if name else None
-            sample = {"name": name, "pos": pos}
-
-        tip_pos = pos_offsets.get("tip")
         return {
-            "count": len(parts),
-            "sample": sample,
-            "tipPos": {"pos": tip_pos} if tip_pos is not None else None,
+            "api_part_count": len(parts),
+            "api_part_ids": api_part_ids,
+            "toggle_buttons": toggle_results,
+            "missing_toggles": [k for k, v in toggle_results.items() if v == "MISSING"],
+            "sample": {"name": sample_name, "pos": pos_offsets.get(sample_name)},
         }
     except Exception as e:
         return {"error": str(e)}
 
 
-def _build_report(
-    base_url,
-    preview_status,
-    viewer_error,
-    loader_status,
-    parts_summary,
-    viewer_positions,
-    console_logs,
-    error=None,
-):
+def _check_preview_config(page, base_url):
+    try:
+        resp = page.request.get(f"{base_url.rstrip('/')}/api/parts")
+        if resp.status != 200:
+            return {"error": f"HTTP {resp.status}"}
+        cfg = resp.json().get("previewConfig", {})
+        plug_instances = cfg.get("plugInstances", [])
+        return {
+            "previewConfig_keys": list(cfg.keys()),
+            "plugInstances_count": len(plug_instances),
+            "plugInstances_ok": len(plug_instances) == 4,
+            "has_rotateOffsets": "rotateOffsets" in cfg,
+            "has_positionOffsets": "positionOffsets" in cfg,
+            "has_partColors": "partColors" in cfg,
+            "middle_rotate": cfg.get("rotateOffsets", {}).get("middle"),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _check_advanced_collapse(page):
+    checks = {}
+    try:
+        adv_btn = page.locator("#b_pa").first
+        checks["adv_btn_present"] = adv_btn.count() > 0
+        if adv_btn.count() == 0:
+            return checks
+        adv_data = page.locator("#advData").first
+        std_data = page.locator("#showData").first
+        checks["advData_present"] = adv_data.count() > 0
+        checks["showData_present"] = std_data.count() > 0
+        adv_btn.click()
+        page.wait_for_timeout(300)
+        checks["after_adv_click_advData_visible"] = adv_data.is_visible()
+        checks["after_adv_click_showData_visible"] = std_data.is_visible()
+        checks["adv_toggle_ok"] = bool(checks.get("after_adv_click_advData_visible"))
+        std_btn = page.locator("#b_pb").first
+        if std_btn.count() > 0:
+            std_btn.click()
+            page.wait_for_timeout(200)
+            checks["after_std_click_advData_visible"] = adv_data.is_visible()
+            checks["after_std_click_showData_visible"] = std_data.is_visible()
+    except Exception as e:
+        checks["error"] = str(e)
+    return checks
+
+
+def _check_explode_slider(page):
+    checks = {}
+    try:
+        slider = page.locator("#explode").first
+        checks["slider_present"] = slider.count() > 0
+        if slider.count() > 0:
+            val = slider.input_value()
+            checks["slider_value"] = val
+            checks["slider_at_zero"] = val == "0"
+    except Exception as e:
+        checks["error"] = str(e)
+    return checks
+
+
+def _build_report(base_url, preview_status, viewer_error, loader_status,
+                  title_checks, parts_checks, preview_config_checks,
+                  advanced_checks, explode_checks, viewer_positions,
+                  console_logs, error=None):
     if error:
         return f"=== UI inspect: {base_url} ===\n\nError: {error}\n"
 
-    parts_str = json.dumps(parts_summary, indent=2) if isinstance(parts_summary, dict) else str(parts_summary)
-    positions_str = json.dumps(viewer_positions, indent=2) if isinstance(viewer_positions, dict) else str(viewer_positions)
-    console_str = "\n".join(console_logs) if console_logs else "(none)"
+    def js(obj):
+        return json.dumps(obj, indent=2) if isinstance(obj, (dict, list)) else str(obj)
 
     return f"""=== UI inspect: {base_url} ===
 
@@ -172,21 +245,34 @@ def _build_report(
 #loader (Loading...):
 {loader_status}
 
-#parts_debug (frontend parts from /api/parts):
-{parts_str}
+#title_encoding:
+{js(title_checks)}
+
+#parts_and_toggles:
+{js(parts_checks)}
+
+#preview_config:
+{js(preview_config_checks)}
+
+#advanced_collapse:
+{js(advanced_checks)}
+
+#explode_slider:
+{js(explode_checks)}
 
 #viewer_positions (mesh positions from stl_viewer.get_model_info):
-{positions_str}
+{js(viewer_positions)}
 
 --- console (last 50) ---
-{console_str}
+{chr(10).join(console_logs) if console_logs else '(none)'}
 """
 
 
 def _write_output(path, base_url, error):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        f.write(_build_report(base_url, "", "(none)", "unknown", {}, {}, [], error=error))
+        f.write(_build_report(base_url, "", "(none)", "unknown",
+                              {}, {}, {}, {}, {}, {}, [], error=error))
 
 
 if __name__ == "__main__":

@@ -2,7 +2,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-	<title>Danger-Finger - Configure and Preview</title>
+	<meta charset="utf-8">
+	<title>Danger Finger – Configure &amp; Preview</title>
 	<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
 	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 	<!--<link rel="stylesheet" type="text/css" href="style.css">-->
@@ -28,11 +29,8 @@
 			<div class="card-body p-2">
 	<table id="mdata" class="mb-0">
 		<tr id="mrow">
-			<td id="preview">Part:</td>
-			<td id="tip"><input id="b_tip" type="button" value="Tip"></td>
-			<td id="middle"><input id="b_middle" type="button" value="Middle"></td>
-			<td id="base"><input id="b_base" type="button" value="Base"></td>
-			<td id="linkage"><input id="b_linkage" type="button" value="Linkage"></td>
+			<td>Part:</td>
+			<td id="part_buttons_container"></td>
 		</tr>
 		<tr id="mrow">
 			<td id="params-basic">Parameters:</td>
@@ -68,17 +66,7 @@
 	<script>
 		baseurl = "";
 		//baseurl = "http://ec2co-ecsel-qy18jthyyhk1-1448117639.us-east-1.elb.amazonaws.com:8081/";
-		var parts = {
-			'0' : {'name': "base",     'posf': [0, 0, 0], 'exp' : [0, 0, 0],     'pos': [0, 0, 0], 'rotf': [0, 0, 0] },
-			'1' : {'name': "middle",   'posf': [-1, 0, 0], 'exp' : [-1, 0, 0],   'pos': [0, 0, 0], 'rotf': [0, 0, 1] },
-			'2' : {'name': "tip",      'posf': [-2.1, 0, 0], 'exp' : [-2, 0, 0], 'pos': [0, 0, 0], 'rotf': [0, 0, 2] },
-			'3' : {'name': "linkage",  'posf': [3, .85, 0], 'exp' : [0.5, 0.5, 0], 'pos': [0, 0, 0], 'rotf': [0, 0, 0] },
-			'4' : {'name': "tipcover", 'posf': [0, 0, 0], 'exp' : [0, 0, 0], 'pos': [0, 0, 0], 'rotf': [0, 0, 0] },
-			'5' : {'name': "socket",   'posf': [0, 0, 0], 'exp' : [0, 0, 0], 'pos': [0, 0, 0], 'rotf': [0, 0, 0] },
-			'6' : {'name': "plug",     'posf': [0, 0, 0], 'exp' : [0, 0, 0], 'pos': [0, 0, 0], 'rotf': [0, 0, 0] },
-			'7' : {'name': "stand",    'posf': [0, 0, 0], 'exp' : [0, 0, 0], 'pos': [0, 0, 0], 'rotf': [0, 0, 0] },
-			'8' : {'name': "pins",     'posf': [0, 0, 0], 'exp' : [0, 0, 0], 'pos': [0, 0, 0], 'rotf': [0, 0, 0] },
-		}
+		var parts = {};  // populated from /api/parts
 		var previewConfig = null;
 		var last_stl_urls = {};
 		var rotationx = 0;
@@ -89,7 +77,7 @@
 		const rot_factor = .65;
 		const expl_factor = 25;
 		var username = "nick"; // Global username variable
-		var partNameToId = { "base": 0, "middle": 1, "tip": 2, "linkage": 3, "tipcover": 4, "socket": 5, "plug": 6, "stand": 7, "pins": 8 };
+		var partNameToId = {};  // populated from /api/parts
 		var previewDebounceTimer = null;
 		var PREVIEW_DEBOUNCE_MS = 500;
 
@@ -280,8 +268,41 @@
 			if (url.search('/models/') > -1) fill_models(json);
 		}
 
+		function _fill_part_buttons(apiParts) {
+			var container = document.getElementById('part_buttons_container');
+			if (!container) return;
+			container.innerHTML = '';
+			apiParts.forEach(function(p) {
+				var td = document.createElement('td');
+				var btn = document.createElement('input');
+				btn.type = 'button';
+				btn.id = 'b_' + p.id;
+				btn.value = p.label || p.id;
+				// onclick overridden by add_model when STLs load; this is the toggle-off fallback
+				btn.onclick = (function(name) {
+					return function() {
+						var id = partNameToId[name];
+						if (id !== undefined) rem_models([id]);
+					};
+				})(p.id);
+				td.appendChild(btn);
+				container.appendChild(td);
+			});
+		}
+
 		function apply_preview_config(json) {
-			if (!json || !json.previewConfig) return;
+			if (!json) return;
+			// Populate parts and partNameToId from API part list
+			if (json.parts && json.parts.length) {
+				parts = {};
+				partNameToId = {};
+				json.parts.forEach(function(p, idx) {
+					parts[String(idx)] = {name: p.id, pos: [0,0,0], exp: [0,0,0]};
+					partNameToId[p.id] = idx;
+				});
+				_fill_part_buttons(json.parts);
+			}
+			if (!json.previewConfig) return;
 			previewConfig = json.previewConfig;
 			var posOff = previewConfig.positionOffsets || {};
 			for (var id in parts) {
