@@ -1,6 +1,8 @@
 # Viewer assembly system — coordinate reference and known behaviours
 
-This document captures how the web viewer assembles the finger from individual print-oriented STL files, and how `stl_viewer.min.js` actually transforms each mesh. It is the authoritative reference for setting `_preview_position_offsets`, `_preview_rotate_offsets`, and `_preview_plug_instances` in `danger/finger_params.py`.
+This document captures how the web viewer assembles the finger from individual print-oriented STL files, and how `stl_viewer.js` transforms each mesh. It is the authoritative reference for setting `_preview_position_offsets`, `_preview_rotate_offsets`, and `_preview_plug_instances` in `danger/finger_params.py`.
+
+> **2026-03**: `stl_viewer.min.js` (StlViewer v1.08 / Three.js r86) was replaced with `web/stl_viewer.js`, a thin wrapper over Three.js r160 + `STLLoader` r170. The transform semantics documented below are **preserved exactly** in the new wrapper.
 
 ---
 
@@ -13,8 +15,8 @@ rotate(rotate_offsets[name])   -> print orientation (optimal for FDM slicing)
   |  write_file -> output/{name}.stl
 
 HTTP: /render/{name}.stl -> browser -> stl_viewer.add_model(...)
-  -> center_models (bbox center -> local origin 0,0,0)
-  -> rotate (rotateAroundWorldAxis by preview_rotate_offsets[name])
+  -> center geometry (computeBoundingBox() + translate(-center) => bbox center at local origin 0,0,0)
+  -> rotate (rotateOnWorldAxis X->Y->Z by preview_rotate_offsets[name])
   -> set_position from mod_loaded (preview_position_offsets[name])
 ```
 
@@ -22,17 +24,17 @@ The viewer reconstructs the assembled finger from print-oriented STLs. Positions
 
 ---
 
-## 2. stl_viewer.min.js — actual behaviour (confirmed from source)
+## 2. stl_viewer.js — behaviour (confirmed from source)
 
 ### 2.1 Geometry centering
 
-`center_models` defaults to `true`. After loading the STL, the library calls `geometry.center()` which translates all vertices so the **bounding box center becomes the geometry local origin (0,0,0)**. The original SCAD/STL coordinate system is discarded.
+After loading the STL, `stl_viewer.js` calls `geometry.computeBoundingBox()` then `geometry.translate(-center.x, -center.y, -center.z)`, which moves all vertices so the **bounding box center becomes the geometry local origin (0,0,0)**. This replicates the old `geometry.center()` behavior exactly. The original SCAD/STL coordinate system is discarded.
 
 **Consequence**: `_preview_position_offsets` values must be the world-space position of each part's bounding box center in assembled finger space — not SCAD translate offsets.
 
 ### 2.2 Rotation
 
-Rotation is applied via `rotateAroundWorldAxis(mesh, worldAxis, angle)` which pre-multiplies the mesh matrix by a world-space rotation. Because geometry was centered first, this effectively **rotates around the part's own center**. Values are applied as successive X -> Y -> Z world-axis rotations (in degrees; `index.html` calls `degtorad`).
+Rotation is applied via `mesh.rotateOnWorldAxis(axis, angle)` (Three.js r160+), which pre-multiplies the mesh matrix by a world-space rotation. This is equivalent to the old `rotateAroundWorldAxis(mesh, worldAxis, angle)`. Because geometry was centered first, this effectively **rotates around the part's own center**. Values are applied as successive X → Y → Z world-axis rotations (in degrees; `index.html` calls `degtorad`).
 
 ### 2.3 Position ordering — the mod_loaded override
 

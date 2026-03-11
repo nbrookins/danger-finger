@@ -44,10 +44,10 @@ OpenSCAD can render a preview PNG of each SCAD model. Use this to verify the ide
 
 Full reference: `docs/VIEWER_ASSEMBLY.md`.
 
-### stl_viewer.min.js behaviour
+### stl_viewer.js behaviour (web/stl_viewer.js, Three.js r160+)
 
-1. **center_models = true**: `geometry.center()` moves bbox center to origin. SCAD coordinates are gone.
-2. **Rotation around world axis**: `rotateAroundWorldAxis` pre-multiplies. Effectively rotates around part's own center.
+1. **Centering**: `geometry.computeBoundingBox()` + `translate(-center)` moves bbox center to origin. SCAD coordinates are gone.
+2. **Rotation around world axis**: `mesh.rotateOnWorldAxis(axis, angle)` X→Y→Z pre-multiplies. Effectively rotates around part's own center.
 3. **Position from mod_loaded overrides add_model**: Final position is always `preview_position_offsets`.
 
 ### preview_position_offsets

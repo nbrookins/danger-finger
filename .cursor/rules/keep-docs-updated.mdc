@@ -9,7 +9,7 @@ alwaysApply: false
 When making changes that affect architecture, design decisions, or user-facing behaviour, update the relevant documentation:
 
 - **docs/PRODUCT.md** — product requirements, design decisions, changelog
-- **docs/VIEWER_ASSEMBLY.md** — stl_viewer behaviour, coordinate system, preview positions
+- **docs/VIEWER_ASSEMBLY.md** — stl_viewer.js behaviour, coordinate system, preview positions
 - **docs/PARAMETERS.md** — parameter definitions
 
 When adding new `.cursor/rules/` files, mention them in the relevant docs so future agents know they exist.

@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Diagnosing and fixing viewer preview positioning
 
-**Read `docs/VIEWER_ASSEMBLY.md` first.** It documents stl_viewer's exact centering and rotation behaviour, assembled coordinate baselines, and known issues.
+**Read `docs/VIEWER_ASSEMBLY.md` first.** It documents `stl_viewer.js`'s exact centering and rotation behaviour, assembled coordinate baselines, and known issues.
 
 ## The three-step empirical fix (do not skip to theory)
 
@@ -54,6 +54,6 @@ _preview_position_offsets = {
 
 ## What NOT to do
 
-- Do not re-read stl_viewer source — it is documented in `docs/VIEWER_ASSEMBLY.md`.
-- Do not compute positions from SCAD offsets — stl_viewer centers geometry so SCAD origin is irrelevant.
+- Do not re-read `stl_viewer.js` source for transform logic — it is documented in `docs/VIEWER_ASSEMBLY.md`.
+- Do not compute positions from SCAD offsets — `stl_viewer.js` centers geometry so SCAD origin is irrelevant.
 - Do not theorize before measuring v5.1 STL bounding boxes.
