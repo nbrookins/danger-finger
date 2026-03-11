@@ -775,8 +775,15 @@ def write_stl(scad_file, stl_file):
     print("  Rendered %s in %s sec" % (stl_file, round(time.time()-start, 1)))
     return stl_file
 
-# Convert config values to floats
-floatify = lambda config: {k: float(v) for k, v in config.items()}
+def floatify(config):
+    """Convert numeric config values to float; leave strings/enums unchanged."""
+    out = {}
+    for k, v in config.items():
+        try:
+            out[k] = float(v)
+        except (TypeError, ValueError):
+            out[k] = v  # enum name or other non-numeric value
+    return out
 
 def build(p, config, q=RenderQuality.NONE):
     '''build a finger model and return scad'''
