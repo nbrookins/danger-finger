@@ -308,13 +308,31 @@ class DangerFingerParams:
 
     def get_params(self, adv=False, allv=True, extended=False):
         ''' return all parameters for this finger model '''
+        from enum import Enum as _Enum
         params = {}
         for name, prop in inspect.getmembers(DangerFingerParams):
             if name.startswith("_"): continue
             if isinstance(prop, Prop):
                 inst_val = getattr(self, name)
                 if (prop.advanced and (adv or allv)) or (not prop.advanced and not adv):
-                    params[name] = inst_val if not extended else {"Value":inst_val, "Default":prop.default, "Minimum":prop.minimum, "Maximum":prop.maximum, "Advanced":prop.advanced, "Documentation":prop.docs, "Hidden":prop.hidden}
+                    if not extended:
+                        params[name] = inst_val
+                    else:
+                        # Serialize enum values as their member name (strip class prefix)
+                        def _ser(v):
+                            return v.name if isinstance(v, _Enum) else v
+                        entry = {
+                            "Value": _ser(inst_val),
+                            "Default": _ser(prop.default),
+                            "Minimum": prop.minimum,
+                            "Maximum": prop.maximum,
+                            "Advanced": prop.advanced,
+                            "Documentation": prop.docs,
+                            "Hidden": prop.hidden,
+                        }
+                        if isinstance(prop.default, _Enum):
+                            entry["EnumOptions"] = [e.name for e in type(prop.default)]
+                        params[name] = entry
         return params
 
     @property

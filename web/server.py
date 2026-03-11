@@ -275,9 +275,14 @@ def _preview_config(config_dict=None):
     else:
         positions = P._preview_position_offsets
 
+    # Explode offsets: take first tuple from each part's explode list
+    explode_raw = P._translate_offsets.get("explode", {})
+    explode_offsets = {k: list(v[0]) for k, v in explode_raw.items() if v}
+
     return {
         "rotateOffsets": {k: list(v) for k, v in P._preview_rotate_offsets.items()},
         "positionOffsets": {k: list(v) for k, v in positions.items()},
+        "explodeOffsets": explode_offsets,
         "plugInstances": [{"position": list(p["position"]), "rotation": list(p["rotation"])} for p in P._preview_plug_instances],
         "partColors": {k: v for k, v in PART_COLORS.items()},
     }
@@ -289,9 +294,14 @@ class ApiPartsHandler(tornado.web.RequestHandler):
         set_def_headers(self)
 
     def get(self):
+        import os
         part_list = [{"id": str(p.name).lower(), "label": str(p.name).capitalize()} for p in parts]
         self.set_header("Content-Type", "application/json")
-        self.write(json.dumps({"parts": part_list, "previewConfig": _preview_config()}))
+        self.write(json.dumps({
+            "parts": part_list,
+            "version": os.environ.get("version", ""),
+            "previewConfig": _preview_config(),
+        }))
 
 
 PREVIEW_TIMEOUT_SEC = 10
