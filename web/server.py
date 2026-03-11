@@ -740,8 +740,12 @@ def remove_defaults(config):
     # params can be dict of name -> value or name -> {Value, ...}
     for k in params:
         pv = params[k] if not isinstance(params[k], dict) else params[k].get("Value", params[k])
-        if k in config and float(pv) == float(config[k]):
-            config.pop(k)
+        try:
+            if k in config and float(pv) == float(config[k]):
+                config.pop(k)
+        except (TypeError, ValueError):
+            if k in config and str(pv) == str(config[k]):
+                config.pop(k)
 
 def package_config_json(obj):
     '''process a config file to sort it'''
@@ -766,7 +770,15 @@ def write_stl(scad_file, stl_file):
     return stl_file
 
 # Convert config values to floats
-floatify = lambda config: {k: float(v) for k, v in config.items()}
+def floatify(config):
+    """Convert numeric config values to float; leave strings/enums unchanged."""
+    out = {}
+    for k, v in config.items():
+        try:
+            out[k] = float(v)
+        except (TypeError, ValueError):
+            out[k] = v
+    return out
 
 def build(p, config, q=RenderQuality.NONE):
     '''build a finger model and return scad'''

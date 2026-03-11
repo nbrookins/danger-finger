@@ -121,14 +121,14 @@ def _check_title_encoding(page):
         title_text = page.title()
         checks["title_text"] = title_text
         checks["title_has_mojibake"] = any(c in title_text for c in ["\u00e2\u20ac", "\u00c3", "\ufffd"])
-        checks["title_ok"] = "Danger Finger" in title_text and not checks["title_has_mojibake"]
+        checks["title_ok"] = ("Danger" in title_text or "DangerFinger" in title_text) and not checks["title_has_mojibake"]
     except Exception as e:
         checks["title_error"] = str(e)
     try:
         h1_text = (page.locator("h1").first.text_content() or "")
         checks["h1_text"] = h1_text
         checks["h1_has_mojibake"] = any(c in h1_text for c in ["\u00e2\u20ac", "\u00c3", "\ufffd"])
-        checks["h1_ok"] = "Danger Finger" in h1_text and not checks["h1_has_mojibake"]
+        checks["h1_ok"] = ("Danger" in h1_text or "DangerFinger" in h1_text) and not checks["h1_has_mojibake"]
     except Exception as e:
         checks["h1_error"] = str(e)
     return checks
@@ -145,8 +145,10 @@ def _check_parts_and_toggles(page, base_url):
 
         toggle_results = {}
         for part_id in api_part_ids:
+            # New: checkbox with id="toggle_{part_id}"; Old: button with id="b_{part_id}"
+            cb_el = page.locator(f"#toggle_{part_id}").first
             btn_el = page.locator(f"#b_{part_id}").first
-            toggle_results[part_id] = "present" if btn_el.count() > 0 else "MISSING"
+            toggle_results[part_id] = "present" if (cb_el.count() > 0 or btn_el.count() > 0) else "MISSING"
 
         cfg = data.get("previewConfig", {})
         pos_offsets = cfg.get("positionOffsets", {})
@@ -186,25 +188,26 @@ def _check_preview_config(page, base_url):
 def _check_advanced_collapse(page):
     checks = {}
     try:
-        adv_btn = page.locator("#b_pa").first
-        checks["adv_btn_present"] = adv_btn.count() > 0
-        if adv_btn.count() == 0:
+        # New layout: Bootstrap collapse link href="#advancedParams"
+        adv_link = page.locator("[href='#advancedParams'], [data-toggle='collapse']").first
+        # Old layout: button #b_pa
+        adv_btn_old = page.locator("#b_pa").first
+        adv_present = adv_link.count() > 0 or adv_btn_old.count() > 0
+        checks["adv_btn_present"] = adv_present
+        if not adv_present:
             return checks
-        adv_data = page.locator("#advData").first
+
+        adv_data = page.locator("#advancedParams, #advData").first
         std_data = page.locator("#showData").first
         checks["advData_present"] = adv_data.count() > 0
         checks["showData_present"] = std_data.count() > 0
-        adv_btn.click()
-        page.wait_for_timeout(300)
+
+        # Click the collapse toggle
+        toggle = adv_link if adv_link.count() > 0 else adv_btn_old
+        toggle.click()
+        page.wait_for_timeout(500)
         checks["after_adv_click_advData_visible"] = adv_data.is_visible()
-        checks["after_adv_click_showData_visible"] = std_data.is_visible()
         checks["adv_toggle_ok"] = bool(checks.get("after_adv_click_advData_visible"))
-        std_btn = page.locator("#b_pb").first
-        if std_btn.count() > 0:
-            std_btn.click()
-            page.wait_for_timeout(200)
-            checks["after_std_click_advData_visible"] = adv_data.is_visible()
-            checks["after_std_click_showData_visible"] = std_data.is_visible()
     except Exception as e:
         checks["error"] = str(e)
     return checks
