@@ -30,11 +30,12 @@
 - **ECR**: Docker image registry. Lifecycle policy keeps last 10 images.
 - **Route53 + ACM**: Optional custom domain and HTTPS (not enabled by default).
 
-### Static site URL
+### Static site URLs
 
-```
-http://danger-finger-static.s3-website-us-east-1.amazonaws.com
-```
+| Endpoint | URL | Use |
+|----------|-----|-----|
+| CloudFront (HTTPS) | `https://d1n87lopz9qnnf.cloudfront.net` | Primary — use this for `DANGERFINGER_APP_URL` in WordPress wp-config.php. Required to avoid mixed-content blocking inside the HTTPS WP page. |
+| S3 website (HTTP) | `http://danger-finger-static.s3-website-us-east-1.amazonaws.com` | Direct / debugging only |
 
 The static site is the primary frontend. It loads without EC2. Preview/render calls go to EC2 and degrade gracefully with a "server offline" message when EC2 is down.
 

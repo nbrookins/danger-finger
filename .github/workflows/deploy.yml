@@ -93,13 +93,18 @@ jobs:
         run: terraform apply -auto-approve tfplan
 
       - name: Update EC2 container
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          WP_AUTH_URL: ${{ secrets.WP_AUTH_URL }}
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          STATIC_SITE_URL: ${{ secrets.STATIC_SITE_URL }}
         run: |
           INSTANCE_ID=$(cd infra && terraform output -raw ec2_instance_id)
           ECR_URI=${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
           aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --parameters "commands=[\"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.ecr-login.outputs.registry }} && docker pull $ECR_URI && docker stop ${{ env.PROJECT }} || true && docker rm ${{ env.PROJECT }} || true && docker run -d --restart=unless-stopped --name ${{ env.PROJECT }} -p 8081:8081 -e S3_BUCKET=${{ env.PROJECT }} -e AWS_DEFAULT_REGION=${{ env.AWS_REGION }} $ECR_URI\"]" \
+            --parameters "commands=[\"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.ecr-login.outputs.registry }} && docker pull $ECR_URI && docker stop ${{ env.PROJECT }} || true && docker rm ${{ env.PROJECT }} || true && docker run -d --restart=unless-stopped --name ${{ env.PROJECT }} -p 8081:8081 -e S3_BUCKET=${{ env.PROJECT }} -e AWS_DEFAULT_REGION=${{ env.AWS_REGION }} -e jwt_secret=${JWT_SECRET} -e wp_auth_url=${WP_AUTH_URL} -e app_base_url=${APP_BASE_URL} -e static_site_url=${STATIC_SITE_URL} $ECR_URI\"]" \
             --region ${{ env.AWS_REGION }}
 
       - name: Update Lambda
@@ -107,6 +112,10 @@ jobs:
         run: terraform apply -auto-approve -target=aws_lambda_function.s3_read -var-file=environments/${{ github.event.inputs.environment || 'dev' }}.tfvars
 
       - name: Deploy static site
+        env:
+          WP_AUTH_URL: ${{ secrets.WP_AUTH_URL }}
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          STATIC_SITE_URL: ${{ secrets.STATIC_SITE_URL }}
         run: |
           pip install solidpython2
           make deploy-static \

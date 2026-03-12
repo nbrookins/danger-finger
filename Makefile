@@ -131,11 +131,16 @@ push-ecr: ecr-login
 deploy-lambda:
 	cd infra && terraform apply -auto-approve -target=aws_lambda_function.s3_read -target=aws_lambda_layer_version.brotli -var-file=environments/$(environ).tfvars
 
+JWT_SECRET     ?= $(jwt_secret)
+WP_AUTH_URL    ?= $(wp_auth_url)
+APP_BASE_URL   ?= $(app_base_url)
+STATIC_SITE_URL ?= $(static_site_url)
+
 deploy-ec2:
 	@echo "Updating EC2 container via SSM..."
 	@INSTANCE_ID=$$(cd infra && terraform output -raw ec2_instance_id) && \
 	aws ssm send-command --instance-ids $$INSTANCE_ID --document-name "AWS-RunShellScript" \
-	  --parameters 'commands=["docker pull $(ECR_REPO):latest && docker stop $(project) && docker rm $(project) && docker run -d --restart=unless-stopped --name $(project) -p 8081:8081 -e S3_BUCKET=$(project) -e AWS_DEFAULT_REGION=$(AWS_REGION) $(ECR_REPO):latest"]' \
+	  --parameters "commands=[\"docker pull $(ECR_REPO):latest && docker stop $(project) || true && docker rm $(project) || true && docker run -d --restart=unless-stopped --name $(project) -p 8081:8081 -e S3_BUCKET=$(project) -e AWS_DEFAULT_REGION=$(AWS_REGION) -e jwt_secret=$(JWT_SECRET) -e wp_auth_url=$(WP_AUTH_URL) -e app_base_url=$(APP_BASE_URL) -e static_site_url=$(STATIC_SITE_URL) $(ECR_REPO):latest\"]" \
 	  --region $(AWS_REGION)
 
 deploy-infra:
@@ -158,6 +163,8 @@ benchmark-ec2:
 STATIC_BUCKET ?= danger-finger-static
 READ_URL ?= $(shell cd infra && terraform output -raw api_gateway_url 2>/dev/null)
 RENDER_URL ?= $(shell cd infra && terraform output -raw app_url 2>/dev/null)/
+# Use CloudFront HTTPS URL so the site can be embedded in the HTTPS WordPress page.
+STATIC_SITE_URL ?= $(shell cd infra && terraform output -raw static_site_https_url 2>/dev/null)
 
 generate-static:
 	@$(or $(PYTHON),python3) scripts/generate_static.py

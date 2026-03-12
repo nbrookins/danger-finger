@@ -13,8 +13,10 @@ define('JWT_AUTH_SECRET_KEY', 'REPLACE_WITH_YOUR_RANDOM_SECRET_KEY_32_CHARS_MIN'
 define('JWT_AUTH_CORS_ENABLE', true);
 
 # --- DangerFinger app URL (used by shortcode) ---
-# The public URL of the deployed AWS app (no trailing slash needed; shortcode adds it).
-define('DANGERFINGER_APP_URL', 'https://YOUR_AWS_APP_URL');
+# Must be HTTPS to avoid mixed-content blocking inside the WordPress HTTPS page.
+# Use the CloudFront URL from Terraform: `cd infra && terraform output static_site_https_url`
+# e.g. https://d1xxxxxxxxxx.cloudfront.net
+define('DANGERFINGER_APP_URL', 'https://YOUR_CLOUDFRONT_DOMAIN.cloudfront.net');
 
 # --- Force HTTPS for WordPress URLs ---
 # Fix HTTP/HTTPS mismatch: ensure both siteurl and home use https.

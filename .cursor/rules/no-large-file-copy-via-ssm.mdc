@@ -1,0 +1,45 @@
+---
+description: Never patch EC2 container files via docker cp + base64 SSM injection
+globs: scripts/*.sh,scripts/*.py,.github/workflows/*.yml
+alwaysApply: false
+---
+
+# Never patch container files via SSM base64 injection
+
+**Problem**: Embedding `base64`-encoded file content in an SSM `send-command` parameter silently truncates files larger than ~500 lines, producing a broken file with no error.
+
+## What breaks
+
+```bash
+# BAD — server.py is 700 lines, gets truncated silently
+SERVER_PY=$(base64 -i web/server.py)
+aws ssm send-command --parameters "commands=[\"echo '$SERVER_PY' | base64 -d > /tmp/server.py\"]"
+```
+
+## What to do instead
+
+**Option A — `sed -i` targeted changes in-place** (preferred for small patches):
+
+```bash
+# Good — applies exactly the 1-2 lines you want, nothing else changes
+docker exec container sed -i 's/OLD_VALUE/NEW_VALUE/' /app/web/file.py
+```
+
+**Option B — Build a new Docker image** (for anything more than trivial patches):
+
+```bash
+docker buildx build --platform linux/amd64 -f docker/Dockerfile --tag $ECR_REPO:latest --push .
+# Then restart container with new image
+```
+
+## The escape-hatch for `sed` in SSM
+
+SSM has quoting limits. Use the base64-encoded-**script** pattern (safe because the script is small, not the file):
+
+```bash
+cat > /tmp/patch.sh << 'EOF'
+docker exec container sed -i 's/FOO/BAR/' /app/web/file.py
+EOF
+SCRIPT_B64=$(base64 -i /tmp/patch.sh)
+aws ssm send-command --parameters "commands=[\"echo '$SCRIPT_B64' | base64 -d | bash\"]"
+```

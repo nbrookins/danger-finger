@@ -294,6 +294,8 @@
                     if (!confirm('Remove saved config "' + name + '"?')) return;
                     Api.deleteConfig(getUsername(), name, function () {
                         Api.fetchProfiles(getUsername());
+                    }, function (err) {
+                        setPreviewStatus(err || "Delete failed.", true);
                     });
                 };
             })(cfgName);

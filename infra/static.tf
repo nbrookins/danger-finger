@@ -52,3 +52,97 @@ resource "aws_s3_bucket_cors_configuration" "static" {
     max_age_seconds = 3600
   }
 }
+
+# CloudFront distribution — provides HTTPS so the static site can be embedded
+# in the HTTPS WordPress page without mixed-content browser blocking.
+resource "aws_cloudfront_distribution" "static" {
+  enabled             = true
+  default_root_object = "index.html"
+  price_class         = "PriceClass_100"
+  comment             = "${var.project} static site"
+
+  origin {
+    # S3 website endpoints are HTTP-only; CloudFront terminates HTTPS for browsers.
+    domain_name = aws_s3_bucket_website_configuration.static.website_endpoint
+    origin_id   = "S3StaticWebsite"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  # Short TTL for HTML so re-deploys are visible within a minute.
+  ordered_cache_behavior {
+    path_pattern           = "*.html"
+    target_origin_id       = "S3StaticWebsite"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 60
+  }
+
+  # Short TTL for JSON data files (parts/params) so redeploys show up fast.
+  ordered_cache_behavior {
+    path_pattern           = "*.json"
+    target_origin_id       = "S3StaticWebsite"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 60
+  }
+
+  default_cache_behavior {
+    target_origin_id       = "S3StaticWebsite"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 300
+    max_ttl     = 3600
+  }
+
+  # SPA fallback: serve index.html for 404s so client-side routing works.
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+}

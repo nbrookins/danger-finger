@@ -11,3 +11,4 @@ aws_key=
 jwt_secret=cPxTbNhzKqHXJ11NTEdRvwbels8XYulCcher57ZPLPH3RBecHgaahM6GWVrIPOG
 wp_auth_url=https://dangercreations.com
 app_base_url=http://34.207.226.194:8081
+static_site_url=http://danger-finger-static.s3-website-us-east-1.amazonaws.com

@@ -34,8 +34,13 @@ output "app_url" {
 }
 
 output "static_site_url" {
-  description = "S3 static website URL (always-on frontend)"
+  description = "S3 static website URL (HTTP, for direct access or debugging)"
   value       = aws_s3_bucket_website_configuration.static.website_endpoint
+}
+
+output "static_site_https_url" {
+  description = "CloudFront HTTPS URL for static site — use this for DANGERFINGER_APP_URL in WP wp-config.php"
+  value       = "https://${aws_cloudfront_distribution.static.domain_name}"
 }
 
 output "static_bucket" {

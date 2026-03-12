@@ -46,6 +46,11 @@ def generate_parts_json():
         "version": DangerFinger.VERSION,
         "build": "static",
         "previewConfig": _preview_config(),
+        # Auth URLs injected at deploy time via env vars so the static site can drive
+        # the WP login flow and know its own origin for CORS purposes.
+        "wpAuthUrl": os.environ.get("WP_AUTH_URL", "https://dangercreations.com"),
+        "appBaseUrl": os.environ.get("APP_BASE_URL", ""),
+        "staticSiteUrl": os.environ.get("STATIC_SITE_URL", ""),
     }
     out = os.path.join(STATIC_DIR, "api", "parts.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)

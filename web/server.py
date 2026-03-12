@@ -39,7 +39,8 @@ tornado.options.define('debug', type=bool, default=False, help='run in debug mod
 # Access-Control-Allow-Origin. Defaults to '*' for local dev.
 WP_AUTH_URL = os.environ.get("wp_auth_url", "").rstrip("/")
 APP_BASE_URL = os.environ.get("app_base_url", "").rstrip("/")
-_CORS_ALLOWED = set(filter(None, [WP_AUTH_URL, APP_BASE_URL]))
+STATIC_SITE_URL = os.environ.get("static_site_url", "").rstrip("/")
+_CORS_ALLOWED = set(filter(None, [WP_AUTH_URL, APP_BASE_URL, STATIC_SITE_URL]))
 
 
 def _cors_origin(request_origin: str) -> str:
@@ -60,6 +61,14 @@ def set_def_headers(self):
     self.set_header("Access-Control-Allow-Headers",
                     "Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With")
     self.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+
+
+class CorsMixin:
+    """Respond 204 to CORS preflight OPTIONS requests so browsers allow cross-origin POSTs."""
+    def options(self, *args, **kwargs):
+        self.set_default_headers()
+        self.set_status(204)
+        self.finish()
 
 
 class WpAuthMixin:
@@ -147,7 +156,7 @@ class StaticHandler(tornado.web.StaticFileHandler):
         pass
 
 # pylint: disable=W0223
-class FingerHandler(WpAuthMixin, tornado.web.RequestHandler):
+class FingerHandler(CorsMixin, WpAuthMixin, tornado.web.RequestHandler):
     ''' handle tornado requests for finger api'''
 
     def set_default_headers(self):
@@ -354,6 +363,7 @@ class ApiPartsHandler(tornado.web.RequestHandler):
             "previewConfig": _preview_config(),
             "wpAuthUrl": WP_AUTH_URL or "",
             "appBaseUrl": APP_BASE_URL or "",
+            "staticSiteUrl": STATIC_SITE_URL or "",
         }))
 
 
@@ -415,7 +425,7 @@ def _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=F
                 pass
 
 
-class ApiPreviewHandler(tornado.web.RequestHandler):
+class ApiPreviewHandler(CorsMixin, tornado.web.RequestHandler):
     '''POST /api/preview - sync preview from JSON config; STLs in temp, no S3. 10s timeout.'''
     def set_default_headers(self):
         set_def_headers(self)
@@ -463,7 +473,7 @@ class ApiPreviewHandler(tornado.web.RequestHandler):
         }))
 
 
-class ApiRenderHandler(WpAuthMixin, tornado.web.RequestHandler):
+class ApiRenderHandler(CorsMixin, WpAuthMixin, tornado.web.RequestHandler):
     '''POST /api/render - sync full-quality render from JSON config; store STLs in S3. 10s timeout.'''
     def set_default_headers(self):
         set_def_headers(self)
