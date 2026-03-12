@@ -17,15 +17,17 @@ This document is the running record of product requirements and design decisions
 - 3D viewer for finger parts (tip, middle, base, linkage, etc.) with part visibility toggles (e.g. checkboxes).
 - Parameter form: standard parameters visible by default; advanced parameters in a separate section below when “Advanced” is selected. Parameters show descriptions (from API) and feedback for modified values.
 - Explode slider: when non-exploded, parts are positioned as assembled (preview position); when exploded, parts move along explode offsets. Same STLs throughout.
-- Save config: name and save under current user profile; triggers sync render and stores STLs in S3.
-- Load/remove saved configs from profile list; load populates params and viewer from stored render STLs.
+- Save config: name and save under current user profile; triggers sync render and stores bundle.zip (STL + SCAD + config + LICENSE + README) in S3. Download link shown on completion.
+- Load saved config: fetches bundle.zip from S3 via Lambda, extracts STLs client-side with JSZip, feeds to viewer. Download reuses cached ZIP blob.
+- Remove saved configs from profile list.
+- Download ZIP: available per-row in saved configs table and after save/load. Same `render/{cfghash}/bundle.zip` object used for viewer load and download — no re-fetch.
 - Preview: on param change (debounced), request preview; viewer updates from temp STL URLs. No S3 for preview.
 
 ### Non-goals / later
 
 - WordPress auth (optional later).
-- Lambda for load/profile (optional later).
-- Automated cleanup of dereferenced STLs (optional later).
+- Automated cleanup of dereferenced S3 objects (optional later).
+- OpenSCAD WASM rendering in Lambda (blocked: openscad-wasm lacks Manifold, 100-660x slower than native).
 
 ---
 
@@ -36,9 +38,10 @@ This document is the running record of product requirements and design decisions
 | Decision | Rationale |
 |----------|-----------|
 | **Sync preview and render on server** | Predictable latency and simpler than queue + worker for current scale; 10 s timeout keeps UX responsive. |
-| **OpenSCAD on server (not Lambda)** | Docker image already has OpenSCAD; avoids cold starts and payload limits. |
+| **OpenSCAD on server (not Lambda)** | Docker image already has OpenSCAD; avoids cold starts and payload limits. Container writes to S3; reads go through Lambda. |
 | **Preview STLs in temp dir, not S3** | Previews are ephemeral; avoid S3 churn and cost. |
-| **Render STLs in S3 at `render/{cfghash}/{part}.stl`** | Stable URLs for saved configs; cfghash dedupes identical configs. |
+| **ZIP-only storage: `render/{cfghash}/bundle.zip`** | Single compressed object per config containing all STLs, SCAD, config JSON, LICENSE, README. Used for both viewer load (JSZip extraction in-browser) and download. 63% less storage, 33% less egress, 85% fewer requests vs individual STLs. cfghash immutability means no invalidation needed. |
+| **Lambda for S3 reads (API Gateway + Lambda)** | Protects AWS credentials from client. Single Python handler with path-based routing: `/configs/{cfghash}`, `/profiles/{userhash}`, `/render/{cfghash}/bundle.zip`. Presigned URL redirect for ZIPs > 5 MB. SAM template at `template.yaml`. |
 | **Profile stores `configs[name] = { cfghash, history }`** | Save-in-place and history without storing full config blob in profile. |
 | **`/api/params` and `/api/params/all`** | Explicit routes for parameter definitions; frontend uses these instead of legacy `/params` regex route. |
 | **`DangerFinger().params()` as a method (not property)** | Server needs to call `params(adv=..., allv=..., extended=True)`; property cannot take arguments. |
@@ -54,6 +57,8 @@ This document is the running record of product requirements and design decisions
 
 | Decision | Rationale |
 |----------|-----------|
+| **JSZip for viewer load from bundle.zip** | Load config fetches single ZIP via Lambda, extracts STLs in-browser (~30-50 ms), creates blob URLs for Three.js viewer. Same blob reused for download — zero re-fetch. |
+| **Dual base URLs (`baseurl` / `readUrl`)** | Write operations (preview, save) go to Tornado container. Read operations (configs, profiles, render bundles) go to Lambda via API Gateway. Fallback: `readUrl` defaults to `baseurl` when Lambda is not deployed. |
 | **Part visibility via checkboxes** | Clearer than toggle buttons; re-show part using `last_stl_urls` so toggling back on uses current preview URL. |
 | **Parameters: Standard first, Advanced section below** | Matches typical config UIs; Advanced hidden until selected. |
 | **Parameter descriptions from API** | API returns `Documentation` (from param docs); shown as tooltip and optional short description under label. |
@@ -74,6 +79,7 @@ This document is the running record of product requirements and design decisions
 
 ## Changelog
 
+- **2026-03** – Save/load/download workflow and Lambda S3 access. Render now produces a single `render/{cfghash}/bundle.zip` containing all STLs, SCAD files, config JSON, LICENSE, and README — no individual STL files in S3. Frontend uses JSZip to extract STLs in-browser for viewer load; same cached blob serves as download (zero re-fetch). Save endpoint returns cfghash so frontend can show immediate download link. Added Lambda function + SAM template (`template.yaml`, `lambda/handler.py`) for S3 read operations (configs, profiles, bundles) via API Gateway — protects AWS credentials from client. Frontend dual base URL (`baseurl` for writes, `readUrl` for reads). Removed legacy S3 queue system (`process_scad_loop`, `queue()`, `.mod` files), `serve_download`, `downloads/` prefix, and individual STL upload code. Saved configs table now has Load/Download/Remove columns. Render status indicator shown during save with Save button disabled.
 - **2026-03** – Replaced `stl_viewer.min.js` (StlViewer v1.08 / Three.js r86) with `web/stl_viewer.js`: thin wrapper over Three.js r160 (last UMD build) + STLLoader r170 + OrbitControls r170 (adapted to global scripts). Vendored under `web/vendor/three/`. Transform semantics (centering, world-axis rotation) preserved exactly. `get_model_info` returns `{ pos: [x,y,z] }` array for `inspect_ui.py` compatibility.
 - **2026-03** – Fixed viewer assembly: `_preview_position_offsets` set to assembled bbox centers from v5.1 STLs; removed legacy 35° Z from tip/tipcover `_preview_rotate_offsets`. Created `docs/VIEWER_ASSEMBLY.md` documenting stl_viewer behaviour, coordinate system, and OpenSCAD ARM64 workaround. Added `.cursor/rules/fix-preview-positions.mdc`.
 - **2026-03** – Four plug instances in preview: one plug STL shown four times (plug_0..plug_3) with per-instance position/rotation so plugs appear in tip holes; linkage preview position override so it displays behind the finger/socket. `/api/parts` expands plug and returns `stl_part` for URL lookup; frontend iterates part list and uses `stl_part` when resolving STL URLs.

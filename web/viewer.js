@@ -1,5 +1,5 @@
 // viewer.js — stl_viewer instance, parts state, model management, explode, plug instances.
-// Depends on: stl_viewer.min.js being loaded first.
+// Depends on: vendor/three/three.min.js, vendor/three/OrbitControls.js, stl_viewer.js
 
 var Viewer = (function () {
     var _stlViewer = null;
@@ -93,7 +93,7 @@ var Viewer = (function () {
         });
     }
 
-    function updateFromStlUrls(stlUrls, partVisibility) {
+    function updateFromStlUrls(stlUrls, partVisibility, absolute) {
         // Remove all current models
         var allIds = Object.keys(_parts).map(Number);
         allIds.forEach(function (id) { try { _stlViewer.remove_model(id); } catch (e) {} });
@@ -104,7 +104,7 @@ var Viewer = (function () {
             if (!stlUrls.hasOwnProperty(partName)) continue;
             var id = _partNameToId[partName];
             if (id === undefined) continue;
-            var url = _baseurl + stlUrls[partName];
+            var url = absolute ? stlUrls[partName] : _baseurl + stlUrls[partName];
             _lastStlUrls[partName] = url;
             if (!partVisibility || partVisibility[partName] !== false) {
                 addModel(id, url);

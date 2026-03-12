@@ -8,12 +8,14 @@ var Params = (function () {
     var _onPreviewRequest = null;
     var _onPartToggle = null;  // callback(partName, visible)
     var _onSaveSuccess = null;
+    var _onStatus = null;
 
     function init(opts) {
         _username = opts.username || "nick";
         _onPreviewRequest = opts.onPreviewRequest || null;
         _onPartToggle = opts.onPartToggle || null;
         _onSaveSuccess = opts.onSaveSuccess || null;
+        _onStatus = opts.onStatus || null;
     }
 
     function getParams() { return _params; }
@@ -213,13 +215,20 @@ var Params = (function () {
         var cfgEl = document.getElementById("configname");
         var cfg = (cfgEl && cfgEl.value) ? cfgEl.value.trim() : "unnamed";
         if (!cfg) cfg = "unnamed";
+        var saveBtn = document.querySelector("#form .btn-primary");
+        if (saveBtn) saveBtn.disabled = true;
+        _onStatus && _onStatus("Saving and rendering \u2014 this may take up to 30 seconds\u2026", false);
         Api.saveConfig(_username, cfg, getCurrentParams(),
-            function () {
+            function (res) {
+                if (saveBtn) saveBtn.disabled = false;
                 clearDirty();
-                _onSaveSuccess && _onSaveSuccess(cfg);
-                alert('Saved as "' + cfg + '"');
+                _onSaveSuccess && _onSaveSuccess(cfg, res);
+                _onStatus && _onStatus('Saved as "' + cfg + '".', false);
             },
-            function (err) { alert("Save failed: " + err); }
+            function (err) {
+                if (saveBtn) saveBtn.disabled = false;
+                _onStatus && _onStatus("Save failed: " + err, true);
+            }
         );
     }
 

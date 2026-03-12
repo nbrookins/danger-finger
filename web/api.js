@@ -3,6 +3,7 @@
 
 var Api = (function () {
     var _baseurl = "";
+    var _readUrl = "";
     var _onPartsLoaded = null;
     var _onParamsLoaded = null;
     var _onProfilesLoaded = null;
@@ -13,6 +14,7 @@ var Api = (function () {
 
     function init(opts) {
         _baseurl = opts.baseurl || "";
+        _readUrl = opts.readUrl || "";
         _onPartsLoaded = opts.onPartsLoaded || null;
         _onParamsLoaded = opts.onParamsLoaded || null;
         _onProfilesLoaded = opts.onProfilesLoaded || null;
@@ -20,7 +22,9 @@ var Api = (function () {
         _onPreviewError = opts.onPreviewError || null;
     }
 
-    function _xhr(method, url, body, onSuccess, onError) {
+    function _readBase() { return _readUrl || _baseurl; }
+
+    function _xhr(method, url, body, onSuccess, onError, useReadUrl) {
         var xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function () {
             if (this.readyState !== 4) return;
@@ -30,7 +34,8 @@ var Api = (function () {
                 onError && onError(this.responseText, this.status);
             }
         };
-        xhttp.open(method, _baseurl + url, true);
+        var base = useReadUrl ? _readBase() : _baseurl;
+        xhttp.open(method, base + url, true);
         xhttp.setRequestHeader("Content-Type", "application/json");
         if (body !== null && body !== undefined) {
             xhttp.send(body);
@@ -60,7 +65,7 @@ var Api = (function () {
             try { _onProfilesLoaded && _onProfilesLoaded(JSON.parse(text)); } catch (e) { console.error("fetchProfiles parse error", e); }
         }, function (text, status) {
             console.error("fetchProfiles failed", status, text);
-        });
+        }, true);
     }
 
     function fetchConfig(cfghash, onSuccess) {
@@ -68,7 +73,26 @@ var Api = (function () {
             try { onSuccess && onSuccess(JSON.parse(text)); } catch (e) { console.error("fetchConfig parse error", e); }
         }, function (text, status) {
             console.error("fetchConfig failed", status, text);
-        });
+        }, true);
+    }
+
+    function fetchBundleZip(cfghash, onSuccess, onError) {
+        var xhttp = new XMLHttpRequest();
+        xhttp.responseType = "arraybuffer";
+        xhttp.onload = function () {
+            if (xhttp.status === 200) {
+                onSuccess && onSuccess(xhttp.response);
+            } else {
+                onError && onError("Failed to load bundle.zip (" + xhttp.status + ")");
+            }
+        };
+        xhttp.onerror = function () { onError && onError("Network error loading bundle.zip"); };
+        xhttp.open("GET", _readBase() + "render/" + cfghash + "/bundle.zip", true);
+        xhttp.send();
+    }
+
+    function getBundleUrl(cfghash) {
+        return _readBase() + "render/" + cfghash + "/bundle.zip";
     }
 
     function requestPreview(getCurrentParams) {
@@ -99,8 +123,16 @@ var Api = (function () {
     function saveConfig(username, cfgName, currentParams, onSuccess, onError) {
         _xhr("POST", "profile/" + username + "/config/" + encodeURIComponent(cfgName),
             JSON.stringify(currentParams),
-            function (text, status) { onSuccess && onSuccess(); },
-            function (text, status) { onError && onError(text || status); }
+            function (text, status) {
+                var res = {};
+                try { res = JSON.parse(text || "{}"); } catch (e) {}
+                onSuccess && onSuccess(res);
+            },
+            function (text, status) {
+                var errMsg = text || String(status);
+                try { errMsg = JSON.parse(text).error || errMsg; } catch (e) {}
+                onError && onError(errMsg);
+            }
         );
     }
 
@@ -113,5 +145,5 @@ var Api = (function () {
         xhttp.send();
     }
 
-    return { init: init, fetchParts: fetchParts, fetchParams: fetchParams, fetchProfiles: fetchProfiles, fetchConfig: fetchConfig, requestPreview: requestPreview, saveConfig: saveConfig, deleteConfig: deleteConfig };
+    return { init: init, fetchParts: fetchParts, fetchParams: fetchParams, fetchProfiles: fetchProfiles, fetchConfig: fetchConfig, fetchBundleZip: fetchBundleZip, getBundleUrl: getBundleUrl, requestPreview: requestPreview, saveConfig: saveConfig, deleteConfig: deleteConfig };
 })();

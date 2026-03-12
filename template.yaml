@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Danger Finger — S3 read API (configs, profiles, bundle.zip)
+
+Globals:
+  Function:
+    Timeout: 15
+    MemorySize: 256
+    Runtime: python3.12
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Default: danger-finger
+
+Resources:
+
+  ReadApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: '$default'
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+        AllowMethods:
+          - GET
+          - OPTIONS
+
+  S3ReadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/
+      Handler: handler.handler
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref S3BucketName
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:HeadObject
+              Resource: !Sub 'arn:aws:s3:::${S3BucketName}/*'
+      Events:
+        GetConfigs:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ReadApi
+            Path: /configs/{cfghash}
+            Method: GET
+        GetProfiles:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ReadApi
+            Path: /profiles/{userhash}
+            Method: GET
+        GetBundle:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ReadApi
+            Path: /render/{cfghash}/bundle.zip
+            Method: GET
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL for S3 reads
+    Value: !Sub 'https://${ReadApi}.execute-api.${AWS::Region}.amazonaws.com'

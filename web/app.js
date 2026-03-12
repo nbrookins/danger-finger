@@ -3,7 +3,11 @@
 
 (function () {
     var baseurl = "";
+    var readUrl = "";
+    //readUrl = "https://your-api-gw-id.execute-api.us-east-1.amazonaws.com/";
     var username = "nick";
+    var cachedBundleBlob = null;
+    var cachedBundleCfghash = null;
 
     // Shared parts map: id -> {name, pos, exp}
     var parts = {
@@ -83,8 +87,26 @@
         }
     }
 
-    function onSaveSuccess(cfgName) {
+    function onSaveSuccess(cfgName, res) {
         Api.fetchProfiles(username);
+        if (res && res.cfghash) showDownloadButton(res.cfghash);
+    }
+
+    function showDownloadButton(cfghash) {
+        var btn = document.getElementById("download_btn");
+        if (!btn) return;
+        if (cachedBundleBlob && cachedBundleCfghash === cfghash) {
+            btn.href = URL.createObjectURL(cachedBundleBlob);
+        } else {
+            btn.href = Api.getBundleUrl(cfghash);
+        }
+        btn.download = "danger_finger_" + cfghash.substring(0, 8) + ".zip";
+        btn.style.display = "";
+    }
+
+    function hideDownloadButton() {
+        var btn = document.getElementById("download_btn");
+        if (btn) btn.style.display = "none";
     }
 
     function fillProfiles(json) {
@@ -94,7 +116,7 @@
 
         var table = document.createElement("table");
         table.className = "table table-sm table-bordered mb-0";
-        var thead = "<thead class='thead-light'><tr><th>#</th><th>Name</th><th>Load</th><th>Remove</th></tr></thead>";
+        var thead = "<thead class='thead-light'><tr><th>#</th><th>Name</th><th>Load</th><th>Download</th><th>Remove</th></tr></thead>";
         table.innerHTML = thead;
         var tbody = document.createElement("tbody");
 
@@ -118,6 +140,13 @@
             })(cfgName, cfghash);
             tr.insertCell(-1).appendChild(loadBtn);
 
+            var dlLink = document.createElement("a");
+            dlLink.href = Api.getBundleUrl(cfghash);
+            dlLink.className = "btn btn-sm btn-outline-success";
+            dlLink.textContent = "Download";
+            dlLink.download = "danger_finger_" + cfghash.substring(0, 8) + ".zip";
+            tr.insertCell(-1).appendChild(dlLink);
+
             var delBtn = document.createElement("button");
             delBtn.type = "button";
             delBtn.className = "btn btn-sm btn-outline-secondary";
@@ -137,17 +166,44 @@
     }
 
     function loadConfig(cfgName, cfghash) {
+        setPreviewStatus("Loading config\u2026");
         Api.fetchConfig(cfghash, function (config) {
             Params.applyLoadedConfig(config);
             var cfgEl = document.getElementById("configname");
             if (cfgEl) cfgEl.value = cfgName;
-            var stlUrls = {};
-            var partNameToIdMap = Viewer.getPartNameToId();
-            for (var p in partNameToIdMap) {
-                stlUrls[p] = "/render/" + cfghash + "/" + p + ".stl";
-            }
-            Viewer.updateFromStlUrls(stlUrls, Params.getPartVisibility());
-            Api.requestPreview(Params.getCurrentParams);
+            loadBundleZip(cfghash);
+        });
+    }
+
+    function loadBundleZip(cfghash) {
+        setPreviewStatus("Loading model files\u2026");
+        Api.fetchBundleZip(cfghash, function (arrayBuffer) {
+            var blob = new Blob([arrayBuffer], { type: "application/zip" });
+            cachedBundleBlob = blob;
+            cachedBundleCfghash = cfghash;
+            JSZip.loadAsync(arrayBuffer).then(function (zip) {
+                var stlUrls = {};
+                var promises = [];
+                zip.forEach(function (path, entry) {
+                    if (!path.endsWith(".stl")) return;
+                    var partName = path.replace(".stl", "");
+                    promises.push(entry.async("arraybuffer").then(function (buf) {
+                        var stlBlob = new Blob([buf], { type: "application/octet-stream" });
+                        stlUrls[partName] = URL.createObjectURL(stlBlob);
+                    }));
+                });
+                Promise.all(promises).then(function () {
+                    Viewer.updateFromStlUrls(stlUrls, Params.getPartVisibility(), true);
+                    showDownloadButton(cfghash);
+                    setPreviewStatus("Model loaded.");
+                    Api.requestPreview(Params.getCurrentParams);
+                });
+            }).catch(function (err) {
+                console.error("JSZip extract failed:", err);
+                setPreviewStatus("Failed to extract model files", true);
+            });
+        }, function (errMsg) {
+            setPreviewStatus(errMsg, true);
         });
     }
 
@@ -167,6 +223,7 @@
 
         Api.init({
             baseurl: baseurl,
+            readUrl: readUrl,
             onPartsLoaded: onPartsLoaded,
             onParamsLoaded: onParamsLoaded,
             onProfilesLoaded: onProfilesLoaded,
@@ -185,6 +242,7 @@
             onPreviewRequest: function () { Api.requestPreview(Params.getCurrentParams); },
             onPartToggle: onPartToggle,
             onSaveSuccess: onSaveSuccess,
+            onStatus: setPreviewStatus,
         });
 
         Api.fetchParts();
