@@ -16,9 +16,16 @@
 		#fs_btn { font-size: 1rem; line-height: 1; padding: 0 6px; }
 		#wrap:-webkit-full-screen { background: #f0f0f0; }
 		#wrap:fullscreen { background: #f0f0f0; }
+		#auth-bar { background: #f8f9fa; border-bottom: 1px solid #dee2e6; padding: 4px 12px; font-size: 0.85em; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+		#auth_user_display { color: #495057; font-weight: 500; }
 	</style>
 </head>
 <body class="bg-light">
+	<div id="auth-bar">
+		<span id="auth_user_display"></span>
+		<button id="auth_login_btn" type="button" class="btn btn-sm btn-outline-primary">Log in</button>
+		<button id="auth_logout_btn" type="button" class="btn btn-sm btn-outline-secondary" style="display:none">Log out</button>
+	</div>
 	<div class="container-fluid py-3">
 		<h1 class="h4 mb-3">DangerFinger - Configure and Preview</h1>
 

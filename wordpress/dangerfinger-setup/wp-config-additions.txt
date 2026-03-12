@@ -1,0 +1,38 @@
+# ============================================================
+# DangerFinger wp-config.php additions
+# Add these lines to /public_html/wp-config.php on SiteGround,
+# BEFORE the "That's all, stop editing!" line.
+# ============================================================
+
+# --- JWT Authentication for WP REST API ---
+# Replace the secret with a long random string (32+ chars).
+# Use the SAME secret in the Tornado server's jwt_secret env var.
+define('JWT_AUTH_SECRET_KEY', 'REPLACE_WITH_YOUR_RANDOM_SECRET_KEY_32_CHARS_MIN');
+
+# Enable CORS headers on the JWT token endpoint so the app can call it cross-origin.
+define('JWT_AUTH_CORS_ENABLE', true);
+
+# --- DangerFinger app URL (used by shortcode) ---
+# The public URL of the deployed AWS app (no trailing slash needed; shortcode adds it).
+define('DANGERFINGER_APP_URL', 'https://YOUR_AWS_APP_URL');
+
+# --- Force HTTPS for WordPress URLs ---
+# Fix HTTP/HTTPS mismatch: ensure both siteurl and home use https.
+# (Also set these in WP Admin > Settings > General > Site Address)
+define('WP_HOME',    'https://dangercreations.com');
+define('WP_SITEURL', 'https://dangercreations.com');
+
+# ============================================================
+# After updating wp-config.php:
+# 1. Install "JWT Authentication for WP REST API" plugin (by Enrique Chavez)
+#    from WP Admin > Plugins > Add New.
+# 2. Add the .htaccess rules from htaccess-additions.txt.
+# 3. Add the PHP filters from functions-security.php and functions-auth.php
+#    to your active theme's functions.php.
+# 4. Disable open registration: WP Admin > Settings > General >
+#    uncheck "Anyone can register".
+# 5. Consolidate form plugins: keep only one of Ninja Forms / Pirate Forms /
+#    WPForms; deactivate and delete the others.
+# 6. Create a page at /prosthetics/configure with the shortcode:
+#    [dangerfinger_configurator url="https://YOUR_AWS_APP_URL"]
+# ============================================================

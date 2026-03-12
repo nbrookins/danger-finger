@@ -6,3 +6,8 @@ domain=example.com
 ports=8081:8081/tcp
 aws_id=
 aws_key=
+# WordPress JWT auth (see wordpress/dangerfinger-setup/README.md)
+# jwt_secret must match JWT_AUTH_SECRET_KEY defined in wp-config.php
+jwt_secret=cPxTbNhzKqHXJ11NTEdRvwbels8XYulCcher57ZPLPH3RBecHgaahM6GWVrIPOG
+wp_auth_url=https://dangercreations.com
+app_base_url=http://34.207.226.194:8081

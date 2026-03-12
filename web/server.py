@@ -22,6 +22,7 @@ import brotli
 import tornado.options
 import tornado.web
 import boto3
+from auth import validate_jwt, get_nicename
 
 # Add parent directory to path so we can import danger module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -34,12 +35,64 @@ from danger.Scad_Renderer import *
 tornado.options.define('port', type=int, default=8081, help='server port number (default: 9000)')
 tornado.options.define('debug', type=bool, default=False, help='run in debug mode with autoreload (default: False)')
 
+# Origins allowed for CORS. When configured, only these origins receive
+# Access-Control-Allow-Origin. Defaults to '*' for local dev.
+WP_AUTH_URL = os.environ.get("wp_auth_url", "").rstrip("/")
+APP_BASE_URL = os.environ.get("app_base_url", "").rstrip("/")
+_CORS_ALLOWED = set(filter(None, [WP_AUTH_URL, APP_BASE_URL]))
+
+
+def _cors_origin(request_origin: str) -> str:
+    if not _CORS_ALLOWED:
+        return "*"
+    if request_origin and request_origin in _CORS_ALLOWED:
+        return request_origin
+    return next(iter(_CORS_ALLOWED))  # default to the first configured origin
+
+
 def set_def_headers(self):
-    '''send default headers to ensure cors'''
-    #print("setting headers!!!")
-    self.set_header("Access-Control-Allow-Origin", "*")
-    self.set_header("Access-Control-Allow-Headers", "Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With")
-    self.set_header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+    '''Send CORS headers. Reflects exact requesting origin when it is in the allow-list.'''
+    origin = self.request.headers.get("Origin", "")
+    allowed = _cors_origin(origin)
+    self.set_header("Access-Control-Allow-Origin", allowed)
+    if allowed != "*":
+        self.set_header("Vary", "Origin")
+    self.set_header("Access-Control-Allow-Headers",
+                    "Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With")
+    self.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+
+
+class WpAuthMixin:
+    """Mixin for Tornado handlers that require a valid WordPress JWT.
+
+    Usage in a handler method:
+        user = self.require_auth()
+        if user is None:
+            return          # 401 already written
+    """
+
+    def require_auth(self):
+        """Validate Bearer JWT. Returns user_nicename str or None (with 401 written)."""
+        auth_header = self.request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            self._auth_error("Bearer token required")
+            return None
+        token = auth_header[7:].strip()
+        payload = validate_jwt(token)
+        if payload is None:
+            self._auth_error("Invalid or expired token")
+            return None
+        return get_nicename(payload)
+
+    def _auth_error(self, msg: str):
+        self.set_status(401)
+        self.set_header("Content-Type", "application/json")
+        wp_login = WP_AUTH_URL or "https://dangercreations.com"
+        self.write(json.dumps({
+            "error": msg,
+            "auth_required": True,
+            "wp_auth_url": wp_login,
+        }))
 
 class IndexHandler(tornado.web.RequestHandler):
     '''Serve index.html with build-ID-stamped script URLs to bust browser caches on every restart.'''
@@ -94,8 +147,8 @@ class StaticHandler(tornado.web.StaticFileHandler):
         pass
 
 # pylint: disable=W0223
-class FingerHandler(tornado.web.RequestHandler):
-    ''' handle torando requests for finger api'''
+class FingerHandler(WpAuthMixin, tornado.web.RequestHandler):
+    ''' handle tornado requests for finger api'''
 
     def set_default_headers(self):
         '''send default headers to ensure cors'''
@@ -125,6 +178,13 @@ class FingerHandler(tornado.web.RequestHandler):
         '''override delete method to allow removing config from profile'''
         print("  HTTP Request: %s %s %s %s" % (self.request, self.request.path, userhash, cfg))
         if self.request.path.startswith("/profile"):
+            auth_user = self.require_auth()
+            if auth_user is None:
+                return
+            if auth_user != userhash:
+                self.set_status(403)
+                self.write(json.dumps({"error": "Cannot modify another user's profile"}))
+                return
             pkey = "profiles/%s" % userhash
             profile = FingerServer().get(pkey, load=True)
             if not profile: profile = {"userhash" : userhash, "createdtime" :  time.time(), "configs" : {}}
@@ -140,6 +200,13 @@ class FingerHandler(tornado.web.RequestHandler):
         '''support post for several actions'''
         print("  HTTP Request: %s %s %s %s" % (self.request, self.request.path, userhash, cfg))
         if self.request.path.startswith("/profile"):
+            auth_user = self.require_auth()
+            if auth_user is None:
+                return
+            if auth_user != userhash:
+                self.set_status(403)
+                self.write(json.dumps({"error": "Cannot write to another user's profile"}))
+                return
             pkey = "profiles/%s" % userhash
             profile = FingerServer().get(pkey, load=True)
             if not profile: profile = {"userhash" : userhash, "createdtime" :  time.time(), "configs" : {}}
@@ -285,6 +352,8 @@ class ApiPartsHandler(tornado.web.RequestHandler):
             "version": DangerFinger.VERSION,
             "build": _BUILD_ID,
             "previewConfig": _preview_config(),
+            "wpAuthUrl": WP_AUTH_URL or "",
+            "appBaseUrl": APP_BASE_URL or "",
         }))
 
 
@@ -394,12 +463,15 @@ class ApiPreviewHandler(tornado.web.RequestHandler):
         }))
 
 
-class ApiRenderHandler(tornado.web.RequestHandler):
+class ApiRenderHandler(WpAuthMixin, tornado.web.RequestHandler):
     '''POST /api/render - sync full-quality render from JSON config; store STLs in S3. 10s timeout.'''
     def set_default_headers(self):
         set_def_headers(self)
 
     async def post(self):
+        auth_user = self.require_auth()
+        if auth_user is None:
+            return
         try:
             config_dict = json.loads(self.request.body or b'{}')
         except json.JSONDecodeError:

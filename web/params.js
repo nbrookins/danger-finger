@@ -11,11 +11,15 @@ var Params = (function () {
     var _onStatus = null;
 
     function init(opts) {
-        _username = opts.username || "nick";
+        _username = opts.username || "";
         _onPreviewRequest = opts.onPreviewRequest || null;
         _onPartToggle = opts.onPartToggle || null;
         _onSaveSuccess = opts.onSaveSuccess || null;
         _onStatus = opts.onStatus || null;
+    }
+
+    function setUsername(username) {
+        _username = username || "";
     }
 
     function getParams() { return _params; }
@@ -212,6 +216,10 @@ var Params = (function () {
     }
 
     function submit() {
+        if (!_username) {
+            _onStatus && _onStatus("Please log in to save configurations.", true);
+            return;
+        }
         var cfgEl = document.getElementById("configname");
         var cfg = (cfgEl && cfgEl.value) ? cfgEl.value.trim() : "unnamed";
         if (!cfg) cfg = "unnamed";
@@ -269,6 +277,7 @@ var Params = (function () {
 
     return {
         init: init,
+        setUsername: setUsername,
         getParams: getParams,
         getPartVisibility: getPartVisibility,
         getCurrentParams: getCurrentParams,

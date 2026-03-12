@@ -1,0 +1,76 @@
+---
+description: WordPress/SiteGround integration — auth flow, SSH access, gotchas
+globs: web/auth.py, web/server.py, web/app.js, web/api.js, wordpress/**
+alwaysApply: false
+---
+
+# WordPress integration
+
+## Live state (as of 2026-03-12)
+
+WordPress on dangercreations.com (SiteGround) serves as the identity provider.
+JWT Authentication for WP REST API plugin is installed. The JWT secret is shared
+between `wp-config.php` (`JWT_AUTH_SECRET_KEY`) and the Tornado container
+(`jwt_secret` env var). They must be identical.
+
+### What lives where
+
+| Concern | Location |
+|---------|----------|
+| JWT plugin config | `wp-config.php` on SiteGround |
+| Security filters + shortcode | `kale/functions.php` on SiteGround |
+| Setup reference files | `wordpress/dangerfinger-setup/` in this repo |
+| JWT validation | `web/auth.py` |
+| Auth mixin for handlers | `WpAuthMixin` in `web/server.py` |
+| Frontend auth flow | `web/app.js` (handleAuthCallback, initLoginLogout) |
+| Configure embed page | `/prosthetics/configure` (WP page ID 1227) |
+
+### Key env vars (Tornado container)
+
+- `jwt_secret` — must match `JWT_AUTH_SECRET_KEY` in wp-config.php exactly
+- `wp_auth_url` — `https://dangercreations.com`
+- `app_base_url` — the app's own public URL (used for OAuth redirect)
+
+## SiteGround SSH access
+
+- **Host**: `ssh.dangercreations.com`, **Port**: `18765`
+- **User**: `u188-6bxkyv5rfsrm`
+- **Auth**: public key only (no password auth). Keys managed via Site Tools → Security → SSH Keys Manager.
+- **SSH key**: `~/.ssh/sg_dangercreations` (ed25519)
+- **WordPress root**: `~/www/dangercreations.com/public_html`
+- **Active theme**: `kale`
+- **wp-cli**: available at `/usr/local/bin/wp`
+
+```bash
+ssh -i ~/.ssh/sg_dangercreations -p 18765 u188-6bxkyv5rfsrm@ssh.dangercreations.com
+```
+
+## SiteGround/nginx gotchas
+
+1. **nginx serves static files before Apache/.htaccess** — `FilesMatch` and `RewriteRule` in `.htaccess` do NOT block static file requests (e.g. `readme.html`). To block a static file, **delete it** or configure nginx directly (not available on shared hosting).
+
+2. **Authorization header passthrough** — SiteGround's default WordPress `.htaccess` already includes `RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]`. No additional rules needed for the JWT plugin.
+
+3. **PHP heredocs in SSH break easily** — Dollar signs (`$`), regex (`[\d]+`), colons in CSS (`text-align:center`) all get mangled by nested zsh/bash escaping layers. **Use SCP + a Python script** instead of inline heredocs when writing PHP to the server.
+
+4. **wp-cli is powerful for remote management** — plugin install/activate/deactivate, option get/set, post create, all without WordPress admin access. Always `cd $WP` first.
+
+## Auth flow summary
+
+1. User clicks Login → redirected to WP `authorize-application.php`
+2. User approves → redirected back with `user_login` + app password in URL
+3. Frontend POSTs to `/wp-json/jwt-auth/v1/token` with those credentials
+4. JWT returned → stored in `sessionStorage`
+5. Frontend sends `Authorization: Bearer <JWT>` on protected requests
+6. Tornado validates JWT locally using shared secret (no WP round-trip)
+
+## Protected endpoints
+
+- `POST /api/render` — full render (expensive, writes to S3)
+- `POST /profile/{userhash}/config/{name}` — save config
+- `DELETE /profile/{userhash}/config/{name}` — delete config
+- Profile ownership enforced: JWT `user_nicename` must match URL `userhash`
+
+## Dev mode
+
+When `jwt_secret` env var is empty, `auth.py` accepts any Bearer token and returns a guest payload (`user_nicename: "dev"`). This allows local development without a live WP site. **Never deploy to prod with an empty jwt_secret.**

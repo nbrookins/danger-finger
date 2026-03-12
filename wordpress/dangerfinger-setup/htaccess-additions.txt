@@ -1,0 +1,36 @@
+# ============================================================
+# DangerFinger WordPress .htaccess additions
+# Add these rules to /public_html/.htaccess on SiteGround.
+# Place them INSIDE the existing # BEGIN WordPress block,
+# BEFORE the RewriteEngine On line.
+# ============================================================
+
+# --- Authorization header passthrough (required for JWT plugin) ---
+# SiteGround / Apache strips the Authorization header by default.
+# These rules pass it through to PHP.
+RewriteEngine On
+RewriteCond %{HTTP:Authorization} ^(.*)
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%1]
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
+# --- Block WordPress readme.html (version disclosure) ---
+<Files readme.html>
+    Order Allow,Deny
+    Deny from all
+</Files>
+<Files license.txt>
+    Order Allow,Deny
+    Deny from all
+</Files>
+<Files wp-config.php>
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+# ============================================================
+# After adding these, verify the JWT endpoint works:
+#   curl -X POST https://dangercreations.com/wp-json/jwt-auth/v1/token \
+#        -H "Content-Type: application/json" \
+#        -d '{"username":"YOUR_USER","password":"YOUR_APP_PASS"}'
+# Expected: {"token":"eyJ...","user_email":"...","user_nicename":"..."}
+# ============================================================

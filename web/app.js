@@ -1,12 +1,138 @@
-// app.js — page initialization, event wiring, profile rendering.
+// app.js — page initialization, event wiring, profile rendering, auth flow.
 // Depends on: api.js, viewer.js, params.js
 
 (function () {
     var baseurl = "";
     var readUrl = window.__READ_URL__ || "";
-    var username = "nick";
     var cachedBundleBlob = null;
     var cachedBundleCfghash = null;
+
+    // --- Auth state ---
+    var _authToken = null;
+    var _authUser = null;         // WP user_nicename — used as S3 profile key
+    var _authDisplay = null;      // WP user_display_name — shown in UI
+    var _wpAuthUrl = "";          // Populated from /api/parts response
+
+    function isAuthenticated() { return !!_authToken; }
+    function getUsername() { return _authUser || ""; }
+
+    function setAuthState(token, nicename, displayName) {
+        _authToken = token;
+        _authUser = nicename;
+        _authDisplay = displayName || nicename;
+        Api.setAuthToken(token);
+        Params.setUsername(nicename);
+        try { sessionStorage.setItem("wp_jwt", token); } catch (e) {}
+        try { sessionStorage.setItem("wp_user", nicename); } catch (e) {}
+        try { sessionStorage.setItem("wp_display", displayName || nicename); } catch (e) {}
+        updateAuthUI();
+    }
+
+    function clearAuthState() {
+        _authToken = null;
+        _authUser = null;
+        _authDisplay = null;
+        Api.setAuthToken(null);
+        Params.setUsername("");
+        try { sessionStorage.removeItem("wp_jwt"); } catch (e) {}
+        try { sessionStorage.removeItem("wp_user"); } catch (e) {}
+        try { sessionStorage.removeItem("wp_display"); } catch (e) {}
+        updateAuthUI();
+    }
+
+    function loadStoredAuth() {
+        try {
+            var token = sessionStorage.getItem("wp_jwt");
+            var user = sessionStorage.getItem("wp_user");
+            var display = sessionStorage.getItem("wp_display");
+            if (token && user) {
+                _authToken = token;
+                _authUser = user;
+                _authDisplay = display || user;
+                Api.setAuthToken(token);
+                Params.setUsername(user);
+            }
+        } catch (e) {}
+    }
+
+    function updateAuthUI() {
+        var loginBtn = document.getElementById("auth_login_btn");
+        var logoutBtn = document.getElementById("auth_logout_btn");
+        var userDisplay = document.getElementById("auth_user_display");
+        if (!loginBtn) return;
+        if (isAuthenticated()) {
+            loginBtn.style.display = "none";
+            logoutBtn.style.display = "";
+            if (userDisplay) userDisplay.textContent = _authDisplay || _authUser || "";
+        } else {
+            loginBtn.style.display = "";
+            logoutBtn.style.display = "none";
+            if (userDisplay) userDisplay.textContent = "";
+        }
+    }
+
+    function buildLoginUrl() {
+        var base = _wpAuthUrl || "https://dangercreations.com";
+        var appUrl = window.location.origin + window.location.pathname;
+        var successUrl = appUrl + "?jwt_auth=1";
+        return base.replace(/\/$/, "") + "/wp-admin/authorize-application.php?"
+            + "app_name=DangerFinger"
+            + "&app_id=dangerfinger-configurator"
+            + "&success_url=" + encodeURIComponent(successUrl)
+            + "&reject_url=" + encodeURIComponent(appUrl);
+    }
+
+    function initLoginLogout() {
+        var loginBtn = document.getElementById("auth_login_btn");
+        var logoutBtn = document.getElementById("auth_logout_btn");
+        if (loginBtn) {
+            loginBtn.onclick = function () {
+                window.location.href = buildLoginUrl();
+            };
+        }
+        if (logoutBtn) {
+            logoutBtn.onclick = function () {
+                clearAuthState();
+                var profilesEl = document.getElementById("profiles");
+                if (profilesEl) profilesEl.innerHTML = "";
+            };
+        }
+        updateAuthUI();
+    }
+
+    // Handle the ?jwt_auth=1&user_login=...&password=... callback from WP.
+    // Immediately cleans URL to prevent credentials in browser history.
+    function handleAuthCallback(onDone) {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get("jwt_auth") !== "1") {
+            onDone(false);
+            return;
+        }
+        var userLogin = params.get("user_login");
+        var appPassword = params.get("password");
+
+        // Remove all auth params from URL immediately
+        history.replaceState(null, "", window.location.pathname);
+
+        if (!userLogin || !appPassword) {
+            onDone(false);
+            return;
+        }
+
+        setPreviewStatus("Signing in\u2026");
+        var wpBase = _wpAuthUrl || params.get("site_url") || "https://dangercreations.com";
+        Api.fetchWpJwt(wpBase, userLogin, appPassword,
+            function (data) {
+                setAuthState(data.token, data.user_nicename, data.user_display_name);
+                setPreviewStatus("Signed in as " + (_authDisplay || _authUser || ""));
+                onDone(true);
+            },
+            function (err) {
+                setPreviewStatus("Sign-in failed: " + err, true);
+                onDone(false);
+            }
+        );
+    }
 
     // Shared parts map: id -> {name, pos, exp}
     var parts = {
@@ -33,9 +159,12 @@
     }
 
     function onPartsLoaded(json) {
+        // Capture WP auth URL and app URL from server config
+        if (json.wpAuthUrl) _wpAuthUrl = json.wpAuthUrl;
+
         // Update title and build badge
         if (json.version) {
-            var title = "DangerFinger v" + json.version + " – Configure and Preview";
+            var title = "DangerFinger v" + json.version + " \u2013 Configure and Preview";
             document.title = title;
             var h1 = document.querySelector("h1");
             if (h1) {
@@ -96,7 +225,7 @@
     }
 
     function onSaveSuccess(cfgName, res) {
-        Api.fetchProfiles(username);
+        Api.fetchProfiles(getUsername());
         if (res && res.cfghash) showDownloadButton(res.cfghash);
     }
 
@@ -162,7 +291,9 @@
             delBtn.onclick = (function (name) {
                 return function () {
                     if (!confirm('Remove saved config "' + name + '"?')) return;
-                    Api.deleteConfig(username, name, function () { Api.fetchProfiles(username); });
+                    Api.deleteConfig(getUsername(), name, function () {
+                        Api.fetchProfiles(getUsername());
+                    });
                 };
             })(cfgName);
             tr.insertCell(-1).appendChild(delBtn);
@@ -222,12 +353,11 @@
     }
 
     window.addEventListener("load", function () {
-        if (location.protocol !== "http:") {
-            location.href = "http:" + window.location.href.substring(window.location.protocol.length);
-            return;
-        }
-
         doResize();
+
+        // Restore any previously saved auth state before initialising modules
+        loadStoredAuth();
+        initLoginLogout();
 
         Api.init({
             baseurl: baseurl,
@@ -247,16 +377,32 @@
         Viewer.initResizeHandle();
 
         Params.init({
-            username: username,
+            username: getUsername(),
             onPreviewRequest: function () { Api.requestPreview(Params.getCurrentParams); },
             onPartToggle: onPartToggle,
             onSaveSuccess: onSaveSuccess,
             onStatus: setPreviewStatus,
         });
 
+        // Fetch public data immediately (no auth required)
         Api.fetchParts();
         Api.fetchParams();
-        Api.fetchProfiles(username);
+
+        // Handle auth callback AFTER fetching parts (so _wpAuthUrl is ready if it's in the
+        // /api/parts response — but we also pass the site_url from the callback as fallback).
+        // We kick off fetchParts async and handle the callback in parallel since the callback
+        // URL already contains site_url from WordPress.
+        handleAuthCallback(function (authed) {
+            // Fetch profiles once auth state is settled (whether we just authed or loaded from storage)
+            if (isAuthenticated()) {
+                Api.fetchProfiles(getUsername());
+            }
+        });
+
+        // If already authenticated from sessionStorage (no callback), fetch profiles now
+        if (isAuthenticated() && !new URLSearchParams(window.location.search).get("jwt_auth")) {
+            Api.fetchProfiles(getUsername());
+        }
     });
 
     // Expose slide_change globally for inline oninput handler in HTML

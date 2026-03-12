@@ -12,3 +12,4 @@ tornado
 asyncio
 brotli
 boto3
+PyJWT>=2.0

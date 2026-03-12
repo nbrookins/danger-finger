@@ -4,6 +4,7 @@
 var Api = (function () {
     var _baseurl = "";
     var _readUrl = "";
+    var _authToken = null;
     var _onPartsLoaded = null;
     var _onParamsLoaded = null;
     var _onProfilesLoaded = null;
@@ -22,6 +23,9 @@ var Api = (function () {
         _onPreviewError = opts.onPreviewError || null;
     }
 
+    function setAuthToken(token) { _authToken = token || null; }
+    function getAuthToken() { return _authToken; }
+
     function _readBase() { return _readUrl || _baseurl; }
 
     function _xhr(method, url, body, onSuccess, onError, useReadUrl) {
@@ -37,11 +41,51 @@ var Api = (function () {
         var base = useReadUrl ? _readBase() : _baseurl;
         xhttp.open(method, base + url, true);
         xhttp.setRequestHeader("Content-Type", "application/json");
+        if (_authToken) {
+            xhttp.setRequestHeader("Authorization", "Bearer " + _authToken);
+        }
         if (body !== null && body !== undefined) {
             xhttp.send(body);
         } else {
             xhttp.send("");
         }
+    }
+
+    /**
+     * Exchange a WordPress Application Password for a JWT token.
+     * Called after the authorize-application.php callback returns user_login + password.
+     *
+     * @param {string}   wpAuthUrl    WordPress base URL (e.g. "https://dangercreations.com")
+     * @param {string}   userLogin    WP username from callback URL
+     * @param {string}   appPassword  Application Password from callback URL
+     * @param {Function} onSuccess    Called with { token, user_nicename, user_display_name, user_email }
+     * @param {Function} onError      Called with error message string
+     */
+    function fetchWpJwt(wpAuthUrl, userLogin, appPassword, onSuccess, onError) {
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+            if (this.readyState !== 4) return;
+            if (this.status === 200) {
+                try {
+                    var data = JSON.parse(this.responseText);
+                    if (data.token) {
+                        onSuccess && onSuccess(data);
+                    } else {
+                        onError && onError(data.message || "No token in response");
+                    }
+                } catch (e) {
+                    onError && onError("JSON parse error: " + e.message);
+                }
+            } else {
+                var msg = "JWT request failed (" + this.status + ")";
+                try { msg = JSON.parse(this.responseText).message || msg; } catch (e2) {}
+                onError && onError(msg);
+            }
+        };
+        var endpoint = wpAuthUrl.replace(/\/$/, "") + "/wp-json/jwt-auth/v1/token";
+        xhttp.open("POST", endpoint, true);
+        xhttp.setRequestHeader("Content-Type", "application/json");
+        xhttp.send(JSON.stringify({ username: userLogin, password: appPassword }));
     }
 
     function fetchParts() {
@@ -145,5 +189,19 @@ var Api = (function () {
         xhttp.send();
     }
 
-    return { init: init, fetchParts: fetchParts, fetchParams: fetchParams, fetchProfiles: fetchProfiles, fetchConfig: fetchConfig, fetchBundleZip: fetchBundleZip, getBundleUrl: getBundleUrl, requestPreview: requestPreview, saveConfig: saveConfig, deleteConfig: deleteConfig };
+    return {
+        init: init,
+        setAuthToken: setAuthToken,
+        getAuthToken: getAuthToken,
+        fetchWpJwt: fetchWpJwt,
+        fetchParts: fetchParts,
+        fetchParams: fetchParams,
+        fetchProfiles: fetchProfiles,
+        fetchConfig: fetchConfig,
+        fetchBundleZip: fetchBundleZip,
+        getBundleUrl: getBundleUrl,
+        requestPreview: requestPreview,
+        saveConfig: saveConfig,
+        deleteConfig: deleteConfig,
+    };
 })();

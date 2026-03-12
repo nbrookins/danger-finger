@@ -12,6 +12,13 @@ Parameters:
   S3BucketName:
     Type: String
     Default: danger-finger
+  WpAuthOrigin:
+    Type: String
+    Default: '*'
+    Description: >
+      CORS allowed origin for the Lambda read API.
+      Set to your WordPress site URL in production, e.g. https://dangercreations.com.
+      Defaults to '*' for dev/testing.
 
 Resources:
 
@@ -21,7 +28,7 @@ Resources:
       StageName: '$default'
       CorsConfiguration:
         AllowOrigins:
-          - '*'
+          - !Ref WpAuthOrigin
         AllowHeaders:
           - Content-Type
           - Authorization

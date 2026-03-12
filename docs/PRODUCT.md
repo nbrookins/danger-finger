@@ -23,9 +23,32 @@ This document is the running record of product requirements and design decisions
 - Download ZIP: available per-row in saved configs table and after save/load. Same `render/{cfghash}/bundle.zip` object used for viewer load and download — no re-fetch.
 - Preview: on param change (debounced), request preview; viewer updates from temp STL URLs. No S3 for preview.
 
+### Authentication
+
+The app integrates with the WordPress site (dangercreations.com) for user identity.
+Anonymous users can preview the finger and download public configs.
+**Saving configurations and triggering full renders require a logged-in WordPress user.**
+
+Auth flow:
+1. User clicks "Log in" → redirected to `wp-admin/authorize-application.php` on WordPress.
+2. WordPress authenticates the user (existing session or login prompt), then redirects back to the app with an Application Password.
+3. App exchanges the Application Password for a JWT via `POST /wp-json/jwt-auth/v1/token`.
+4. JWT stored in `sessionStorage`; `Authorization: Bearer <JWT>` header sent on all protected requests.
+5. Tornado validates the JWT locally using the shared `JWT_AUTH_SECRET_KEY`; no WP round-trip per request.
+6. Profile key = `user_nicename` from JWT payload (added via WP filter in `functions-auth.php`).
+
+Protected endpoints (require valid JWT; return 401 with `auth_required: true`):
+- `POST /api/render`
+- `POST /profile/{userhash}/config/{cfg}` — also enforces that `userhash == jwt.user_nicename`
+- `DELETE /profile/{userhash}/config/{cfg}` — same ownership check
+
+Public endpoints: `GET /api/parts`, `GET /api/preview`, `GET /params/*`, `GET /profiles/*`, `GET /configs/*`, `GET /render/*`.
+
+Setup: see `wordpress/dangerfinger-setup/README.md` for WordPress plugin installation,
+`wp-config.php` additions, `.htaccess` Authorization passthrough, and PHP filter code.
+
 ### Non-goals / later
 
-- WordPress auth (optional later).
 - Automated cleanup of dereferenced S3 objects (optional later).
 - OpenSCAD WASM rendering in Lambda (blocked: openscad-wasm lacks Manifold, 100-660x slower than native).
 
@@ -52,6 +75,17 @@ This document is the running record of product requirements and design decisions
 | **preview_position_offsets fixed for v5.2+ print rotations** | Positions updated to assembled bbox centers measured from v5.1 STLs. Previously all zeros causing parts to overlap at viewer origin. See `docs/VIEWER_ASSEMBLY.md` section 3.2. |
 | **SCAD all reference uses preview_rotate=False** | `preview_rotate = False` is hard-coded. `_part_composite` does NOT apply `_rotate_offsets["all"]`. The all.png is the assembled-orientation reference. |
 | **OpenSCAD ARM64 workaround** | On macOS ARM64, Qt runtime check fails. Fix: prepend `arch -x86_64` in `Scad_Renderer.py` (Rosetta). `OPENSCAD_USE_ROSETTA` env var. Headless PNG needs Xvfb. |
+
+### Authentication
+
+| Decision | Rationale |
+|----------|-----------|
+| **WordPress Application Passwords → JWT exchange** | User authorises the app via WP's built-in `authorize-application.php` (no custom plugin for the OAuth step). The returned Application Password is used exactly once to get a JWT, then discarded. JWT is stored in sessionStorage and validated locally — no per-request WP call. |
+| **JWT Authentication for WP REST API plugin** | Standard, well-maintained plugin for issuing JWTs from WP. Secret shared with Tornado via `jwt_secret` env var. |
+| **user_nicename as profile key** | WP user_nicename is stable (unlike display name) and URL-safe. Added to JWT payload via `jwt_auth_token_before_sign` filter so Tornado can read it without a WP API call. |
+| **Auth disabled in dev (jwt_secret unset)** | When `jwt_secret` env var is empty, `auth.py` accepts any Bearer token and returns a guest payload. Allows local dev without a live WP site. |
+| **Profile ownership check on writes** | Tornado verifies that `jwt.user_nicename == userhash` in the URL before writing. Prevents authenticated user A from overwriting user B's profile. |
+| **PyJWT >= 2.0** | Version 2.x API (`decode` with `algorithms=[]` required, `options={"verify_aud": False}` for WP plugin). `requirements.txt` pins `PyJWT>=2.0`. |
 
 ### Frontend
 
@@ -91,6 +125,7 @@ The application deploys to AWS using Terraform-managed infrastructure. See [DEPL
 
 ## Changelog
 
+- **2026-03** – WordPress JWT authentication integration. Login via WP `authorize-application.php` → Application Password → JWT exchange. JWT validated locally in Tornado (`web/auth.py`, `WpAuthMixin`). Protected endpoints: `POST /api/render`, `POST /profile/*/config/*`, `DELETE /profile/*/config/*`. Profile ownership check (user can only write their own profile). Auth UI in app header (login/logout button, user display). `user_nicename` added to JWT payload via WP filter (`wordpress/dangerfinger-setup/functions-auth.php`). WordPress security hardening: user enumeration disabled, EXIF stripped, open registration blocked, `readme.html` blocked. CORS tightened to `WpAuthOrigin` parameter. `PyJWT>=2.0` added to `requirements.txt`. New env vars: `jwt_secret`, `wp_auth_url`, `app_base_url`. See `wordpress/dangerfinger-setup/README.md`.
 - **2026-03** – AWS deployment infrastructure: audited and cleaned stale ECS/CloudFormation resources (~$20-26/mo savings), created Terraform configs (VPC, ECR, EC2, Lambda, API Gateway, S3, IAM, optional Route53/ACM), Makefile deploy targets, GitHub Actions CI/CD with OIDC, deployment verification scripts, and Cursor rules/skills. EC2 uses IAM instance profile (no static keys); server.py falls back to default credential chain; app.js reads `window.__READ_URL__` injected at serve time.
 - **2026-03** – Save/load/download workflow and Lambda S3 access. Render now produces a single `render/{cfghash}/bundle.zip` containing all STLs, SCAD files, config JSON, LICENSE, and README — no individual STL files in S3. Frontend uses JSZip to extract STLs in-browser for viewer load; same cached blob serves as download (zero re-fetch). Save endpoint returns cfghash so frontend can show immediate download link. Added Lambda function + SAM template (`template.yaml`, `lambda/handler.py`) for S3 read operations (configs, profiles, bundles) via API Gateway — protects AWS credentials from client. Frontend dual base URL (`baseurl` for writes, `readUrl` for reads). Removed legacy S3 queue system (`process_scad_loop`, `queue()`, `.mod` files), `serve_download`, `downloads/` prefix, and individual STL upload code. Saved configs table now has Load/Download/Remove columns. Render status indicator shown during save with Save button disabled.
 - **2026-03** – Replaced `stl_viewer.min.js` (StlViewer v1.08 / Three.js r86) with `web/stl_viewer.js`: thin wrapper over Three.js r160 (last UMD build) + STLLoader r170 + OrbitControls r170 (adapted to global scripts). Vendored under `web/vendor/three/`. Transform semantics (centering, world-axis rotation) preserved exactly. `get_model_info` returns `{ pos: [x,y,z] }` array for `inspect_ui.py` compatibility.
