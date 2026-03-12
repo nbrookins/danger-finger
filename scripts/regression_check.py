@@ -11,7 +11,6 @@ from danger.finger import DangerFinger
 from danger.constants import RenderQuality
 from danger.Scad_Renderer import Scad_Renderer
 from danger.tools import *
-from solid2 import scad_render
 
 PARTS = ["tip", "base", "linkage", "middle", "tipcover", "socket", "plug", "stand", "pins"]
 OUTPUT_DIR = "output"
@@ -29,11 +28,9 @@ def build_part_scad(part_name, quality=RenderQuality.HIGH):
         from danger.tools import iterable, flatten
         if iterable(model):
             if str(model[0].part) == part_name:
-                scad_parts = flatten([x.scad for x in model])
-                scad_str = scad_render(union()(*scad_parts)) if len(scad_parts) > 1 else scad_render(scad_parts[0])
-                return scad_str
+                return model[0].scad
         elif str(model.part) == part_name:
-            return scad_render(model.scad)
+            return model.scad
     return None
 
 

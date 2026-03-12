@@ -19,7 +19,6 @@ from danger.geometry_checks import (
 )
 from danger.Params import Params
 from danger.tools import *
-from solid2 import scad_render
 
 PARTS_LIST = ["tip", "base", "linkage", "middle", "tipcover", "socket", "plug", "stand", "pins"]
 OUTPUT_BASE = "output/formula_validation"
@@ -52,10 +51,9 @@ def build_part_scad_with_config(part_name, config, quality=RenderQuality.STUPIDF
         from danger.tools import iterable, flatten
         if iterable(model):
             if str(model[0].part) == part_name:
-                scad_parts = flatten([x.scad for x in model])
-                return scad_render(union()(*scad_parts)) if len(scad_parts) > 1 else scad_render(scad_parts[0])
+                return model[0].scad
         elif str(model.part) == part_name:
-            return scad_render(model.scad)
+            return model.scad
     return None
 
 
