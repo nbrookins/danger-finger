@@ -106,10 +106,12 @@ var Viewer = (function () {
         for (var partName in stlUrls) {
             if (!stlUrls.hasOwnProperty(partName)) continue;
             if (PREVIEW_SKIP_PARTS[partName]) continue;
-            var id = _partNameToId[partName];
-            if (id === undefined) continue;
             var url = absolute ? stlUrls[partName] : _baseurl + stlUrls[partName];
             _lastStlUrls[partName] = url;
+            // plug is displayed only as 4 instances, not as a single centered part
+            if (partName === "plug") continue;
+            var id = _partNameToId[partName];
+            if (id === undefined) continue;
             if (!partVisibility || partVisibility[partName] !== false) {
                 addModel(id, url);
             }
@@ -124,6 +126,11 @@ var Viewer = (function () {
         var showPlugs = !partVisibility || partVisibility["plug"] !== false;
         if (!showPlugs) return;
 
+        var plugCol = (_previewConfig.partColors || {})["plug"];
+        var colorHex = plugCol ? "#" + plugCol.map(function (c) {
+            return ("0" + Math.round(c * 255).toString(16)).slice(-2);
+        }).join("") : null;
+
         _previewConfig.plugInstances.forEach(function (inst, i) {
             var instId = PLUG_BASE_ID + i;
             _plugPositions[instId] = inst.position;
@@ -134,6 +141,7 @@ var Viewer = (function () {
                 rotationy: degtorad(inst.rotation[1]),
                 rotationz: degtorad(inst.rotation[2])
             };
+            if (colorHex) opts.color = colorHex;
             try { _stlViewer.add_model(opts); } catch (e) { console.warn("plug instance error", instId, e); }
         });
     }
@@ -184,17 +192,17 @@ var Viewer = (function () {
             } catch (e) {}
         }
 
-        // Plug instances: explode along Y axis away from middle (Y=0 = proximal hinge)
+        // Plug instances: explode outward along Z (horizontal, away from finger center)
+        var plugExp = (_previewConfig && _previewConfig.explodeOffsets && _previewConfig.explodeOffsets["plug"]) || [0, 0, 1];
         for (var pid in _plugPositions) {
             if (!_plugPositions.hasOwnProperty(pid)) continue;
             var pp = _plugPositions[pid];
-            // Plugs at Y=0 (proximal) move proximally; plugs at Y>0 (distal) move distally
-            var plugExpY = pp[1] > 8 ? 1 : -0.5;
+            var zSign = pp[2] < 0 ? -1 : 1;
             try {
                 _stlViewer.set_position(parseInt(pid),
-                    pp[0],
-                    pp[1] + plugExpY * explode,
-                    pp[2]);
+                    pp[0] + plugExp[0] * explode,
+                    pp[1] + plugExp[1] * explode,
+                    pp[2] + plugExp[2] * explode * zSign);
             } catch (e) {}
         }
     }

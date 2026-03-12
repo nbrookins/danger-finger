@@ -19,7 +19,6 @@
         5: { name: "socket",   pos: [0,-25, 0],  exp: [0, -1,   0] },
         6: { name: "plug",     pos: [0,  0, 0],  exp: [0,  0,   0] },
         7: { name: "stand",    pos: [0,-30, 0],  exp: [0, -1.5, 0] },
-        8: { name: "pins",     pos: [0,  0, 0],  exp: [0,  0,   0] },
     };
 
     var partNameToId = {};

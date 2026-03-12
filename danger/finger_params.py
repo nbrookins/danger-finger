@@ -230,29 +230,30 @@ class DangerFingerParams:
         }
 
     # Fallback plug placements (default params). Use compute_preview_plug_instances() for dynamic values.
-    # Y=0 = proximal hinge, Y=intermediate_length = distal hinge
-    # Z = outer face of hinge = -(hinge_width/2 - plug_thickness/2)
+    # Y nudged up by knuckle_plug_radius (~3mm) to visually center on hinge after bbox-center pipeline.
     _preview_plug_instances = [
-        {"position": (0,  0, -8.6), "rotation": (0,   0, 0)},   # proximal left
-        {"position": (0,  0,  8.6), "rotation": (0, 180, 0)},   # proximal right
-        {"position": (0, 24, -7.4), "rotation": (0,   0, 0)},   # distal left
-        {"position": (0, 24,  7.4), "rotation": (0, 180, 0)},   # distal right
+        {"position": (0,  3, -8.6), "rotation": (0,   0, 0)},   # proximal left
+        {"position": (0,  3,  8.6), "rotation": (0, 180, 0)},   # proximal right
+        {"position": (0, 27, -7.4), "rotation": (0,   0, 0)},   # distal left
+        {"position": (0, 27,  7.4), "rotation": (0, 180, 0)},   # distal right
     ]
 
     def compute_preview_plug_instances(self):
         """Compute plug instance positions from current params.
 
         Plugs cap the hinge pin holes at the outer faces of each hinge.
-        Z = -(hinge_width/2 - plug_thickness/2); Y = 0 (proximal) or intermediate_length (distal).
+        Z = outer face of hinge; Y = hinge axis + plug_radius nudge to visually center
+        after the viewer's bbox-center / rotate / reposition pipeline.
         """
         prox_z = round(-(self.knuckle_proximal_width / 2 - self.knuckle_plug_thickness / 2) - 0.01, 2)
         dist_z = round(-(self.knuckle_distal_width / 2 - self.knuckle_plug_thickness / 2), 2)
         int_len = self.intermediate_length
+        r = self.knuckle_plug_radius
         return [
-            {"position": (0,        0, prox_z), "rotation": (0,   0, 0)},  # proximal left
-            {"position": (0,        0, -prox_z), "rotation": (0, 180, 0)},  # proximal right
-            {"position": (0, int_len, dist_z), "rotation": (0,   0, 0)},  # distal left
-            {"position": (0, int_len, -dist_z), "rotation": (0, 180, 0)},  # distal right
+            {"position": (0,          r, prox_z), "rotation": (0,   0, 0)},
+            {"position": (0,          r, -prox_z), "rotation": (0, 180, 0)},
+            {"position": (0, int_len + r, dist_z), "rotation": (0,   0, 0)},
+            {"position": (0, int_len + r, -dist_z), "rotation": (0, 180, 0)},
         ]
 
     # Explode offsets: unit direction vectors away from middle (Y≈12) in assembled space
@@ -264,7 +265,7 @@ class DangerFingerParams:
         "tipcover": (0,  1.5, 0),
         "linkage":  (0,    0, 1),
         "stand":    (0, -1.5, 0),
-        "plug":     (0,    0, 0),
+        "plug":     (0,    0, 1),
         "pins":     (0,    0, 0),
     }
 

@@ -41,6 +41,24 @@ def set_def_headers(self):
     self.set_header("Access-Control-Allow-Headers", "Content-Type, Access-Control-Allow-Headers, Authorization, X-Requested-With")
     self.set_header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
 
+class IndexHandler(tornado.web.RequestHandler):
+    '''Serve index.html with build-ID-stamped script URLs to bust browser caches on every restart.'''
+    def set_default_headers(self):
+        set_def_headers(self)
+
+    def get(self):
+        html_path = os.path.join(os.path.dirname(__file__), "index.html")
+        with open(html_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        # Stamp every local ?v=... URL with the current build ID so browsers always fetch fresh JS/CSS
+        import re
+        html = re.sub(r'\?v=[^"\']*', f'?v={_BUILD_ID}', html)
+        self.set_header("Content-Type", "text/html; charset=utf-8")
+        self.set_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.set_header("Pragma", "no-cache")
+        self.write(html)
+
+
 class StaticHandler(tornado.web.StaticFileHandler):
     '''handle static file requests'''
     # File extensions that should never be browser-cached (source code changes between runs)
@@ -216,7 +234,7 @@ def _get_build_id():
         ).decode().strip()
         return f"{short} {date}"
     except Exception:
-        return datetime.datetime.utcnow().strftime("started %Y-%m-%d %H:%M")
+        return datetime.datetime.now(datetime.timezone.utc).strftime("started %Y-%m-%d %H:%M")
 
 _BUILD_ID = _get_build_id()
 
@@ -435,7 +453,7 @@ class ApiPreviewTempHandler(tornado.web.RequestHandler):
             self.write(f.read())
 
 
-parts = [FingerPart.TIP, FingerPart.BASE, FingerPart.LINKAGE, FingerPart.MIDDLE, FingerPart.TIPCOVER, FingerPart.SOCKET, FingerPart.PLUG, FingerPart.STAND, FingerPart.PINS]
+parts = [FingerPart.TIP, FingerPart.BASE, FingerPart.LINKAGE, FingerPart.MIDDLE, FingerPart.TIPCOVER, FingerPart.SOCKET, FingerPart.PLUG, FingerPart.STAND]
 
 handlers = [
         (r"/api/parts", ApiPartsHandler),
@@ -448,6 +466,8 @@ handlers = [
         (r"/profiles/([a-zA-Z0-9.]+)", FingerHandler),
         (r"/configs/([a-zA-Z0-9.]+)", FingerHandler),
         (r"/render/(.+)", FingerHandler),
+        # index.html served via IndexHandler to inject build-ID cache-busting into script URLs
+        (r"/(?:index\.html)?$", IndexHandler),
         (r"/(.*)", StaticHandler, {"path": "./web/", "default_filename": "index.html"})
     ]
 
