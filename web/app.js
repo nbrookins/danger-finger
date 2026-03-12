@@ -82,16 +82,17 @@
     function onPartToggle(partName, visible) {
         var id = partNameToId[partName];
         if (id === undefined) return;
+        // Plug is never added as a single centered model; setPlugVisibility owns all 4 instances.
+        if (partName === "plug") {
+            Viewer.setPlugVisibility(visible, Params.getPartVisibility());
+            return;
+        }
         var lastUrls = Viewer.getLastStlUrls();
         if (visible) {
             var url = lastUrls[partName];
             if (url) Viewer.addModel(id, url);
         } else {
             Viewer.remModels([id]);
-        }
-        // Plug instances (IDs 100-103) follow the plug part's visibility
-        if (partName === "plug") {
-            Viewer.setPlugVisibility(visible, Params.getPartVisibility());
         }
     }
 
