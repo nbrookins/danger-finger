@@ -43,9 +43,26 @@ def set_def_headers(self):
 
 class StaticHandler(tornado.web.StaticFileHandler):
     '''handle static file requests'''
+    # File extensions that should never be browser-cached (source code changes between runs)
+    _NO_CACHE_EXTS = {".js", ".html", ".css"}
+
     def set_default_headers(self):
         '''send default headers to ensure cors'''
         set_def_headers(self)
+
+    def get_cache_time(self, path, modified, mime_type):
+        '''Return 0 for source files so Tornado never sets long-lived cache headers or sends 304s.'''
+        _, ext = os.path.splitext(path)
+        if ext.lower() in self._NO_CACHE_EXTS:
+            return 0
+        return super().get_cache_time(path, modified, mime_type)
+
+    def set_extra_headers(self, path):
+        '''Disable browser caching for source files so code changes take effect on reload.'''
+        _, ext = os.path.splitext(path)
+        if ext.lower() in self._NO_CACHE_EXTS:
+            self.set_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.set_header("Pragma", "no-cache")
 
     def options(self):
         '''send default headers to ensure cors'''
@@ -182,6 +199,27 @@ class FingerHandler(tornado.web.RequestHandler):
 
 _position_cache = {}
 
+def _get_build_id():
+    """Return a short build identifier: git short-hash + UTC date, e.g. 'a1b2c3d 2026-03-11'.
+    Falls back to process start timestamp if git is unavailable."""
+    import subprocess, datetime
+    try:
+        short = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        ).decode().strip()
+        date = subprocess.check_output(
+            ["git", "log", "-1", "--format=%cd", "--date=short"],
+            stderr=subprocess.DEVNULL,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        ).decode().strip()
+        return f"{short} {date}"
+    except Exception:
+        return datetime.datetime.utcnow().strftime("started %Y-%m-%d %H:%M")
+
+_BUILD_ID = _get_build_id()
+
 def _preview_config(config_dict=None):
     """Build preview layout config from DangerFingerParams for the web viewer.
     If config_dict is provided, computes dynamic positions for that config (cached by cfghash)."""
@@ -193,15 +231,21 @@ def _preview_config(config_dict=None):
         if cache_key not in _position_cache:
             finger = DangerFinger()
             Params.apply_config(finger, config_dict)
-            _position_cache[cache_key] = finger.compute_preview_positions()
-        positions = _position_cache[cache_key]
+            _position_cache[cache_key] = {
+                "positions": finger.compute_preview_positions(),
+                "plugInstances": finger.compute_preview_plug_instances(),
+            }
+        cached = _position_cache[cache_key]
+        positions = cached["positions"]
+        plug_instances = cached["plugInstances"]
     else:
         positions = P._preview_position_offsets
+        plug_instances = P._preview_plug_instances
 
     return {
         "rotateOffsets": {k: list(v) for k, v in P._preview_rotate_offsets.items()},
         "positionOffsets": {k: list(v) for k, v in positions.items()},
-        "plugInstances": [{"position": list(p["position"]), "rotation": list(p["rotation"])} for p in P._preview_plug_instances],
+        "plugInstances": [{"position": list(p["position"]), "rotation": list(p["rotation"])} for p in plug_instances],
         "explodeOffsets": {k: list(v) for k, v in P._preview_explode_offsets.items()},
         "partColors": {k: v for k, v in PART_COLORS.items()},
     }
@@ -218,6 +262,7 @@ class ApiPartsHandler(tornado.web.RequestHandler):
         self.write(json.dumps({
             "parts": part_list,
             "version": DangerFinger.VERSION,
+            "build": _BUILD_ID,
             "previewConfig": _preview_config(),
         }))
 
@@ -233,7 +278,7 @@ def _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=F
     For render with store_in_s3: builds a bundle.zip (STL + SCAD + config + LICENSE + README) and uploads once.
     '''
     config, cfgbytes, cfghash = package_config_json(config_dict)
-    quality = RenderQuality.STUPIDFAST if preview_quality else RenderQuality.HIGH
+    quality = RenderQuality.EXTRAMEDIUM if preview_quality else RenderQuality.HIGH
     os.makedirs(PREVIEW_TEMP_DIR, exist_ok=True)
     run_id = str(uuid.uuid4())[:12]
     run_dir = os.path.join(PREVIEW_TEMP_DIR, run_id)

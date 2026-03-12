@@ -172,13 +172,13 @@ class DangerFingerParams:
 
     # Fallback preview positions (mm) from v5.1 STL bounding-box centers (used when no config is applied)
     _preview_position_offsets = {
-        "socket":   (0, -25, 0),
+        "socket":   (0, -24, 0),
         "base":     (0, -3, 0),
         "middle":   (1, 12, 0),
-        "tip":      (1, 26, 0),
+        "tip":      (1, 27, 0),
         "tipcover": (0, 39, 0),
         "linkage":  (0, 0, 20),
-        "stand":    (0, -30, 0),
+        "stand":    (0, -31, 0),
         "pins":     (0, 0, 0),
     }
 
@@ -188,21 +188,34 @@ class DangerFingerParams:
         Estimates bounding-box centers for each part in assembled orientation
         based on parametric dimensions, without requiring STL rendering.
         Returns dict of part_name -> (x, y, z) tuples.
+
+        Y=0 is the proximal hinge. Formulas derived from Y-span midpoints documented
+        in docs/VIEWER_ASSEMBLY.md section 3.1, cross-checked against v5.1 STL measurements.
         """
         prox_h = self.intermediate_proximal_height
-        dist_h = self.intermediate_distal_height
         int_len = self.intermediate_length
         dist_len = self.distal_length
         prox_len = self.proximal_length
         sock_depth = self.socket_depth
         sock_iface_len = self.socket_interface_length
+        distal_base_len = self.distal_base_length
+        flange_h = self.distal_flange_height
+        # SCALLOP_HEIGHT is a DangerFinger class constant; fall back to 9 if called on bare params
+        scallop_h = getattr(self, 'SCALLOP_HEIGHT', 9)
 
+        # base: from -(prox_len + prox_h) to 0, center at midpoint
         base_y = -(prox_len + prox_h / 2) / 2
+        # middle: from 0 to int_len, center at midpoint
         middle_y = int_len / 2
-        tip_y = int_len + dist_len / 2
-        tipcover_y = int_len + dist_len * 0.75
-        socket_y = -(prox_len + prox_h / 2 + sock_iface_len + sock_depth / 2)
-        stand_y = socket_y - sock_depth * 0.3
+        # tip: rigid hinge section from int_len to int_len + distal_base_len
+        tip_y = int_len + distal_base_len / 2
+        # tipcover: dome section from int_len + distal_base_len to int_len + dist_len
+        tipcover_y = int_len + (distal_base_len + dist_len) / 2
+        # socket: top at -(socket_top + flange_h), bottom trimmed by scallops
+        socket_top = prox_len + prox_h / 2 + flange_h
+        socket_y = -(socket_top + (sock_iface_len + sock_depth - scallop_h / 2) / 2)
+        # stand sits near the bottom of the socket body
+        stand_y = socket_y - sock_depth * 0.15
         linkage_z = 20
 
         return {
@@ -216,15 +229,31 @@ class DangerFingerParams:
             "pins":     (0, 0, 0),
         }
 
-    # Multiple plug placements for the web preview
-    # Y=0 = proximal hinge, Y=intermediate_length(24) = distal hinge
-    # Z offsets = hinge half-width (~knuckle_proximal_width/2 and knuckle_distal_width/2)
+    # Fallback plug placements (default params). Use compute_preview_plug_instances() for dynamic values.
+    # Y=0 = proximal hinge, Y=intermediate_length = distal hinge
+    # Z = outer face of hinge = -(hinge_width/2 - plug_thickness/2)
     _preview_plug_instances = [
         {"position": (0,  0, -8.6), "rotation": (0,   0, 0)},   # proximal left
         {"position": (0,  0,  8.6), "rotation": (0, 180, 0)},   # proximal right
-        {"position": (0, 24, -7.5), "rotation": (0,   0, 0)},   # distal left
-        {"position": (0, 24,  7.5), "rotation": (0, 180, 0)},   # distal right
+        {"position": (0, 24, -7.4), "rotation": (0,   0, 0)},   # distal left
+        {"position": (0, 24,  7.4), "rotation": (0, 180, 0)},   # distal right
     ]
+
+    def compute_preview_plug_instances(self):
+        """Compute plug instance positions from current params.
+
+        Plugs cap the hinge pin holes at the outer faces of each hinge.
+        Z = -(hinge_width/2 - plug_thickness/2); Y = 0 (proximal) or intermediate_length (distal).
+        """
+        prox_z = round(-(self.knuckle_proximal_width / 2 - self.knuckle_plug_thickness / 2) - 0.01, 2)
+        dist_z = round(-(self.knuckle_distal_width / 2 - self.knuckle_plug_thickness / 2), 2)
+        int_len = self.intermediate_length
+        return [
+            {"position": (0,        0, prox_z), "rotation": (0,   0, 0)},  # proximal left
+            {"position": (0,        0, -prox_z), "rotation": (0, 180, 0)},  # proximal right
+            {"position": (0, int_len, dist_z), "rotation": (0,   0, 0)},  # distal left
+            {"position": (0, int_len, -dist_z), "rotation": (0, 180, 0)},  # distal right
+        ]
 
     # Explode offsets: unit direction vectors away from middle (Y≈12) in assembled space
     _preview_explode_offsets = {

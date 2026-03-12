@@ -1,0 +1,65 @@
+---
+description: Archive execution plans to .cursor/plans/ before and after non-trivial tasks
+alwaysApply: true
+---
+
+# Archive Execution Plans
+
+Before executing any non-trivial multi-step task (3+ steps, architectural change, or irreversible action), save a plan file to `.cursor/plans/` for posterity.
+
+## When to archive
+
+- Any task with a todo list (3+ items)
+- Architectural or structural changes (new files, deleted files, refactors)
+- Irreversible or high-risk actions (deletes, migrations, schema changes)
+- Tasks where a plan was explicitly discussed or created
+
+## File naming
+
+```
+.cursor/plans/YYYY-MM-DD-{slug}.md
+```
+
+Example: `.cursor/plans/2026-03-11-replace-stl-viewer.md`
+
+Use a slug that clearly describes the task. If the date is uncertain, use today's date.
+
+## Required content
+
+```markdown
+# {Task Title}
+
+**Date**: YYYY-MM-DD  
+**Status**: planned | in-progress | completed
+
+## Goal
+One paragraph describing what this achieves and why.
+
+## Steps
+1. Step one
+2. Step two
+...
+
+## Key decisions
+- Decision A: chose X over Y because Z
+- Decision B: ...
+
+## Files affected
+- `path/to/file.py` — what changed
+- `path/to/other.js` — what changed
+
+## Outcome
+(Fill in after completion: what worked, what didn't, follow-ups)
+```
+
+## When to update
+
+- Mark **Status** as `in-progress` when starting
+- Fill in **Outcome** and mark `completed` when done
+- If a task is abandoned, note why under Outcome
+
+## Do NOT archive
+
+- Simple single-file edits
+- Bug fixes under 3 steps
+- Purely additive changes with no risk

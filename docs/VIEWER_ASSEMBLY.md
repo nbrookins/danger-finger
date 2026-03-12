@@ -90,11 +90,22 @@ These scale with `intermediate_length` and other params. Ideally derived dynamic
 
 ---
 
-## 4. Preview positions — fix applied (v5.3)
+## 4. Preview positions — fix applied (v5.3 / 2026-03)
 
 `_preview_position_offsets` updated to assembled bbox centers from section 3.2. The legacy 35 degree Z rotation was removed from tip and tipcover in `_preview_rotate_offsets` (it matched `preview_rotate=True` SCAD behaviour, not the current `preview_rotate=False` reference).
 
-Long-term: derive positions dynamically from built geometry so they stay correct as parameters change.
+`compute_preview_positions()` was also corrected after bugs were found where it placed tip 10 mm too high and socket 5 mm too low. The correct formulas, derived from Y-span midpoints (section 3.1):
+
+| Part     | Formula (Y center)                                                           | Default |
+|----------|------------------------------------------------------------------------------|---------|
+| base     | `-(prox_len + prox_h/2) / 2`                                                 | −2.5    |
+| middle   | `int_len / 2`                                                                | 12.0    |
+| tip      | `int_len + distal_base_len / 2`                                              | 27.0    |
+| tipcover | `int_len + (distal_base_len + dist_len) / 2`                                 | 39.0    |
+| socket   | `-(prox_len + prox_h/2 + flange_h + (sock_iface_len + sock_depth − SCALLOP_HEIGHT/2) / 2)` | −24.2 |
+| stand    | `socket_y − sock_depth * 0.15`                                               | −29.3   |
+
+Key bug: the original formula used `dist_len/2` for the tip (= 12 mm offset) instead of `distal_base_len/2` (= 3 mm), conflating the tipcover dome length with the rigid hinge section.
 
 ---
 
@@ -135,15 +146,17 @@ Qt runtime check fails on native ARM64. Fix in `danger/Scad_Renderer.py`: prepen
 
 ## 8. Plug instances
 
-Single STL (`plug.stl`) displayed four times via `_preview_plug_instances`:
+Single STL (`plug.stl`) displayed four times via `compute_preview_plug_instances()` (dynamic, from params) falling back to `_preview_plug_instances` for the initial page load.
 
-```python
-_preview_plug_instances = [
-    {"position": (0,  0, -8.6), "rotation": (0,   0, 0)},   # proximal left
-    {"position": (0,  0,  8.6), "rotation": (0, 180, 0)},   # proximal right
-    {"position": (0, 24, -7.5), "rotation": (0,   0, 0)},   # distal left
-    {"position": (0, 24,  7.5), "rotation": (0, 180, 0)},   # distal right
-]
-```
+Position formulas:
+- `prox_z = -(knuckle_proximal_width/2 - knuckle_plug_thickness/2) - 0.01`  (outer face of proximal hinge)
+- `dist_z = -(knuckle_distal_width/2 - knuckle_plug_thickness/2)`  (outer face of distal hinge)
+- Y = 0 (proximal hinge axis) or `intermediate_length` (distal hinge axis)
 
-Y=0 is the proximal hinge; Y=24 (= `intermediate_length`) is the distal hinge.
+Default values: proximal `Z = ±8.61`, distal `Z = ±7.35`.
+
+---
+
+## 9. Pins — excluded from preview
+
+`part_pins()` writes both hinge pins into a **single composite STL** at local Y=0 (proximal) and Y=`pins_translate_y` (=10, not `intermediate_length`). After bbox-centering in the viewer the pins land at Y=±5 — completely wrong. `viewer.js` skips loading `pins.stl` via `PREVIEW_SKIP_PARTS`. Pins are still included in the download bundle for printing.

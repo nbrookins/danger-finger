@@ -112,7 +112,7 @@ class Scad_Renderer(Borg):
 #'--enable', 'fast-csg', '--enable', 'manifold', '--enable', 'lazy-union', '--enable', 'vertex-object-renderers', '--enable', 'vertex-object-renderers-indexing', \
 #'--enable', 'fast-csg', '--enable', 'manifold', '--enable', 'lazy-union', '--enable', 'vertex-object-renderers', '--enable', 'vertex-object-renderers-indexing',
         def _png_cmd(scad_filename):
-            cmd = [self.openscad_exec, '-q', '--imgsize', png_size or '1024,768', '--preview', '-o',
+            cmd = [self.openscad_exec, '-q', '--imgsize', png_size or '1024,768', '--preview', '-o', 
                    scad_filename.replace(".scad", ".png"), scad_filename]
             if camera:
                 cmd = cmd[:2] + ['--camera', camera] + cmd[2:]
@@ -121,7 +121,7 @@ class Scad_Renderer(Borg):
         commandsp = [] if not png_size or png_size == "" else [_png_cmd(sf) for sf in scad_filenames]
 #TODO - param for quiet mode
         commands = [[self.openscad_exec,
-                      '--export-format', 'binstl', '-o', scad_filename.replace(".scad", ".stl"), scad_filename] for scad_filename in scad_filenames]
+                       '--enable', 'manifold', '--export-format', 'binstl', '-o', scad_filename.replace(".scad", ".stl"), scad_filename] for scad_filename in scad_filenames]
         commands += (commandsp)
         tasks = [AsyncSubprocess().run_command(*command) for command in commands]
         results = AsyncSubprocess().run_asyncio_commands(tasks, max_concurrent_tasks=max_concurrent_tasks)

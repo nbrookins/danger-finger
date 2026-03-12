@@ -5,14 +5,17 @@
 	<title>DangerFinger - Configure and Preview</title>
 	<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
 	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-	<script src="/vendor/three/three.min.js"></script>
-	<script src="/vendor/three/OrbitControls.js"></script>
-	<script src="/stl_viewer.js"></script>
+	<script src="/vendor/three/three.min.js?v=1"></script>
+	<script src="/vendor/three/OrbitControls.js?v=1"></script>
+	<script src="/stl_viewer.js?v=1"></script>
 	<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 	<style>
 		code { font-size: 0.85em; }
 		.param-table td { vertical-align: middle; }
 		#part-toggles { display: flex; flex-wrap: wrap; align-items: center; }
+		#fs_btn { font-size: 1rem; line-height: 1; padding: 0 6px; }
+		#wrap:-webkit-full-screen { background: #f0f0f0; }
+		#wrap:fullscreen { background: #f0f0f0; }
 	</style>
 </head>
 <body class="bg-light">
@@ -20,13 +23,19 @@
 		<h1 class="h4 mb-3">DangerFinger - Configure and Preview</h1>
 
 		<section class="card mb-3">
-			<div class="card-header py-2">Viewer</div>
+			<div class="card-header py-2 d-flex align-items-center justify-content-between">
+				<span>Viewer</span>
+				<button id="fs_btn" type="button" class="btn btn-sm btn-outline-secondary py-0" title="Toggle fullscreen" onclick="Viewer.toggleFullscreen()">⛶</button>
+			</div>
 			<div class="card-body p-2">
 				<div id="preview_status" class="small text-muted mb-1" aria-live="polite"></div>
 				<div id="wrap" style="position:relative; min-height:280px;">
 					<div id="stl_cont" style="width:100%;height:280px;visibility:hidden;border:1px solid #dee2e6; border-radius:4px;"></div>
 					<img id="loader" style="position:absolute;top:50%;left:50%;margin-left:-40px;margin-top:-40px;" alt="Loading...">
 				</div>
+				<div id="viewer_resize_handle" title="Drag to resize viewer"
+					style="height:6px;cursor:ns-resize;background:linear-gradient(transparent 40%,#dee2e6 40%,#dee2e6 60%,transparent 60%),linear-gradient(90deg,transparent 33%,#dee2e6 33%,#dee2e6 66%,transparent 66%);background-size:100% 100%,8px 100%;margin:2px 0 4px;border-radius:3px;opacity:0.6;"
+					onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'"></div>
 				<a id="download_btn" class="btn btn-sm btn-outline-success mt-1" style="display:none" download>Download ZIP</a>
 			</div>
 		</section>
@@ -64,9 +73,9 @@
 	<script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>
 	<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
 	<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
-	<script src="/api.js"></script>
-	<script src="/viewer.js"></script>
-	<script src="/params.js"></script>
-	<script src="/app.js"></script>
+	<script src="/api.js?v=2"></script>
+	<script src="/viewer.js?v=2"></script>
+	<script src="/params.js?v=2"></script>
+	<script src="/app.js?v=2"></script>
 </body>
 </html>

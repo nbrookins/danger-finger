@@ -13,6 +13,9 @@ var Viewer = (function () {
     var _onStatus = null;      // callback(msg, isError)
     var PLUG_BASE_ID = 100;
     var EXPL_FACTOR = 25;
+    // Parts excluded from the 3D preview: pins is a composite STL with both hinge pins at
+    // hardcoded relative positions that can't be correctly placed by a single offset.
+    var PREVIEW_SKIP_PARTS = { "pins": true };
 
     function degtorad(deg) { return deg === 0 ? 0 : deg / 57.3; }
 
@@ -102,6 +105,7 @@ var Viewer = (function () {
         _lastStlUrls = {};
         for (var partName in stlUrls) {
             if (!stlUrls.hasOwnProperty(partName)) continue;
+            if (PREVIEW_SKIP_PARTS[partName]) continue;
             var id = _partNameToId[partName];
             if (id === undefined) continue;
             var url = absolute ? stlUrls[partName] : _baseurl + stlUrls[partName];
@@ -204,6 +208,85 @@ var Viewer = (function () {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Resize handle — drag to change viewer height
+    // -------------------------------------------------------------------------
+    function initResizeHandle() {
+        var handle = document.getElementById("viewer_resize_handle");
+        var cont   = document.getElementById("stl_cont");
+        if (!handle || !cont) return;
+
+        var _dragging  = false;
+        var _startY    = 0;
+        var _startH    = 0;
+        var MIN_H      = 160;
+        var MAX_H      = window.innerHeight * 0.85;
+
+        handle.addEventListener("mousedown", function (e) {
+            _dragging = true;
+            _startY   = e.clientY;
+            _startH   = cont.offsetHeight;
+            document.body.style.userSelect = "none";
+            e.preventDefault();
+        });
+
+        document.addEventListener("mousemove", function (e) {
+            if (!_dragging) return;
+            var delta = e.clientY - _startY;
+            var newH  = Math.min(Math.max(_startH + delta, MIN_H), MAX_H);
+            cont.style.height = newH + "px";
+        });
+
+        document.addEventListener("mouseup", function () {
+            if (_dragging) {
+                _dragging = false;
+                document.body.style.userSelect = "";
+            }
+        });
+    }
+
+    // -------------------------------------------------------------------------
+    // Fullscreen — toggles the #wrap div into native fullscreen
+    // -------------------------------------------------------------------------
+    var _savedViewerHeight = "280px";
+
+    function toggleFullscreen() {
+        var wrap = document.getElementById("wrap");
+        var cont = document.getElementById("stl_cont");
+        if (!wrap) return;
+
+        var fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+        if (fsEl) {
+            (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+        } else {
+            // Snapshot height NOW, before the fullscreen transition overwrites it
+            if (cont) _savedViewerHeight = cont.offsetHeight + "px";
+            var req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
+            if (req) req.call(wrap);
+        }
+    }
+
+    document.addEventListener("fullscreenchange", _onFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", _onFullscreenChange);
+    function _onFullscreenChange() {
+        var wrap = document.getElementById("wrap");
+        var cont = document.getElementById("stl_cont");
+        var btn  = document.getElementById("fs_btn");
+        if (!wrap || !cont) return;
+        var inFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+        if (inFs) {
+            cont.style.height = "100%";
+            cont.style.width  = "100%";
+            wrap.style.height = "100vh";
+            if (btn) btn.textContent = "✕";
+        } else {
+            cont.style.height = _savedViewerHeight;
+            cont.style.width  = "100%";
+            wrap.style.height = "";
+            if (btn) btn.textContent = "⛶";
+        }
+    }
+
     function getLastStlUrls() { return _lastStlUrls; }
     function getPartNameToId() { return _partNameToId; }
     function getStlViewer() { return _stlViewer; }
@@ -221,5 +304,7 @@ var Viewer = (function () {
         getLastStlUrls: getLastStlUrls,
         getPartNameToId: getPartNameToId,
         getStlViewer: getStlViewer,
+        toggleFullscreen: toggleFullscreen,
+        initResizeHandle: initResizeHandle,
     };
 })();

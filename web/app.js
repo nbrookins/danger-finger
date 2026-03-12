@@ -35,12 +35,21 @@
     }
 
     function onPartsLoaded(json) {
-        // Update title
+        // Update title and build badge
         if (json.version) {
-            var title = "DangerFinger v" + json.version + " - Configure and Preview";
+            var title = "DangerFinger v" + json.version + " – Configure and Preview";
             document.title = title;
             var h1 = document.querySelector("h1");
-            if (h1) h1.textContent = title;
+            if (h1) {
+                h1.textContent = title;
+                if (json.build) {
+                    var badge = document.createElement("span");
+                    badge.textContent = json.build;
+                    badge.title = "Server build: git commit and date";
+                    badge.style.cssText = "font-size:0.55em;font-weight:400;color:#aaa;margin-left:0.75em;font-family:monospace;vertical-align:middle;";
+                    h1.appendChild(badge);
+                }
+            }
         }
         // Build part toggles
         if (json.parts) {
@@ -236,6 +245,7 @@
             onStatus: setPreviewStatus,
         });
         Viewer.setPartData(parts, partNameToId);
+        Viewer.initResizeHandle();
 
         Params.init({
             username: username,
