@@ -45,12 +45,17 @@ def main():
             page.wait_for_function(
                 """() => {
                     const el = document.getElementById('preview_status');
-                    return el && el.textContent && el.textContent.trim().length > 0;
+                    if (!el || !el.textContent) return false;
+                    const t = el.textContent.toLowerCase();
+                    return t.includes('ready') || t.includes('error');
                 }""",
-                timeout=30000,
+                timeout=90000,
             )
         except Exception:
             pass
+
+        import time as _time
+        _time.sleep(3)
 
         preview_status_text = (page.locator("#preview_status").first.text_content() or "")
 

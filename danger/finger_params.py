@@ -230,12 +230,12 @@ class DangerFingerParams:
         }
 
     # Fallback plug placements (default params). Use compute_preview_plug_instances() for dynamic values.
-    # Y nudged up by knuckle_plug_radius (~3mm) to visually center on hinge after bbox-center pipeline.
+    # Y nudged up by knuckle_plug_radius/2 (~1.5mm) to visually center on hinge after bbox-center pipeline.
     _preview_plug_instances = [
-        {"position": (0,  3, -8.6), "rotation": (0,   0, 0)},   # proximal left
-        {"position": (0,  3,  8.6), "rotation": (0, 180, 0)},   # proximal right
-        {"position": (0, 27, -7.4), "rotation": (0,   0, 0)},   # distal left
-        {"position": (0, 27,  7.4), "rotation": (0, 180, 0)},   # distal right
+        {"position": (0,  1.5, -8.6), "rotation": (0,   0, 0)},   # proximal left
+        {"position": (0,  1.5,  8.6), "rotation": (0, 180, 0)},   # proximal right
+        {"position": (0, 25.5, -7.4), "rotation": (0,   0, 0)},   # distal left
+        {"position": (0, 25.5,  7.4), "rotation": (0, 180, 0)},   # distal right
     ]
 
     def compute_preview_plug_instances(self):
@@ -249,11 +249,12 @@ class DangerFingerParams:
         dist_z = round(-(self.knuckle_distal_width / 2 - self.knuckle_plug_thickness / 2), 2)
         int_len = self.intermediate_length
         r = self.knuckle_plug_radius
+        nudge = r / 2
         return [
-            {"position": (0,          r, prox_z), "rotation": (0,   0, 0)},
-            {"position": (0,          r, -prox_z), "rotation": (0, 180, 0)},
-            {"position": (0, int_len + r, dist_z), "rotation": (0,   0, 0)},
-            {"position": (0, int_len + r, -dist_z), "rotation": (0, 180, 0)},
+            {"position": (0,              nudge, prox_z), "rotation": (0,   0, 0)},
+            {"position": (0,              nudge, -prox_z), "rotation": (0, 180, 0)},
+            {"position": (0, int_len + nudge, dist_z), "rotation": (0,   0, 0)},
+            {"position": (0, int_len + nudge, -dist_z), "rotation": (0, 180, 0)},
         ]
 
     # Explode offsets: unit direction vectors away from middle (Y≈12) in assembled space
