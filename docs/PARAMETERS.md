@@ -37,3 +37,14 @@ Notes
 -----
 
 These changes are intentionally conservative: defaults reproduce prior behavior. If you'd like I can continue and parameterize additional hardcoded values (nail cut offsets, tunnel helper constants, and more).
+
+---
+
+See also
+--------
+
+- [Architecture](ARCHITECTURE.md) — system pipeline, class hierarchy, build flow
+- [Parts Anatomy](PARTS_ANATOMY.md) — physical design of each part and known TODOs
+- [CSG Patterns](CSG_PATTERNS.md) — SolidPython2 idioms and custom primitives
+- [Viewer Assembly](VIEWER_ASSEMBLY.md) — how the web viewer positions and rotates parts
+- [Product](PRODUCT.md) — product requirements and design decisions

@@ -1,0 +1,34 @@
+---
+description: CSG modeling patterns and primitives reference — read before modifying geometry
+globs: danger/finger.py, danger/finger_base.py
+alwaysApply: false
+---
+
+# CSG modeling guide
+
+Full reference: `docs/CSG_PATTERNS.md`
+
+## Quick reference: custom primitives
+
+| Primitive | Signature | Used for |
+|-----------|-----------|----------|
+| `rcylinder(r, h, rnd, center)` | Rounded-edge cylinder | Hinges, struts, bumpers |
+| `rcube(size, rnd, center)` | Rounded-edge cube | Struts, braces |
+| `rcubecyl(h, w, l, t, rnd/rnd1/rnd2, center)` | Hybrid cuboid-cylinder with per-side rounding | Bridges, bumper shells |
+| `trim(x, y, z, center, offset)` | Intersection with cutting cube | Trimming geometry to bounds |
+| `obj.trim((x,y,z), offset)` | Method-style trim (monkey-patched) | Same, more readable |
+| `flaredcyl(r, h, fr, fh)` | Flared cylinder | Hinge inset flares |
+
+## Key patterns
+
+- **Hull pairs**: `(mod_a + mod_b).hull()` creates smooth transitions. Used for core+hinge and tunnel+core connections.
+- **Subtractive order**: Build up with `+`, subtract with `-`. Washers are added AFTER hinge cuts because they occupy the clearance zone.
+- **Orient dispatch**: Methods take `orient` (IntFlag) and branch. Use `orient_pair()` for dict creation.
+- **Computed properties end with `_`**: `tip_radius`, `intermediate_width_`, etc. Never set these directly.
+
+## Rules
+
+1. **Never modify a primitive** (`rcylinder`, `rcubecyl`, `trim`, `flaredcyl`) without checking ALL callers across both `finger.py` and `finger_base.py`.
+2. **Don't add `.render()` inside `part_*` methods** — the build loop handles it.
+3. **Leave `.debug()` calls commented** — they make parts transparent in OpenSCAD.
+4. **Test geometry at param boundaries** — some hull/intersection operations produce degenerate geometry when dimensions approach zero.

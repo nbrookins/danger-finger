@@ -77,11 +77,50 @@ This document is the running record of product requirements and design decisions
 
 ---
 
+## Infrastructure & Deployment
+
+The application deploys to AWS using Terraform-managed infrastructure. See [DEPLOY.md](DEPLOY.md) for full details.
+
+**Components**: EC2 (Docker + OpenSCAD, handles writes), Lambda + API Gateway (read-only S3 API), S3 (persistent storage), ECR (image registry).
+
+**Key files**: `infra/*.tf` (Terraform), `.github/workflows/deploy.yml` (CI/CD), `scripts/verify_aws_deploy.sh` (smoke tests), `scripts/aws_audit.py` (account audit), `scripts/benchmark_ec2.py` (instance benchmarking).
+
+**Cursor rules**: `.cursor/rules/aws-deploy.mdc` (deployment safety), `.cursor/rules/terraform-conventions.mdc` (Terraform style). **Skill**: `.cursor/skills/deploy-to-aws/SKILL.md`.
+
+---
+
 ## Changelog
 
+- **2026-03** – AWS deployment infrastructure: audited and cleaned stale ECS/CloudFormation resources (~$20-26/mo savings), created Terraform configs (VPC, ECR, EC2, Lambda, API Gateway, S3, IAM, optional Route53/ACM), Makefile deploy targets, GitHub Actions CI/CD with OIDC, deployment verification scripts, and Cursor rules/skills. EC2 uses IAM instance profile (no static keys); server.py falls back to default credential chain; app.js reads `window.__READ_URL__` injected at serve time.
 - **2026-03** – Save/load/download workflow and Lambda S3 access. Render now produces a single `render/{cfghash}/bundle.zip` containing all STLs, SCAD files, config JSON, LICENSE, and README — no individual STL files in S3. Frontend uses JSZip to extract STLs in-browser for viewer load; same cached blob serves as download (zero re-fetch). Save endpoint returns cfghash so frontend can show immediate download link. Added Lambda function + SAM template (`template.yaml`, `lambda/handler.py`) for S3 read operations (configs, profiles, bundles) via API Gateway — protects AWS credentials from client. Frontend dual base URL (`baseurl` for writes, `readUrl` for reads). Removed legacy S3 queue system (`process_scad_loop`, `queue()`, `.mod` files), `serve_download`, `downloads/` prefix, and individual STL upload code. Saved configs table now has Load/Download/Remove columns. Render status indicator shown during save with Save button disabled.
 - **2026-03** – Replaced `stl_viewer.min.js` (StlViewer v1.08 / Three.js r86) with `web/stl_viewer.js`: thin wrapper over Three.js r160 (last UMD build) + STLLoader r170 + OrbitControls r170 (adapted to global scripts). Vendored under `web/vendor/three/`. Transform semantics (centering, world-axis rotation) preserved exactly. `get_model_info` returns `{ pos: [x,y,z] }` array for `inspect_ui.py` compatibility.
 - **2026-03** – Fixed viewer assembly: `_preview_position_offsets` set to assembled bbox centers from v5.1 STLs; removed legacy 35° Z from tip/tipcover `_preview_rotate_offsets`. Created `docs/VIEWER_ASSEMBLY.md` documenting stl_viewer behaviour, coordinate system, and OpenSCAD ARM64 workaround. Added `.cursor/rules/fix-preview-positions.mdc`.
 - **2026-03** – Four plug instances in preview: one plug STL shown four times (plug_0..plug_3) with per-instance position/rotation so plugs appear in tip holes; linkage preview position override so it displays behind the finger/socket. `/api/parts` expands plug and returns `stl_part` for URL lookup; frontend iterates part list and uses `stl_part` when resolving STL URLs.
 - **2026-03** – Preview rotate offsets and preview config: STLs stay print-oriented; viewer applies preview_rotate_offsets, preview_position, and explode_offset from `/api/parts` so preview looks like an assembled finger and explode works without duplicating STLs. Stand hidden in preview by default. Cursor rule to keep docs updated.
 - **2026-03** – Initial product/design doc; viewer error surfacing; parameter descriptions; part visibility checkboxes; Standard/Advanced layout; PRD + design decisions captured.
+
+---
+
+## Related documentation
+
+- [Architecture](ARCHITECTURE.md) — system pipeline, class hierarchy, build flow, server, frontend
+- [Parts Anatomy](PARTS_ANATOMY.md) — physical design of each part, mechanical connections, materials, known TODOs
+- [CSG Patterns](CSG_PATTERNS.md) — SolidPython2 idioms, custom primitives, modeling patterns
+- [Parameters](PARAMETERS.md) — parameter definitions, preview vs print orientation
+- [Viewer Assembly](VIEWER_ASSEMBLY.md) — how the web viewer positions and rotates parts
+
+## Cursor rules index
+
+| Rule | Scope | Purpose |
+|------|-------|---------|
+| `parametric-consistency.mdc` | `finger_params.py`, `finger.py`, `finger_base.py` | Cascade checking, fewer-params principle |
+| `csg-modeling-guide.mdc` | `finger.py`, `finger_base.py` | Primitive reference, geometry rules |
+| `part-physical-context.mdc` | `finger.py` | Read physical context before modifying geometry |
+| `coordinate-systems.mdc` | `finger_params.py`, `finger.py`, `viewer.js`, `stl_viewer.js` | Three coordinate spaces |
+| `prop-system.mdc` | `Params.py`, `finger_params.py` | How the Prop descriptor works |
+| `fix-preview-positions.mdc` | `finger_params.py`, `server.py`, `index.html` | Empirical fix for viewer preview positions |
+| `web-ui-inspection.mdc` | `web/**`, `finger_params.py`, `scripts/*` | Never trust a running server; screenshot verification |
+| `scad-preview.mdc` | `finger.py`, `server.py`, `scripts/*` | SCAD preview PNG verification |
+| `testing-and-make.mdc` | `scripts/*`, `Makefile`, `tests/**` | Use project make targets |
+| `keep-docs-updated.mdc` | `danger/**`, `web/**`, `scripts/*`, `Makefile` | Keep docs updated on changes |
+| `archive-execution-plans.mdc` | Always | Archive plans to `.cursor/plans/` |

@@ -1,0 +1,43 @@
+---
+description: Terraform conventions for the infra/ directory
+globs: infra/**
+alwaysApply: false
+---
+
+# Terraform Conventions
+
+## File organization
+- `main.tf` — provider, backend config
+- `variables.tf` — all input variables
+- `outputs.tf` — all outputs
+- `vpc.tf`, `ecr.tf`, `ec2.tf`, `s3.tf`, `lambda.tf`, `dns.tf` — resource-specific files
+- `github_oidc.tf` — CI/CD OIDC config
+- `environments/*.tfvars` — environment-specific overrides
+- `.build/` — generated artifacts (Lambda zip, layer zip) — gitignored
+
+## Workflow
+1. `terraform plan -var-file=environments/dev.tfvars -out=tfplan`
+2. Review the plan output
+3. `terraform apply tfplan`
+4. Never `terraform apply` without a saved plan
+5. Never edit state manually (`terraform state` commands only as last resort)
+
+## Naming
+- Resources: `${var.project}-{purpose}` (e.g., `danger-finger-ec2-role`)
+- Use `name_prefix` for security groups to avoid naming conflicts
+
+## Tags
+All resources get default tags from the provider block:
+- `Project = "danger-finger"`
+- `Environment = var.environment`
+- `ManagedBy = "terraform"`
+
+## State
+- Backend: S3 bucket `danger-finger-tfstate` with DynamoDB lock table `danger-finger-tflock`
+- State is encrypted at rest
+- Lock prevents concurrent modifications
+
+## Conditional resources
+- DNS/TLS: only when `domain_name` is set
+- HTTPS/ACM: only when `enable_https = true`
+- GitHub OIDC: only when `github_repo` is set

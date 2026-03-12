@@ -1,0 +1,50 @@
+---
+description: Three coordinate systems in the project — understand which one you're working in before making spatial changes
+globs: danger/finger_params.py, danger/finger.py, web/viewer.js, web/stl_viewer.js
+alwaysApply: false
+---
+
+# Coordinate systems
+
+There are three distinct coordinate contexts. Confusing them causes incorrect part positioning.
+
+## 1. SCAD/build space (natural assembled orientation)
+
+Used by: `part_*()` methods in `finger.py`, `_translate_offsets["all"]`
+
+- **Y=0** is the proximal hinge center
+- **+Y** toward tip (distal), **-Y** toward hand (proximal)
+- **+X** is dorsal (top/back of finger)
+- **+Z** is lateral (to the side)
+- `part_tip()` applies `translate((0, intermediate_length, 0))` — baked into geometry
+- `_translate_offsets["all"]` positions parts for the composite view (mostly zeros)
+
+## 2. Print-oriented STL space
+
+Used by: STL files written to disk, `_rotate_offsets`
+
+- Each part is rotated from natural orientation for optimal FDM printing
+- Example: socket `(-90, 0, 0)` = rotated so the opening faces up
+- **Do not use print-space coordinates for viewer positioning**
+
+## 3. Viewer space (web browser)
+
+Used by: `viewer.js`, `stl_viewer.js`, `_preview_position_offsets`, `_preview_rotate_offsets`
+
+- `stl_viewer.js` **centers** each mesh by bbox → SCAD coordinates are discarded
+- `_preview_rotate_offsets` applies the inverse of print rotation (approximately)
+- `_preview_position_offsets` are **assembled-space bounding box centers** — NOT SCAD translate offsets
+- Viewer Y axis matches SCAD Y axis after rotation inversion
+- Positions are in mm, relative to viewer world origin
+
+## Key rules
+
+1. **Never use `_translate_offsets["all"]` values as preview positions** — they are SCAD assembly offsets, not viewer bbox centers.
+2. **Never use print-oriented STL coordinates for anything** — they are only for FDM slicing.
+3. **`compute_preview_positions()` estimates viewer-space bbox centers parametrically** — use it for dynamic positioning, not hardcoded offsets.
+4. **When positions look wrong**: measure actual STL bounding boxes empirically. See `.cursor/rules/fix-preview-positions.mdc`.
+
+## See also
+
+- `docs/VIEWER_ASSEMBLY.md` — full transform pipeline documentation
+- `docs/PARTS_ANATOMY.md` — natural coordinate system per part

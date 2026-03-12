@@ -1,0 +1,138 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: danger-finger
+  PROJECT: danger-finger
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          python -m playwright install chromium
+
+      - name: Build Docker image
+        run: make build
+
+      - name: Run e2e tests
+        run: make kbr-test
+
+  deploy:
+    name: Deploy
+    needs: test
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/danger-finger-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          make build
+          docker tag $(make -s echo-tag) $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag $(make -s echo-tag) $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.5.7'
+
+      - name: Terraform Init
+        working-directory: infra
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: infra
+        run: terraform plan -var-file=environments/${{ github.event.inputs.environment || 'dev' }}.tfvars -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: infra
+        run: terraform apply -auto-approve tfplan
+
+      - name: Update EC2 container
+        run: |
+          INSTANCE_ID=$(cd infra && terraform output -raw ec2_instance_id)
+          ECR_URI=${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[\"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.ecr-login.outputs.registry }} && docker pull $ECR_URI && docker stop ${{ env.PROJECT }} || true && docker rm ${{ env.PROJECT }} || true && docker run -d --restart=unless-stopped --name ${{ env.PROJECT }} -p 8081:8081 -e S3_BUCKET=${{ env.PROJECT }} -e AWS_DEFAULT_REGION=${{ env.AWS_REGION }} $ECR_URI\"]" \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Update Lambda
+        working-directory: infra
+        run: terraform apply -auto-approve -target=aws_lambda_function.s3_read -var-file=environments/${{ github.event.inputs.environment || 'dev' }}.tfvars
+
+  verify:
+    name: Verify
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/danger-finger-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.5.7'
+
+      - name: Terraform Init
+        working-directory: infra
+        run: terraform init
+
+      - name: Wait for EC2 to be ready
+        run: sleep 60
+
+      - name: Run smoke tests
+        run: |
+          EC2_URL=$(cd infra && terraform output -raw app_url)
+          API_URL=$(cd infra && terraform output -raw api_gateway_url)
+          ./scripts/verify_aws_deploy.sh "$EC2_URL" "$API_URL"

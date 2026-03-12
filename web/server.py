@@ -50,9 +50,12 @@ class IndexHandler(tornado.web.RequestHandler):
         html_path = os.path.join(os.path.dirname(__file__), "index.html")
         with open(html_path, "r", encoding="utf-8") as f:
             html = f.read()
-        # Stamp every local ?v=... URL with the current build ID so browsers always fetch fresh JS/CSS
         import re
         html = re.sub(r'\?v=[^"\']*', f'?v={_BUILD_ID}', html)
+        read_url = os.environ.get("READ_URL", "")
+        if read_url:
+            inject = f'<script>window.__READ_URL__="{read_url}";</script>'
+            html = html.replace("</head>", f"{inject}</head>", 1)
         self.set_header("Content-Type", "text/html; charset=utf-8")
         self.set_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.set_header("Pragma", "no-cache")
@@ -485,8 +488,12 @@ class FingerServer(Borg):
         Borg.__init__(self)
 
     def setup(self):
-        '''setup the server - do this once to get a session'''
-        self.s3session = boto3.Session(aws_access_key_id=self.aws_id, aws_secret_access_key=self.aws_key)
+        '''Setup S3 session. Uses explicit keys if provided (local dev), otherwise falls back
+        to the default credential chain (IAM instance profile on EC2, env vars, ~/.aws/credentials).'''
+        if self.aws_id and self.aws_key:
+            self.s3session = boto3.Session(aws_access_key_id=self.aws_id, aws_secret_access_key=self.aws_key)
+        else:
+            self.s3session = boto3.Session()
         self.s3 = self.s3session.resource('s3')
         self.bucket = self.s3.Bucket(self.s3_bucket)
 

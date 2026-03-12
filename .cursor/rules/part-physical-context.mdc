@@ -1,0 +1,28 @@
+---
+description: Read physical context before modifying part geometry — prevents breaking fit, clearance, or mechanical function
+globs: danger/finger.py
+alwaysApply: false
+---
+
+# Physical context for part modifications
+
+Before modifying any `part_*` method in `finger.py`, read the relevant section of `docs/PARTS_ANATOMY.md`. The code is building physical objects that must:
+
+1. **Fit together**: Hinges must rotate freely. Socket interface must friction-fit. Tipcover must snap on.
+2. **Route tendons**: Fishing line passes through tunnels in base, middle, and tip. Changing tunnel geometry can block the tendon path.
+3. **Clear during motion**: The finger curls ~90 degrees at each hinge. "Fist trim" cuts ensure parts don't collide when fully flexed.
+4. **Print reliably**: Parts have specific print orientations (`_rotate_offsets`). Geometry that creates overhangs or thin walls in the print orientation will fail.
+
+## Common mistake patterns
+
+- **Cosmetic-looking changes that affect fit**: The front_cut, fist_trim, and bottom_trim are NOT cosmetic — they provide range-of-motion clearance.
+- **Changing clearance values**: `knuckle_clearance`, `knuckle_side_clearance`, `socket_interface_clearance`, `tip_interface_clearance` are tuned for specific print tolerances. Even 0.1mm changes can make parts too tight or too loose.
+- **Modifying socket interface geometry**: The base (inner) and socket (outer) interfaces must mate precisely. Changes to one MUST be mirrored in the other.
+- **Tunnel dimensions**: The tendon must slide freely. Reducing tunnel radius or changing slant angles can bind the fishing line.
+
+## Physical materials
+
+| Part | Material | Why |
+|------|----------|-----|
+| Socket, Tipcover, Bumper | Flexible (TPU/NinjaFlex) | Must flex for comfort, grip, snap-fit |
+| Base, Middle, Tip, Linkage, Plug, Peg, Pins, Stand | Rigid (PLA/PETG) | Structural strength, hinge precision |

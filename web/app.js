@@ -3,8 +3,7 @@
 
 (function () {
     var baseurl = "";
-    var readUrl = "";
-    //readUrl = "https://your-api-gw-id.execute-api.us-east-1.amazonaws.com/";
+    var readUrl = window.__READ_URL__ || "";
     var username = "nick";
     var cachedBundleBlob = null;
     var cachedBundleCfghash = null;

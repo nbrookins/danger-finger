@@ -9,7 +9,10 @@ alwaysApply: false
 When making changes that affect architecture, design decisions, or user-facing behaviour, update the relevant documentation:
 
 - **docs/PRODUCT.md** — product requirements, design decisions, changelog
+- **docs/ARCHITECTURE.md** — system pipeline, class hierarchy, build flow, server, frontend
+- **docs/PARTS_ANATOMY.md** — physical design of each part, mechanical connections, materials, TODOs
+- **docs/CSG_PATTERNS.md** — SolidPython2 idioms, custom primitives, modeling patterns
 - **docs/VIEWER_ASSEMBLY.md** — stl_viewer.js behaviour, coordinate system, preview positions
-- **docs/PARAMETERS.md** — parameter definitions
+- **docs/PARAMETERS.md** — parameter definitions, preview vs print orientation
 
 When adding new `.cursor/rules/` files, mention them in the relevant docs so future agents know they exist.

@@ -1,0 +1,44 @@
+---
+description: Rules for maintaining parametric consistency when changing parameters or geometry
+globs: danger/finger_params.py, danger/finger.py, danger/finger_base.py
+alwaysApply: false
+---
+
+# Parametric consistency
+
+## Before changing any parameter or geometry
+
+1. **Read** `docs/PARTS_ANATOMY.md` for the affected part — understand what physical feature you're changing and what adjacent parts interface with it.
+2. **Trace all consumers** of the parameter you're modifying: search for the parameter name in `finger.py`, `finger_params.py`, `finger_base.py`, and `server.py`. Check computed properties that reference it (properties ending with `_`).
+3. **Run `finger.validate_params()`** before and after your change to check cross-parameter constraints.
+4. **Test at boundary values**: build with the parameter at min, default, and max to verify geometry doesn't degenerate.
+
+## The "fewer parameters" principle
+
+The goal is to REDUCE the number of values a user must configure, not increase them. When you encounter a magic number:
+
+- **Preferred**: Derive it from existing parameters (e.g., `peg_h = self.intermediate_distal_height + self.distal_flange_height` instead of `peg_support_h = 10`)
+- **Acceptable**: Extract it as a class constant with a TODO noting the derivation path (e.g., `SCALLOP_HEIGHT = 9  # TODO: derive from socket_bottom_cut`)
+- **Not acceptable**: Promote it to a new `Prop` unless the user genuinely needs to control it independently
+
+A constant that becomes `new_param + smaller_constant` is NOT a derivation — you've just shifted the problem. True derivation means the value is computed from params the user already controls.
+
+## Cascade effects to check
+
+When changing a dimension parameter, verify these cascading relationships:
+
+| Changed param | Check these |
+|---------------|-------------|
+| `intermediate_length` | `compute_preview_positions()`, tip Y-offset, middle strut length, bumper length |
+| `knuckle_*_width` | hinge clearances, inner/outer width, washer fit, plug positions, bridge tunnel width |
+| `knuckle_*_thickness` | bridge height, translate_z in make_bridge, plug Z-offsets |
+| `tip_circumference` | `tip_radius` (derived), tipcover shell, tip_interface_post_radius_ (can go negative!) |
+| `socket_interface_*` | base-socket mate fit, socket_interface clearance, ridge geometry |
+| `tunnel_*` | all bridge/tunnel methods, tendon routing clearance |
+
+## After making changes
+
+1. Build: `DangerFinger().build()` at STUPIDFAST quality for iteration
+2. Validate: `finger.validate_params()` should return empty list
+3. Regression: `make regression-check` (if baseline exists)
+4. Visual: `make verify-web-ui` for assembled preview

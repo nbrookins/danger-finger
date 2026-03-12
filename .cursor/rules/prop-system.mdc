@@ -1,0 +1,62 @@
+---
+description: How the Prop descriptor and parameter system works — read before adding or modifying parameters
+globs: danger/Params.py, danger/finger_params.py
+alwaysApply: false
+---
+
+# The Prop descriptor system
+
+## How Prop works
+
+`Prop` is a Python descriptor in `Params.py` that replaces `@property` for configurable parameters:
+
+```python
+intermediate_length = Prop(val=24, minv=8, maxv=30, custom=CustomType.SLIDER,
+                           name="intermediate_length",
+                           doc='''length of the intermediate finger segment''')
+```
+
+- **`__set__`**: Clamps value to `[minv, maxv]`, stores as `obj.__paramname`
+- **`__get__`**: Returns instance value, or falls back to default (`val`)
+- **Class-level access** (`DangerFingerParams.intermediate_length`) returns the `Prop` object itself — used for introspection
+- **`setter=` hook**: Custom conversion (e.g., string → `BumperStyle` enum)
+- **`adv=True`**: Marks as advanced (hidden by default in UI)
+- **`hidden=True`**: Excluded from API/UI entirely
+
+## Adding a new parameter
+
+1. Define the `Prop` with appropriate `val`, `minv`, `maxv`, `doc`, `adv`
+2. The default (`val`) MUST produce a working finger — test with `DangerFinger().build()`
+3. Run `validate_params()` to ensure no constraint violations
+4. If the param affects preview positions, update `compute_preview_positions()`
+5. If it's user-facing (not hidden), ensure the `doc` string is clear and actionable
+6. Don't add a new Prop for a value that can be derived from existing params
+
+## How params flow to the frontend
+
+1. Server calls `DangerFinger().get_params(adv=False, allv=True, extended=True)`
+2. This iterates `inspect.getmembers(DangerFingerParams)` looking for `Prop` instances
+3. Returns dict of `{name: {Value, Default, Minimum, Maximum, Advanced, Documentation, Hidden, EnumOptions}}`
+4. Frontend `params.js` renders this as a table with inputs
+5. User changes trigger `Params.onChange()` → `Api.requestPreview(getCurrentParams())`
+6. Server `floatify()` converts string values to float, `Params.apply_config()` sets them on a new `DangerFinger` instance
+
+## Computed properties (the `_` convention)
+
+Properties ending with `_` are derived from user-facing params:
+
+```python
+tip_radius = property(lambda self: self.tip_circumference / math.pi / 2)
+intermediate_width_ = property(lambda self: orient_pair(
+    self.intermediate_distal_width_, self.intermediate_proximal_width_))
+```
+
+These are read-only and NOT `Prop` instances. They don't appear in the API or UI. They are used throughout `finger.py` for geometry calculations.
+
+## Config hashing
+
+`package_config_json()` in `server.py`:
+1. Removes params that equal their defaults (via `remove_defaults()`)
+2. Sorts keys alphabetically
+3. SHA-256 hashes the JSON → `cfghash`
+4. Identical configs always produce the same hash (deduplication)

@@ -1,0 +1,36 @@
+---
+description: AWS deployment conventions and safety rules
+globs: infra/**, scripts/aws_*, scripts/benchmark_*, scripts/verify_aws*, Makefile, .github/workflows/deploy.yml
+alwaysApply: false
+---
+
+# AWS Deployment Rules
+
+## Credentials
+- NEVER commit AWS credentials, `.tfvars` with secrets, or `.env` files with keys
+- EC2 uses IAM instance profiles — no static keys in container env vars
+- Lambda uses an execution role with least-privilege S3 read-only
+- GitHub Actions uses OIDC — no static keys in CI
+
+## Deployment workflow
+- Run `make test-web` locally before any deploy
+- Use `make deploy` for full pipeline (build → push → infra → verify)
+- Use `make deploy-infra` for infrastructure-only changes
+- Use `make deploy-ec2` for container-only updates (no infra change)
+- Use `make deploy-lambda` for Lambda code updates
+- NEVER make Console changes — all infra through Terraform
+
+## Post-deploy
+- Always run `make verify-aws` (or `make test-deploy`) after deployment
+- Check `make audit-aws` periodically to ensure no resource drift
+
+## Infrastructure
+- All resources in `infra/` Terraform configs
+- Tag everything: `Project=danger-finger`, `Environment={dev|prod}`, `ManagedBy=terraform`
+- ECR lifecycle keeps last 10 images
+- Terraform state in S3 with DynamoDB locking
+
+## Cost awareness
+- EC2 t3a.medium is the default (~$27/mo)
+- Consider scheduling stop/start for dev if not used 24/7
+- Run `make audit-aws` to check for unexpected cost increases

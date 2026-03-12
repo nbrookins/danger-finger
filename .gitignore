@@ -11,3 +11,12 @@ output/*
 .pw-browsers/
 ui-inspect.txt
 viewer-screenshot.png
+
+# Terraform
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/tfplan
+infra/.build/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl

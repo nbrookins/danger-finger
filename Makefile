@@ -29,6 +29,9 @@ endif
 
 DOCKER_TAG ?= $(DOCKER_REGISTRY)$(project):$(version)-$(BUILD_NUMBER)
 
+echo-tag:
+	@echo $(DOCKER_TAG)
+
 build:
 	make build_internal
 	make list
@@ -109,6 +112,48 @@ inspect-ui:
 # Requires: make build (for Docker), pip install -r requirements-dev.txt, python -m playwright install chromium
 verify-web-ui:
 	@export DOCKER_TAG="$(DOCKER_TAG)" && ./scripts/verify_web_ui.sh
+
+# --- AWS deployment targets ---
+
+AWS_REGION ?= us-east-1
+AWS_ACCOUNT_ID ?= $(shell aws sts get-caller-identity --query Account --output text 2>/dev/null)
+ECR_REPO = $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(project)
+
+ecr-login:
+	aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
+
+push-ecr: ecr-login
+	docker tag $(DOCKER_TAG) $(ECR_REPO):$(version)-$(BUILD_NUMBER)
+	docker tag $(DOCKER_TAG) $(ECR_REPO):latest
+	docker push $(ECR_REPO):$(version)-$(BUILD_NUMBER)
+	docker push $(ECR_REPO):latest
+
+deploy-lambda:
+	cd infra && terraform apply -auto-approve -target=aws_lambda_function.s3_read -target=aws_lambda_layer_version.brotli -var-file=environments/$(environ).tfvars
+
+deploy-ec2:
+	@echo "Updating EC2 container via SSM..."
+	@INSTANCE_ID=$$(cd infra && terraform output -raw ec2_instance_id) && \
+	aws ssm send-command --instance-ids $$INSTANCE_ID --document-name "AWS-RunShellScript" \
+	  --parameters 'commands=["docker pull $(ECR_REPO):latest && docker stop $(project) && docker rm $(project) && docker run -d --restart=unless-stopped --name $(project) -p 8081:8081 -e S3_BUCKET=$(project) -e AWS_DEFAULT_REGION=$(AWS_REGION) $(ECR_REPO):latest"]' \
+	  --region $(AWS_REGION)
+
+deploy-infra:
+	cd infra && terraform plan -var-file=environments/$(environ).tfvars -out=tfplan && terraform apply tfplan
+
+deploy: build push-ecr deploy-infra
+	@echo "Full deployment complete."
+
+test-deploy:
+	@./scripts/verify_aws_deploy.sh
+
+verify-aws: test-deploy
+
+audit-aws:
+	@$(or $(PYTHON),python3) scripts/aws_audit.py
+
+benchmark-ec2:
+	@$(or $(PYTHON),python3) scripts/benchmark_ec2.py
 
 kbrs:
 	make killall
