@@ -32,3 +32,13 @@ output "app_url" {
   description = "Application URL"
   value       = var.domain_name != "" ? "https://${var.domain_name}" : "http://${aws_instance.app.public_ip}:8081"
 }
+
+output "static_site_url" {
+  description = "S3 static website URL (always-on frontend)"
+  value       = aws_s3_bucket_website_configuration.static.website_endpoint
+}
+
+output "static_bucket" {
+  description = "S3 static website bucket name"
+  value       = aws_s3_bucket.static.id
+}

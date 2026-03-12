@@ -197,9 +197,11 @@ render/{cfghash}/bundle.zip — ZIP containing STLs, SCADs, config.json, LICENSE
 Four vanilla JS modules loaded as global IIFEs (no bundler):
 
 ### `api.js` — HTTP client
-- XHR-based, dual base URLs (`baseurl` for writes, `readUrl` for Lambda reads)
-- `requestPreview()` debounced at 500ms
+- XHR-based, three base URLs: `baseurl` (default/relative), `readUrl` (Lambda reads), `renderUrl` (EC2 render API)
+- `requestPreview()` debounced at 500ms, uses `renderUrl` with graceful offline detection
+- `saveConfig()`/`deleteConfig()` also route through `renderUrl`
 - `fetchBundleZip()` uses `arraybuffer` responseType for JSZip extraction
+- Network errors (status 0) on render endpoints show "server offline" message
 
 ### `params.js` — Parameter form
 - Renders parameter table from `/params/all` metadata

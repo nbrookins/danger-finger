@@ -18,6 +18,7 @@ alwaysApply: false
 - Use `make deploy-infra` for infrastructure-only changes
 - Use `make deploy-ec2` for container-only updates (no infra change)
 - Use `make deploy-lambda` for Lambda code updates
+- Use `make deploy-static` for frontend-only updates (JS, CSS, static JSON)
 - NEVER make Console changes — all infra through Terraform
 
 ## Post-deploy

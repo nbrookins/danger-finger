@@ -4,6 +4,7 @@
 (function () {
     var baseurl = "";
     var readUrl = window.__READ_URL__ || "";
+    var renderUrl = window.__RENDER_URL__ || "";
     var cachedBundleBlob = null;
     var cachedBundleCfghash = null;
 
@@ -362,6 +363,7 @@
         Api.init({
             baseurl: baseurl,
             readUrl: readUrl,
+            renderUrl: renderUrl,
             onPartsLoaded: onPartsLoaded,
             onParamsLoaded: onParamsLoaded,
             onProfilesLoaded: onProfilesLoaded,

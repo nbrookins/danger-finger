@@ -155,6 +155,27 @@ audit-aws:
 benchmark-ec2:
 	@$(or $(PYTHON),python3) scripts/benchmark_ec2.py
 
+STATIC_BUCKET ?= danger-finger-static
+READ_URL ?= $(shell cd infra && terraform output -raw api_gateway_url 2>/dev/null)
+RENDER_URL ?= $(shell cd infra && terraform output -raw app_url 2>/dev/null)/
+
+generate-static:
+	@$(or $(PYTHON),python3) scripts/generate_static.py
+
+deploy-static: generate-static
+	@echo "Deploying static site to s3://$(STATIC_BUCKET)..."
+	@cp web/index.html web/static/index.html
+	@sed -i.bak 's|</head>|<script>window.__READ_URL__="$(READ_URL)";window.__RENDER_URL__="$(RENDER_URL)";</script></head>|' web/static/index.html && rm -f web/static/index.html.bak
+	aws s3 sync web/ s3://$(STATIC_BUCKET)/ \
+		--exclude "*.py" --exclude "__pycache__/*" --exclude "static/*" \
+		--delete --cache-control "max-age=300"
+	aws s3 sync web/static/ s3://$(STATIC_BUCKET)/ --cache-control "max-age=60"
+	aws s3 cp web/static/api/parts.json s3://$(STATIC_BUCKET)/api/parts \
+		--content-type "application/json" --cache-control "max-age=60"
+	aws s3 cp web/static/params/all.json s3://$(STATIC_BUCKET)/params/all \
+		--content-type "application/json" --cache-control "max-age=60"
+	@echo "Static site deployed: http://$(STATIC_BUCKET).s3-website-us-east-1.amazonaws.com"
+
 kbrs:
 	make killall
 	make build

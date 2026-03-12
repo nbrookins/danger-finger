@@ -3,26 +3,40 @@
 ## Architecture
 
 ```
-┌──────────────┐       ┌──────────────────┐       ┌─────────────┐
-│   Browser    │──────▶│ EC2 (t3a.medium)  │──────▶│ S3 (writes) │
-│              │       │ Docker + OpenSCAD  │       │             │
-│              │       │ Tornado :8081      │       │             │
-└──────────────┘       └──────────────────┘       └──────┬──────┘
-       │                                                  │
-       │  ┌─────────────────────┐                         │
-       └──│ API Gateway (HTTP)  │──▶ Lambda ─────────────▶│ (reads)
-          └─────────────────────┘                         │
-                                                          │
-          ┌──────────────┐                                │
-          │ ECR (images) │◀── Docker push ────────────────┘
+                              ┌──────────────────────────────┐
+┌──────────────┐  HTML/JS/CSS │ S3 static site (always on)   │
+│   Browser    │◀────────────▶│ danger-finger-static          │
+│              │              └──────────────────────────────┘
+│              │
+│              │  render POST  ┌──────────────────┐       ┌─────────────┐
+│              │──────────────▶│ EC2 (t3a.medium)  │──────▶│ S3 (writes) │
+│              │  (can fail)   │ Docker + OpenSCAD  │       │             │
+│              │               │ Tornado :8081      │       │             │
+└──────────────┘               └──────────────────┘       └──────┬──────┘
+       │                                                          │
+       │  configs/profiles  ┌─────────────────────┐               │
+       └───────────────────▶│ API Gateway (HTTP)  │──▶ Lambda ───▶│ (reads)
+                            └─────────────────────┘               │
+                                                                  │
+          ┌──────────────┐                                        │
+          │ ECR (images) │◀── Docker push ────────────────────────┘
           └──────────────┘
 ```
 
-- **EC2**: Runs the Docker container with Tornado web server + OpenSCAD renderer. Handles all writes to S3 (configs, profiles, rendered bundles). Serves the web UI.
-- **Lambda + API Gateway**: Read-only serverless API for fetching configs, profiles, and bundle.zip from S3. Decouples reads from the compute-heavy render server.
-- **S3 (`danger-finger`)**: Persistent storage for all project data.
+- **S3 static site (`danger-finger-static`)**: Always-on frontend. Serves HTML, JS, CSS, and baked-in JSON for parts/params. If EC2 is down, the UI still loads and all read features work.
+- **EC2**: Runs the Docker container with Tornado web server + OpenSCAD renderer. Handles render API calls (POST /api/preview, /api/render) and writes to S3.
+- **Lambda + API Gateway**: Read-only serverless API for fetching configs, profiles, and bundle.zip from S3. Always available.
+- **S3 (`danger-finger`)**: Persistent storage for all project data (configs, profiles, rendered bundles).
 - **ECR**: Docker image registry. Lifecycle policy keeps last 10 images.
 - **Route53 + ACM**: Optional custom domain and HTTPS (not enabled by default).
+
+### Static site URL
+
+```
+http://danger-finger-static.s3-website-us-east-1.amazonaws.com
+```
+
+The static site is the primary frontend. It loads without EC2. Preview/render calls go to EC2 and degrade gracefully with a "server offline" message when EC2 is down.
 
 ## Prerequisites
 
@@ -106,11 +120,26 @@ infra/
 | Resource | Monthly cost |
 |----------|-------------|
 | EC2 t3a.medium (24/7) | ~$27 |
-| S3 (minimal usage) | <$1 |
+| S3 data bucket (minimal usage) | <$1 |
+| S3 static site bucket | <$0.01 |
 | Lambda (low volume) | <$1 |
 | API Gateway | <$1 |
 | Route53 zone (if enabled) | $0.50 |
 | **Total** | **~$30** |
+
+## Static Site Deployment
+
+The frontend is served from S3 static website hosting. This provides always-on availability independent of EC2.
+
+```bash
+# Generate static JSON + deploy to S3
+make deploy-static
+
+# Specify custom URLs (otherwise reads from Terraform outputs)
+make deploy-static READ_URL=https://YOUR_API_GW.amazonaws.com RENDER_URL=http://EC2_IP:8081/
+```
+
+When EC2 is down, the static site still loads and all read features (configs, profiles, parameter controls) work via Lambda. Only preview/render shows "server offline".
 
 ## Benchmarking
 

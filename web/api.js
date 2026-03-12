@@ -4,6 +4,7 @@
 var Api = (function () {
     var _baseurl = "";
     var _readUrl = "";
+    var _renderUrl = "";
     var _authToken = null;
     var _onPartsLoaded = null;
     var _onParamsLoaded = null;
@@ -12,10 +13,12 @@ var Api = (function () {
     var _onPreviewError = null;
     var _previewDebounceTimer = null;
     var PREVIEW_DEBOUNCE_MS = 500;
+    var RENDER_OFFLINE_MSG = "Render server is offline. You can still browse configurations, but live preview is unavailable.";
 
     function init(opts) {
         _baseurl = opts.baseurl || "";
         _readUrl = opts.readUrl || "";
+        _renderUrl = opts.renderUrl || "";
         _onPartsLoaded = opts.onPartsLoaded || null;
         _onParamsLoaded = opts.onParamsLoaded || null;
         _onProfilesLoaded = opts.onProfilesLoaded || null;
@@ -27,18 +30,22 @@ var Api = (function () {
     function getAuthToken() { return _authToken; }
 
     function _readBase() { return _readUrl || _baseurl; }
+    function _renderBase() { return _renderUrl || _baseurl; }
 
-    function _xhr(method, url, body, onSuccess, onError, useReadUrl) {
+    function _xhr(method, url, body, onSuccess, onError, urlMode) {
         var xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function () {
             if (this.readyState !== 4) return;
             if (this.status >= 200 && this.status < 300) {
                 onSuccess && onSuccess(this.responseText, this.status);
+            } else if (this.status === 0) {
+                onError && onError("", 0);
             } else {
                 onError && onError(this.responseText, this.status);
             }
         };
-        var base = useReadUrl ? _readBase() : _baseurl;
+        xhttp.onerror = function () { onError && onError("", 0); };
+        var base = urlMode === "read" ? _readBase() : urlMode === "render" ? _renderBase() : _baseurl;
         xhttp.open(method, base + url, true);
         xhttp.setRequestHeader("Content-Type", "application/json");
         if (_authToken) {
@@ -109,7 +116,7 @@ var Api = (function () {
             try { _onProfilesLoaded && _onProfilesLoaded(JSON.parse(text)); } catch (e) { console.error("fetchProfiles parse error", e); }
         }, function (text, status) {
             console.error("fetchProfiles failed", status, text);
-        }, true);
+        }, "read");
     }
 
     function fetchConfig(cfghash, onSuccess) {
@@ -117,7 +124,7 @@ var Api = (function () {
             try { onSuccess && onSuccess(JSON.parse(text)); } catch (e) { console.error("fetchConfig parse error", e); }
         }, function (text, status) {
             console.error("fetchConfig failed", status, text);
-        }, true);
+        }, "read");
     }
 
     function fetchBundleZip(cfghash, onSuccess, onError) {
@@ -157,10 +164,14 @@ var Api = (function () {
                     _onPreviewError && _onPreviewError("Preview parse error.", true);
                 }
             }, function (text, status) {
+                if (status === 0) {
+                    _onPreviewError && _onPreviewError(RENDER_OFFLINE_MSG, true);
+                    return;
+                }
                 var err = "Preview failed (" + status + ")";
                 try { var r = JSON.parse(text); if (r.error) err = r.error; } catch (e) {}
                 _onPreviewError && _onPreviewError(err, true);
-            });
+            }, "render");
         }, PREVIEW_DEBOUNCE_MS);
     }
 
@@ -173,19 +184,25 @@ var Api = (function () {
                 onSuccess && onSuccess(res);
             },
             function (text, status) {
+                if (status === 0) { onError && onError(RENDER_OFFLINE_MSG); return; }
                 var errMsg = text || String(status);
                 try { errMsg = JSON.parse(text).error || errMsg; } catch (e) {}
                 onError && onError(errMsg);
-            }
+            },
+            "render"
         );
     }
 
-    function deleteConfig(username, cfgName, onSuccess) {
+    function deleteConfig(username, cfgName, onSuccess, onError) {
         var xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function () {
-            if (xhttp.readyState === 4 && xhttp.status === 204) onSuccess && onSuccess();
+            if (this.readyState !== 4) return;
+            if (this.status === 204) { onSuccess && onSuccess(); }
+            else if (this.status === 0) { onError && onError(RENDER_OFFLINE_MSG); }
         };
-        xhttp.open("DELETE", _baseurl + "profile/" + username + "/config/" + encodeURIComponent(cfgName), true);
+        xhttp.onerror = function () { onError && onError(RENDER_OFFLINE_MSG); };
+        xhttp.open("DELETE", _renderBase() + "profile/" + username + "/config/" + encodeURIComponent(cfgName), true);
+        if (_authToken) xhttp.setRequestHeader("Authorization", "Bearer " + _authToken);
         xhttp.send();
     }
 

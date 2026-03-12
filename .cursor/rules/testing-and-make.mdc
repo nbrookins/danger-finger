@@ -14,3 +14,5 @@ Use the existing make targets. Do not create ad-hoc test scripts.
 | API + e2e test | `make test-web` |
 | Full Docker stack | `make kbr-test` |
 | Inspect running app | `make inspect-ui` |
+| Deploy static frontend | `make deploy-static` |
+| Generate static JSON only | `make generate-static` |

@@ -12,6 +12,9 @@ output/*
 ui-inspect.txt
 viewer-screenshot.png
 
+# Generated static site files
+web/static/
+
 # Terraform
 infra/.terraform/
 infra/.terraform.lock.hcl

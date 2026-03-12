@@ -10,6 +10,7 @@ When making changes that affect architecture, design decisions, or user-facing b
 
 - **docs/PRODUCT.md** — product requirements, design decisions, changelog
 - **docs/ARCHITECTURE.md** — system pipeline, class hierarchy, build flow, server, frontend
+- **docs/DEPLOY.md** — AWS deployment guide, architecture, cost, static site deployment
 - **docs/PARTS_ANATOMY.md** — physical design of each part, mechanical connections, materials, TODOs
 - **docs/CSG_PATTERNS.md** — SolidPython2 idioms, custom primitives, modeling patterns
 - **docs/VIEWER_ASSEMBLY.md** — stl_viewer.js behaviour, coordinate system, preview positions

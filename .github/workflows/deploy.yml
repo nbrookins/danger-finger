@@ -106,6 +106,13 @@ jobs:
         working-directory: infra
         run: terraform apply -auto-approve -target=aws_lambda_function.s3_read -var-file=environments/${{ github.event.inputs.environment || 'dev' }}.tfvars
 
+      - name: Deploy static site
+        run: |
+          pip install solidpython2
+          make deploy-static \
+            READ_URL=$(cd infra && terraform output -raw api_gateway_url) \
+            RENDER_URL=$(cd infra && terraform output -raw app_url)/
+
   verify:
     name: Verify
     needs: deploy

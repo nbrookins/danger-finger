@@ -1,0 +1,34 @@
+---
+description: Static site architecture — S3 primary frontend, EC2 render-only
+alwaysApply: false
+globs: web/*.js,infra/static.tf,Makefile,scripts/generate_static.py
+---
+
+# Static site architecture
+
+The frontend is served from S3 static website hosting (`danger-finger-static` bucket), NOT from EC2. EC2 is a render-only API.
+
+## URL routing in api.js
+
+Three base URLs control where requests go:
+
+- `_baseurl` — default (empty string for relative paths on the static site, EC2 URL when served from EC2)
+- `_readUrl` — Lambda API Gateway for S3 reads (configs, profiles, bundles)
+- `_renderUrl` — EC2 for write operations (preview, render, save, delete)
+
+When adding new API calls, choose the right base:
+- **GET read data from S3** → use `"read"` mode (goes to Lambda)
+- **POST render/write operations** → use `"render"` mode (goes to EC2, may be offline)
+- **GET static assets** → default mode (relative paths, served from S3)
+
+## Deploying the static site
+
+Run `make deploy-static`. This:
+1. Runs `scripts/generate_static.py` to bake `api/parts.json` and `params/all.json`
+2. Copies `index.html` with injected `READ_URL` and `RENDER_URL`
+3. Syncs all web files to S3
+4. Uploads extensionless copies of JSON files to match live server URL patterns (`/api/parts` not `/api/parts.json`)
+
+## When adding new static-compatible endpoints
+
+If a server endpoint returns data that only changes between deploys (not per-user or per-request), add it to `scripts/generate_static.py` and upload both the `.json` and extensionless version in the Makefile `deploy-static` target.
