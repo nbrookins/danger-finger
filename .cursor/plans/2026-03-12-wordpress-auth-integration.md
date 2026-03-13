@@ -77,7 +77,7 @@ WordPress site audit and cleanup to improve security before exposing the auth en
 - EC2 Docker container restarted with the three new env vars
 
 ### JWT secret
-`cPxTbNhzKqHXJ11NTEdRvwbels8XYulCcher57ZPLPH3RBecHgaahM6GWVrIPOG` (set in both WordPress and container)
+Set in both WordPress `wp-config.php` (`JWT_AUTH_SECRET_KEY`) and the EC2 container (`jwt_secret` env var). Stored in AWS SSM Parameter Store / Secrets Manager — not committed to the repo.
 
 ### Verification
 - JWT endpoint `/wp-json/jwt-auth/v1/token` → 403 with `[jwt_auth] invalid_username` (correct)

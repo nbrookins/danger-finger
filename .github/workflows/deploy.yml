@@ -120,7 +120,7 @@ jobs:
           pip install solidpython2
           make deploy-static \
             READ_URL=$(cd infra && terraform output -raw api_gateway_url) \
-            RENDER_URL=$(cd infra && terraform output -raw app_url)/
+            RENDER_URL=$(cd infra && terraform output -raw static_site_https_url)/
 
   verify:
     name: Verify
