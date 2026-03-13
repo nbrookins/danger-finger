@@ -1,0 +1,17 @@
+---
+description: Task-domain routing map — read the right docs BEFORE making changes
+alwaysApply: true
+---
+
+# Project routing map
+
+Before making changes, read the docs for the relevant domain. Do not read `server.py` or other large source files to understand architecture — the docs already cover it.
+
+- **Visual/viewer** — read `docs/VIEWER_ASSEMBLY.md` + rule `fix-preview-positions.mdc`. Positions are assembled-space bbox centers, not SCAD offsets.
+- **CSG/geometry** — read `docs/CSG_PATTERNS.md` + `docs/PARTS_ANATOMY.md` + rule `geometry-validation.mdc`. Check topology after any rewrite.
+- **Infra/deploy** — read `docs/DEPLOY.md` + rule `terraform-conventions.mdc`. CloudFront is the primary public URL.
+- **Auth/API** — read `docs/PRODUCT.md` + rule `wordpress-integration.mdc`. Preview is unauthed; render and profile writes require JWT.
+- **Web UI** — read `docs/ARCHITECTURE.md` (server routes section) + rule `web-ui-inspection.mdc`. Preview temp STLs are local disk, not S3.
+- **Parameters** — read `docs/PARAMETERS.md` + rule `prop-system.mdc`. `Params.open_config` has no migration — renaming a Prop silently falls back to defaults.
+- **OpenSCAD native** — read rule `python-to-scad-translation.mdc`. Transform order is reversed between Python and OpenSCAD.
+- **Testing** — read rule `testing-and-make.mdc`. Use `make test-web` / `make verify-web-ui`, not ad-hoc scripts.

@@ -154,6 +154,20 @@ test-deploy:
 
 verify-aws: test-deploy
 
+check-health:
+	@APP_URL=$$(cd infra && terraform output -raw app_url 2>/dev/null || echo ""); \
+	if [ -z "$$APP_URL" ]; then \
+		echo "ERROR: terraform app_url output unavailable"; \
+		exit 1; \
+	fi; \
+	curl -sS --max-time 15 "$$APP_URL/api/parts" | $(PYTHON) -c "import json,sys; data=json.load(sys.stdin); print('status=healthy parts=%s' % len(data.get('parts', [])))"
+
+check-monitoring:
+	@aws cloudwatch describe-alarms --region $(AWS_REGION) \
+		--alarm-name-prefix "$(project)-" \
+		--query 'MetricAlarms[].{Name:AlarmName,State:StateValue,Reason:StateReason}' \
+		--output table
+
 audit-aws:
 	@$(or $(PYTHON),python3) scripts/aws_audit.py
 

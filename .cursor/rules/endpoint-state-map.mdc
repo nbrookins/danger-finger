@@ -1,0 +1,21 @@
+---
+description: Endpoint auth requirements and state locations — quick reference to avoid re-reading server.py
+alwaysApply: true
+---
+
+# Endpoint and state map
+
+## Auth requirements (web/server.py)
+
+- **Unauthed**: `GET /api/parts`, `POST /api/preview`, `GET /api/preview/temp/*`, all static files, `GET /` (index)
+- **JWT required**: `POST /api/render`, `POST /profile/{userhash}/config/{name}`, `DELETE /profile/{userhash}/config/{name}`
+- Profile ownership enforced: JWT `user_nicename` must match URL `userhash`
+
+## State locations
+
+- **S3 (durable, shared)**: `configs/{cfghash}`, `profiles/{userhash}`, `render/{cfghash}/bundle.zip`
+- **Local process (ephemeral, per-instance)**: `_position_cache` dict in server.py, JWT token cache in auth.py, preview temp STLs in `output/preview_temp/`
+
+## Multi-instance implication
+
+Preview POST writes STLs to local disk; the follow-up GET may hit a different instance and 404. Fix options: return STL bytes inline, upload to S3, or use sticky sessions.

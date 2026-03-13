@@ -57,3 +57,9 @@ variable "github_repo" {
   type        = string
   default     = ""
 }
+
+variable "alert_email" {
+  description = "Email address to subscribe to monitoring alerts (optional)"
+  type        = string
+  default     = ""
+}

@@ -159,17 +159,17 @@ openscad --enable manifold --export-format binstl -o part.stl part.scad
 
 ### Tornado handlers
 
-| Route | Handler | Method | Purpose |
-|-------|---------|--------|---------|
-| `/` | `IndexHandler` | GET | Serves `index.html` with build-ID-stamped `?v=` cache busters |
-| `/api/parts` | `ApiPartsHandler` | GET | Part list, version, build ID, preview config |
-| `/api/preview` | `ApiPreviewHandler` | POST | Sync preview: build all parts, serve temp STLs |
-| `/api/render` | `ApiRenderHandler` | POST | Sync render: build + bundle.zip to S3 |
-| `/api/preview/temp/...` | `ApiPreviewTempHandler` | GET | Serve temp STL files from disk |
-| `/params/...` | `FingerHandler` | GET | Parameter metadata (extended JSON) |
-| `/profile/.../config/...` | `FingerHandler` | POST/DELETE | Save/remove config in S3 profile |
-| `/profiles/...`, `/configs/...`, `/render/...` | `FingerHandler` | GET | S3 read fallback (primary is Lambda) |
-| `/(*)` | `StaticHandler` | GET | Static files from `web/` |
+| Route | Handler | Method | Auth | Purpose |
+|-------|---------|--------|------|---------|
+| `/` | `IndexHandler` | GET | No | Serves `index.html` with build-ID-stamped `?v=` cache busters |
+| `/api/parts` | `ApiPartsHandler` | GET | No | Part list, version, build ID, preview config |
+| `/api/preview` | `ApiPreviewHandler` | POST | No | Sync preview: build all parts, serve temp STLs |
+| `/api/render` | `ApiRenderHandler` | POST | JWT | Sync render: build + bundle.zip to S3 |
+| `/api/preview/temp/...` | `ApiPreviewTempHandler` | GET | No | Serve temp STL files from disk (local only, not S3) |
+| `/params/...` | `FingerHandler` | GET | No | Parameter metadata (extended JSON) |
+| `/profile/.../config/...` | `FingerHandler` | POST/DELETE | JWT | Save/remove config in S3 profile (ownership enforced) |
+| `/profiles/...`, `/configs/...`, `/render/...` | `FingerHandler` | GET | No | S3 read fallback (primary is Lambda) |
+| `/(*)` | `StaticHandler` | GET | No | Static files from `web/` |
 
 ### Preview vs render
 

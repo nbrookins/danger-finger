@@ -1,0 +1,25 @@
+---
+description: Post-change geometry validation checklist — topology, _fn visibility, visual verification
+globs: danger/finger.py, danger/finger_base.py, danger/finger_params.py
+alwaysApply: false
+---
+
+# Geometry validation after CSG changes
+
+## After any CSG rewrite
+
+1. Export STLs for the affected part (`make build` or render in Docker)
+2. Compare bounding box, volume, and genus against the baseline before your change
+3. Hull rewrites and `linear_extrude` substitutions can change genus (e.g. genus 0 to 1) even when the visual shape looks equivalent — always verify
+
+## `_fn` visibility rule
+
+Before reducing `_fn` on any `sphere()`, `cylinder()`, or `rotate_extrude()`:
+- Trace whether the shape is visible in the final mesh or fully consumed by a boolean cut
+- Visible surfaces (e.g. nail bed sphere in `part_tip`) must keep default or higher `_fn` — low values produce visible faceting
+- Cutting geometry and hull anchors can safely use lower `_fn`
+
+## Visual verification
+
+- Run `make verify-web-ui` and read the screenshot — exit code 0 is not proof of visual correctness
+- For geometry-only checks without the viewer, compare STL checksums or use bbox/volume from `geometry_checks.py`

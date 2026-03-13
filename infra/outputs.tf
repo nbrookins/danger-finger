@@ -47,3 +47,13 @@ output "static_bucket" {
   description = "S3 static website bucket name"
   value       = aws_s3_bucket.static.id
 }
+
+output "alerts_topic_arn" {
+  description = "SNS topic ARN for monitoring alerts"
+  value       = aws_sns_topic.alerts.arn
+}
+
+output "health_check_lambda_name" {
+  description = "Lambda function name for app health monitoring"
+  value       = aws_lambda_function.health_check.function_name
+}

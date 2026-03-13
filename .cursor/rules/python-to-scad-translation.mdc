@@ -1,0 +1,43 @@
+---
+description: Pitfalls when translating SolidPython2 code to native OpenSCAD — extracted from multiple failed attempts
+globs: "*.scad"
+alwaysApply: false
+---
+
+# Python-to-OpenSCAD translation pitfalls
+
+## Transform order is reversed
+
+SolidPython2 applies transforms left-to-right (outermost first):
+```python
+translate([0,5,0])(rotate([90,0,0])(cube(10)))
+```
+OpenSCAD applies transforms inside-out (innermost first — same result, but you write them in reversed reading order):
+```openscad
+translate([0,5,0]) rotate([90,0,0]) cube(10);
+```
+
+When translating complex chains, reverse the Python nesting order.
+
+## Formulas — verify, don't transcribe
+
+The socket ridge formula is: `dd_i = i*d + F*i*(i+1)/2`
+
+A common mistranslation is `(d + i*F) * i` — similar-looking but wrong. Always verify formulas by computing a few values in both Python and OpenSCAD and comparing.
+
+## OpenSCAD language constraints
+
+- No variable assignment inside `union(){}`, `difference(){}`, or `intersection(){}` blocks — declare variables before the CSG block
+- No list comprehensions — use `for` loops or manual expansion
+- `each` keyword needed to flatten nested lists in module calls
+
+## Interface cuts must be explicit
+
+When a Python method subtracts an interface shape (e.g. `socket_interface()`), the OpenSCAD translation must include the corresponding `difference()`. A commented-out or semicolon-only cut silently omits geometry.
+
+## Validation
+
+Always compare Python and OpenSCAD output:
+- Bounding box (center and extents)
+- Volume (within 2% tolerance for tessellation differences)
+- Visual overlay or screenshot comparison

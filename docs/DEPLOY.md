@@ -71,6 +71,8 @@ make verify-aws
 | `make deploy-lambda` | Update Lambda function code |
 | `make deploy` | Full pipeline: build → push → infra |
 | `make verify-aws` | Post-deploy smoke tests |
+| `make check-health` | Hit the render server health endpoint directly |
+| `make check-monitoring` | Show current CloudWatch alarm states |
 | `make audit-aws` | Full account audit |
 | `make benchmark-ec2` | Run EC2 instance benchmark |
 
@@ -109,6 +111,12 @@ infra/
 | Variable | Description |
 |----------|-------------|
 | `S3_BUCKET` | S3 bucket name |
+
+### Monitoring / Terraform
+
+| Variable | Description |
+|----------|-------------|
+| `alert_email` | Email address subscribed to SNS monitoring alerts (optional) |
 
 ## IAM
 
@@ -192,6 +200,36 @@ cd infra && terraform state list
 # Remove a resource from state (if manually deleted)
 terraform state rm aws_instance.app
 ```
+
+### Monitoring and auto-recovery
+
+The monitoring stack has two layers:
+
+1. **EC2 system recovery** — CloudWatch alarms on `StatusCheckFailed_System` trigger AWS auto-recovery and send an SNS alert.
+2. **Application health check** — a scheduled Lambda hits `GET /api/parts` every 5 minutes. If the request fails twice in a row, CloudWatch alarms send an alert. On each failing invocation, the Lambda attempts `docker restart danger-finger` via SSM.
+
+Setup notes:
+- Set `alert_email` in your Terraform variables before applying if you want email alerts.
+- After the first apply, AWS SNS sends a subscription-confirmation email. Alerts do not flow until you confirm it.
+- The health-check Lambda is intentionally lightweight: it probes the app endpoint without triggering a render job.
+
+Operator commands:
+
+```bash
+# Check app health directly
+make check-health
+
+# Inspect CloudWatch alarm states
+make check-monitoring
+
+# Read health-check Lambda logs
+aws --region us-east-1 logs tail /aws/lambda/danger-finger-health-check --since 1h
+```
+
+Failure behavior:
+- If the EC2 host fails AWS system checks, AWS attempts instance recovery automatically.
+- If the instance is up but Tornado/container is unhealthy, the scheduled Lambda attempts a restart through SSM.
+- If the app stays unhealthy across consecutive checks, CloudWatch triggers the SNS alert and manual intervention is needed.
 
 ## CI/CD (GitHub Actions)
 
