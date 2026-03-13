@@ -162,7 +162,8 @@ benchmark-ec2:
 
 STATIC_BUCKET ?= danger-finger-static
 READ_URL ?= $(shell cd infra && terraform output -raw api_gateway_url 2>/dev/null)
-RENDER_URL ?= $(shell cd infra && terraform output -raw app_url 2>/dev/null)/
+# Render URL uses CloudFront (same-origin) so HTTPS pages don't hit mixed-content.
+RENDER_URL ?= $(shell cd infra && terraform output -raw static_site_https_url 2>/dev/null)/
 # Use CloudFront HTTPS URL so the site can be embedded in the HTTPS WordPress page.
 STATIC_SITE_URL ?= $(shell cd infra && terraform output -raw static_site_https_url 2>/dev/null)
 

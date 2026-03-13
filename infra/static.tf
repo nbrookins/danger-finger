@@ -74,6 +74,139 @@ resource "aws_cloudfront_distribution" "static" {
     }
   }
 
+  # EC2 origin for API/render requests — CloudFront proxies HTTPS→HTTP so
+  # the browser never makes a mixed-content request.
+  # CloudFront requires a DNS name, not an IP; EC2 public DNS auto-resolves.
+  origin {
+    domain_name = aws_instance.app.public_dns
+    origin_id   = "EC2Backend"
+
+    custom_origin_config {
+      http_port              = 8081
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  # Proxy /api/* to EC2 — no caching, pass-through all methods.
+  ordered_cache_behavior {
+    path_pattern           = "/api/*"
+    target_origin_id       = "EC2Backend"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "Content-Type", "Origin"]
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+  }
+
+  # Proxy /profile/* to EC2 — save/delete configs.
+  ordered_cache_behavior {
+    path_pattern           = "/profile/*"
+    target_origin_id       = "EC2Backend"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "Content-Type", "Origin"]
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+  }
+
+  # Proxy /configs/* and /profiles/* to EC2 for read operations.
+  ordered_cache_behavior {
+    path_pattern           = "/configs/*"
+    target_origin_id       = "EC2Backend"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "Origin"]
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+  }
+
+  ordered_cache_behavior {
+    path_pattern           = "/profiles/*"
+    target_origin_id       = "EC2Backend"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "Origin"]
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+  }
+
+  # Proxy /params/* to EC2.
+  ordered_cache_behavior {
+    path_pattern           = "/params/*"
+    target_origin_id       = "EC2Backend"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 60
+    max_ttl     = 300
+  }
+
+  # Proxy /render/* to EC2.
+  ordered_cache_behavior {
+    path_pattern           = "/render/*"
+    target_origin_id       = "EC2Backend"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "Content-Type", "Origin"]
+      cookies { forward = "none" }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+  }
+
   # Short TTL for HTML so re-deploys are visible within a minute.
   ordered_cache_behavior {
     path_pattern           = "*.html"
