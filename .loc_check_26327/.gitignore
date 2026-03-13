@@ -1,0 +1,8 @@
+*.png
+objectdb
+*.pyc
+config.py
+__pycache__
+.vscode
+.DS_Store
+output/*
