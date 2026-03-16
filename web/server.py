@@ -15,6 +15,8 @@ import time
 import uuid
 import zipfile
 import concurrent
+import traceback
+from threading import Event, Lock, Thread
 from io import BytesIO
 from collections import OrderedDict
 from hashlib import sha256
@@ -72,24 +74,30 @@ class CorsMixin:
 
 
 class WpAuthMixin:
-    """Mixin for Tornado handlers that require a valid WordPress JWT.
+    """Mixin for Tornado handlers that require or optionally use a valid WordPress JWT."""
 
-    Usage in a handler method:
-        user = self.require_auth()
-        if user is None:
-            return          # 401 already written
-    """
-
-    def require_auth(self):
-        """Validate Bearer JWT. Returns user_nicename str or None (with 401 written)."""
+    def _payload_from_header(self, strict=False):
         auth_header = self.request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            self._auth_error("Bearer token required")
+            if strict:
+                self._auth_error("Bearer token required")
             return None
         token = auth_header[7:].strip()
         payload = validate_jwt(token)
-        if payload is None:
+        if payload is None and strict:
             self._auth_error("Invalid or expired token")
+        return payload
+
+    def require_auth(self):
+        """Validate Bearer JWT. Returns user_nicename str or None (with 401 written)."""
+        payload = self._payload_from_header(strict=True)
+        if payload is None:
+            return None
+        return get_nicename(payload)
+
+    def optional_auth(self):
+        payload = self._payload_from_header(strict=False)
+        if payload is None:
             return None
         return get_nicename(payload)
 
@@ -218,8 +226,10 @@ class FingerHandler(CorsMixin, WpAuthMixin, tornado.web.RequestHandler):
                 return
             pkey = "profiles/%s" % userhash
             profile = FingerServer().get(pkey, load=True)
-            if not profile: profile = {"userhash" : userhash, "createdtime" :  time.time(), "configs" : {}}
-            if "configs" not in profile: profile["configs"] = {}
+            if not profile:
+                profile = {"userhash": userhash, "createdtime": time.time(), "configs": {}}
+            if "configs" not in profile:
+                profile["configs"] = {}
 
             if self.request.path.find("/config") > -1:
                 if self.request.headers.get("Content-Type", "").startswith("application/json"):
@@ -227,38 +237,17 @@ class FingerHandler(CorsMixin, WpAuthMixin, tornado.web.RequestHandler):
                         config_dict = json.loads(self.request.body or b'{}')
                     except json.JSONDecodeError:
                         self.set_status(400)
+                        self.write(json.dumps({"error": "Invalid JSON"}))
                         return
                 else:
                     config_dict = process_post(self.request.body_arguments)
                 _config, cfgbytes, cfghash = package_config_json(config_dict)
                 print("ConfigHash: %s" % cfghash)
 
-                if not FingerServer().get("configs/%s" % cfghash, load=True):
-                    err = FingerServer().put("configs/%s" % cfghash, cfgbytes)
-                    if err is not None:
-                        self.set_status(503)
-                        return
-
-                # Run render in executor so the IO loop is not blocked (matches ApiPreviewHandler/ApiRenderHandler).
-                loop = asyncio.get_event_loop()
-                try:
-                    await asyncio.wait_for(
-                        loop.run_in_executor(
-                            getattr(self.application, "executor", None),
-                            lambda: _run_sync_preview_or_render(
-                                config_dict, preview_quality=False, store_in_s3=True
-                            ),
-                        ),
-                        timeout=PREVIEW_TIMEOUT_SEC,
-                    )
-                except asyncio.TimeoutError:
-                    self.set_status(504)
-                    self.write(json.dumps({"error": "Render timed out (max %s s)" % PREVIEW_TIMEOUT_SEC}))
-                    return
-                except Exception as e:
-                    print("Save render failed: %s" % e)
-                    self.set_status(500)
-                    self.write(json.dumps({"error": str(e)}))
+                err = _ensure_config_exists(cfghash, cfgbytes)
+                if err is not None:
+                    self.set_status(503)
+                    self.write(json.dumps({"error": str(err)}))
                     return
 
                 prev_entry = profile["configs"].get(cfg)
@@ -268,10 +257,18 @@ class FingerHandler(CorsMixin, WpAuthMixin, tornado.web.RequestHandler):
                 err = FingerServer().put("profiles/%s" % userhash, profile)
                 if err is not None:
                     self.set_status(502)
+                    self.write(json.dumps({"error": str(err)}))
                     return
+                job = _find_active_job(self.application, cfghash)
+                if job is not None:
+                    job = _promote_job_if_needed(self.application, job, auth_user)
                 print("Saved config to profile")
                 self.set_header("Content-Type", "application/json")
-                self.write(json.dumps({"cfghash": cfghash, "config_name": cfg}))
+                self.write(json.dumps({
+                    "cfghash": cfghash,
+                    "config_name": cfg,
+                    "render_status": _load_render_status(cfghash) or _status_payload(cfghash, job),
+                }))
                 return
 
         self.set_status(500)
@@ -369,9 +366,21 @@ class ApiPartsHandler(tornado.web.RequestHandler):
 
 PREVIEW_TIMEOUT_SEC = 10
 PREVIEW_TEMP_DIR = "output/preview_temp"
+JOB_PREFIX = "jobs/"
+JOB_HEARTBEAT_SEC = 5
+PRIORITY_AUTHENTICATED = 10
+PRIORITY_GUEST = 20
+QUEUE_AGING_SEC = 300
+QUEUE_AGING_STEP = 5
+GUEST_RATE_LIMIT_COUNT = 3
+GUEST_RATE_LIMIT_WINDOW_SEC = 15 * 60
+PRIORITY_PREVIEW = -10
+PREVIEW_RESULT_TTL_SEC = 600
+
+_app_ref = None
 
 
-def _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=False):
+def _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=False, heartbeat_cb=None):
     '''
     Run OpenSCAD for all parts synchronously. Returns (cfghash, config, stl_urls_or_run_id).
     For preview: writes STLs to temp dir, returns run_id and stl_urls point at /api/preview/temp/{run_id}/{part}.stl.
@@ -387,6 +396,8 @@ def _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=F
     try:
         for p in parts:
             pn = str(p.name).lower()
+            if heartbeat_cb is not None:
+                heartbeat_cb(pn)
             scad_out = os.path.join(run_dir, pn + ".scad")
             stl_out = os.path.join(run_dir, pn + ".stl")
             scad_result = build(pn, dict(config), quality)
@@ -413,7 +424,7 @@ def _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=F
             zip_files["LICENSE"] = read_file("LICENSE")
             zip_files["README.md"] = read_file("README.md")
             bundle = create_zip(zip_files)
-            bundle_key = "render/%s/bundle.zip" % cfghash
+            bundle_key = _bundle_key(cfghash)
             FingerServer().put(bundle_key, bundle, compress=False)
             stl_urls["bundle"] = "/" + bundle_key
         return cfghash, config, stl_urls
@@ -426,7 +437,7 @@ def _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=F
 
 
 class ApiPreviewHandler(CorsMixin, tornado.web.RequestHandler):
-    '''POST /api/preview - sync preview from JSON config; STLs in temp, no S3. 10s timeout.'''
+    '''POST /api/preview - enqueue an async preview job and return 202 with job_id.'''
     def set_default_headers(self):
         set_def_headers(self)
 
@@ -437,87 +448,112 @@ class ApiPreviewHandler(CorsMixin, tornado.web.RequestHandler):
             self.set_status(400)
             self.write(json.dumps({"error": "Invalid JSON"}))
             return
-        loop = asyncio.get_event_loop()
-        try:
-            result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None,
-                    lambda: _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=False),
-                ),
-                timeout=PREVIEW_TIMEOUT_SEC,
-            )
-        except asyncio.TimeoutError:
-            self.set_status(504)
-            self.write(json.dumps({"error": "Preview timed out (max %s s)" % PREVIEW_TIMEOUT_SEC}))
-            return
-        except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            print("Preview failed: %s\n%s" % (e, tb))
-            self.set_status(500)
-            err_msg = str(e)
-            self.write(json.dumps({"error": err_msg, "detail": tb}))
-            return
-        cfghash, config, stl_urls = result
-        finger_check = DangerFinger()
-        Params.apply_config(finger_check, dict(config))
-        param_warnings = finger_check.validate_params()
-        preview_cfg = _preview_config(dict(config))
+        job = _create_preview_job(config_dict)
+        _queue_job(self.application, job)
+        self.set_status(202)
         self.set_header("Content-Type", "application/json")
-        self.write(json.dumps({
-            "cfghash": cfghash,
-            "config": dict(config),
-            "stl_urls": stl_urls,
-            "warnings": param_warnings,
-            "previewConfig": preview_cfg,
-        }))
+        self.write(json.dumps({"job_id": job["job_id"], "status": "queued"}))
 
 
 class ApiRenderHandler(CorsMixin, WpAuthMixin, tornado.web.RequestHandler):
-    '''POST /api/render - sync full-quality render from JSON config; store STLs in S3. 10s timeout.'''
+    '''POST /api/render - enqueue a full-quality render and return durable job status.'''
     def set_default_headers(self):
         set_def_headers(self)
 
     async def post(self):
-        auth_user = self.require_auth()
-        if auth_user is None:
-            return
         try:
             config_dict = json.loads(self.request.body or b'{}')
         except json.JSONDecodeError:
             self.set_status(400)
             self.write(json.dumps({"error": "Invalid JSON"}))
             return
-        # Ensure config exists in S3 for later load
-        config, cfgbytes, cfghash = package_config_json(config_dict)
-        existing = FingerServer().get("configs/%s" % cfghash, load=True)
-        if not existing:
-            FingerServer().put("configs/%s" % cfghash, cfgbytes)
-        loop = asyncio.get_event_loop()
-        try:
-            result = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None,
-                    lambda: _run_sync_preview_or_render(config_dict, preview_quality=False, store_in_s3=True),
-                ),
-                timeout=PREVIEW_TIMEOUT_SEC,
-            )
-        except asyncio.TimeoutError:
-            self.set_status(504)
-            self.write(json.dumps({"error": "Render timed out (max %s s)" % PREVIEW_TIMEOUT_SEC}))
+
+        auth_user = self.optional_auth()
+        if auth_user is None:
+            retry_after = _check_guest_rate_limit(self.application, _request_ip(self.request))
+            if retry_after is not None:
+                self.set_status(429)
+                self.write(json.dumps({
+                    "error": "Too many anonymous render requests. Please wait a few minutes or log in.",
+                    "retry_after_sec": retry_after,
+                }))
+                return
+
+        config, cfgbytes, cfghash = package_config_json(dict(config_dict))
+        err = _ensure_config_exists(cfghash, cfgbytes)
+        if err is not None:
+            self.set_status(503)
+            self.write(json.dumps({"error": str(err)}))
             return
-        except Exception as e:
-            print("Render failed: %s" % e)
-            self.set_status(500)
-            self.write(json.dumps({"error": str(e)}))
+
+        if _bundle_exists(cfghash):
+            self.set_header("Content-Type", "application/json")
+            self.write(json.dumps(_status_payload(cfghash)))
             return
-        cfghash, config, stl_urls = result
+
+        job = _find_active_job(self.application, cfghash)
+        if job is not None:
+            job = _promote_job_if_needed(self.application, job, auth_user)
+        else:
+            job = _create_render_job(config, cfghash, requested_by=auth_user)
+            _persist_job(job)
+            _queue_job(self.application, job)
+
+        self.set_status(202)
         self.set_header("Content-Type", "application/json")
-        self.write(json.dumps({
-            "cfghash": cfghash,
-            "config": dict(config),
-            "stl_urls": stl_urls,
-        }))
+        self.write(json.dumps(_job_response(job)))
+
+
+class RenderStatusHandler(tornado.web.RequestHandler):
+    'GET /render/{cfghash}/status - return durable render status.'
+    def set_default_headers(self):
+        set_def_headers(self)
+
+    def get(self, cfghash):
+        payload = _load_render_status(cfghash)
+        if payload is None:
+            self.set_status(404)
+            self.write(json.dumps({"error": "Not found"}))
+            return
+        self.set_header("Content-Type", "application/json")
+        self.write(json.dumps(payload))
+
+
+class JobStatusHandler(tornado.web.RequestHandler):
+    'GET /jobs/{job_id} - return durable job state; preview results served from memory.'
+    def set_default_headers(self):
+        set_def_headers(self)
+
+    def get(self, job_id):
+        with self.application.queue_lock:
+            preview_result = self.application.preview_results.get(job_id)
+        if preview_result is not None:
+            self.set_header("Content-Type", "application/json")
+            self.write(json.dumps({
+                "job_id": job_id,
+                "status": "complete",
+                "result": preview_result,
+            }))
+            return
+
+        job = _load_job(job_id)
+        if job is None:
+            self.set_status(404)
+            self.write(json.dumps({"error": "Not found"}))
+            return
+
+        if job.get("job_type") == "preview":
+            self.set_header("Content-Type", "application/json")
+            self.write(json.dumps({
+                "job_id": job_id,
+                "status": job.get("status", "queued"),
+                "queue_position": job.get("queue_position"),
+                "error": job.get("error"),
+            }))
+            return
+
+        self.set_header("Content-Type", "application/json")
+        self.write(json.dumps(_job_response(job)))
 
 
 class ApiPreviewTempHandler(tornado.web.RequestHandler):
@@ -545,6 +581,8 @@ handlers = [
         (r"/api/preview", ApiPreviewHandler),
         (r"/api/render", ApiRenderHandler),
         (r"/api/preview/temp/([a-zA-Z0-9\-]+)/([a-zA-Z0-9_.]+)", ApiPreviewTempHandler),
+        (r"/jobs/([a-zA-Z0-9\-]+)", JobStatusHandler),
+        (r"/render/([a-fA-F0-9]+)/status", RenderStatusHandler),
         (r"/params(/?\w*)", FingerHandler),
         (r"/profile/([a-zA-Z0-9.]+)/config/([a-zA-Z0-9.]+)", FingerHandler),
         # S3 read fallback (primary reads go through Lambda)
@@ -587,6 +625,13 @@ class FingerServer(Borg):
         except Exception as e:
             print("Error: %s" % e)
         return objs
+
+    def exists(self, key):
+        try:
+            self.s3.Object(self.s3_bucket, key).load()
+            return True
+        except Exception:
+            return False
 
     def put(self, key, obj, compress=True):
         '''put an object to s3'''
@@ -635,6 +680,368 @@ def _config_entry_with_history(previous_entry, new_cfghash):
         if isinstance(previous_entry, dict) and previous_entry.get("history"):
             history = (previous_entry["history"][-9:]) + history  # keep last 10
     return {"cfghash": new_cfghash, "history": history}
+
+
+def _bundle_key(cfghash):
+    return "render/%s/bundle.zip" % cfghash
+
+
+def _job_key(job_id):
+    return JOB_PREFIX + job_id
+
+
+def _render_status_key(cfghash):
+    return "render/%s/status" % cfghash
+
+
+def _bundle_exists(cfghash):
+    return FingerServer().exists(_bundle_key(cfghash))
+
+
+def _ensure_config_exists(cfghash, cfgbytes):
+    key = "configs/%s" % cfghash
+    if FingerServer().exists(key):
+        return None
+    return FingerServer().put(key, cfgbytes)
+
+
+def _request_ip(request):
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_ip or "unknown"
+
+
+def _check_guest_rate_limit(application, ip_addr):
+    now = time.time()
+    with application.queue_lock:
+        hits = [ts for ts in application.guest_render_hits.get(ip_addr, []) if now - ts < GUEST_RATE_LIMIT_WINDOW_SEC]
+        if len(hits) >= GUEST_RATE_LIMIT_COUNT:
+            application.guest_render_hits[ip_addr] = hits
+            return max(1, int(GUEST_RATE_LIMIT_WINDOW_SEC - (now - hits[0])))
+        hits.append(now)
+        application.guest_render_hits[ip_addr] = hits
+    return None
+
+
+def _job_priority(auth_user):
+    return PRIORITY_AUTHENTICATED if auth_user else PRIORITY_GUEST
+
+
+def _job_auth_tier(auth_user):
+    return "authenticated" if auth_user else "guest"
+
+
+def _status_message(job):
+    status = job.get("status")
+    if status == "complete":
+        return "Ready to download"
+    if status == "failed":
+        return "Render failed"
+    if status == "running":
+        return "Recovered after restart" if job.get("retrying_after_restart") else "Rendering now"
+    if status == "queued":
+        if job.get("retrying_after_restart"):
+            return "Recovered after restart"
+        return "Queued behind signed-in users" if job.get("auth_tier") == "guest" else "Queued"
+    return "Not rendered yet"
+
+
+def _status_payload(cfghash, job=None):
+    bundle_ready = _bundle_exists(cfghash)
+    payload = {
+        "cfghash": cfghash,
+        "bundle_url": "/" + _bundle_key(cfghash) if bundle_ready else None,
+        "status": "complete" if bundle_ready else "not_rendered",
+        "status_message": "Ready to download" if bundle_ready else "Not rendered yet",
+        "auth_tier": None,
+        "job_id": None,
+        "queue_position": None,
+        "retrying_after_restart": False,
+        "error": None,
+    }
+    if job is not None:
+        payload.update({
+            "job_id": job.get("job_id"),
+            "auth_tier": job.get("auth_tier"),
+            "queue_position": job.get("queue_position"),
+            "retrying_after_restart": bool(job.get("retrying_after_restart")),
+            "error": job.get("error"),
+        })
+        if not bundle_ready:
+            payload["status"] = job.get("status", "not_rendered")
+        payload["status_message"] = _status_message(job)
+    return payload
+
+
+def _job_response(job):
+    return {
+        "job_id": job.get("job_id"),
+        "cfghash": job.get("cfghash"),
+        "status": job.get("status"),
+        "auth_tier": job.get("auth_tier"),
+        "queue_position": job.get("queue_position"),
+        "requested_by": job.get("requested_by"),
+        "bundle_url": "/" + _bundle_key(job["cfghash"]) if _bundle_exists(job["cfghash"]) else None,
+        "status_message": _status_message(job),
+        "retrying_after_restart": bool(job.get("retrying_after_restart")),
+        "error": job.get("error"),
+    }
+
+
+def _persist_job(job):
+    if _app_ref is not None:
+        with _app_ref.queue_lock:
+            _app_ref.in_memory_jobs[job["job_id"]] = dict(job)
+    if job.get("job_type") == "preview":
+        return
+    err = FingerServer().put(_job_key(job["job_id"]), job)
+    if err is not None:
+        raise RuntimeError(str(err))
+
+
+def _load_job(job_id):
+    if _app_ref is not None:
+        with _app_ref.queue_lock:
+            mem_job = _app_ref.in_memory_jobs.get(job_id)
+        if mem_job is not None:
+            return mem_job
+    return FingerServer().get(_job_key(job_id), load=True)
+
+
+def _write_render_status(job):
+    if job.get("job_type") == "preview":
+        return
+    FingerServer().put(_render_status_key(job["cfghash"]), _status_payload(job["cfghash"], job))
+
+
+def _load_render_status(cfghash):
+    payload = FingerServer().get(_render_status_key(cfghash), load=True)
+    if payload is not None:
+        if payload.get("status") != "complete" and _bundle_exists(cfghash):
+            return _status_payload(cfghash)
+        return payload
+    if _bundle_exists(cfghash):
+        return _status_payload(cfghash)
+    return None
+
+
+def _create_render_job(config, cfghash, requested_by=None):
+    now = time.time()
+    return {
+        "job_id": str(uuid.uuid4()),
+        "cfghash": cfghash,
+        "config": dict(config),
+        "requested_by": requested_by,
+        "auth_tier": _job_auth_tier(requested_by),
+        "priority_rank": _job_priority(requested_by),
+        "status": "queued",
+        "created_at": now,
+        "started_at": None,
+        "finished_at": None,
+        "last_heartbeat": now,
+        "queue_position": None,
+        "retrying_after_restart": False,
+        "recovery_count": 0,
+        "error": None,
+        "current_part": None,
+    }
+
+
+def _create_preview_job(config_dict):
+    now = time.time()
+    return {
+        "job_id": str(uuid.uuid4()),
+        "job_type": "preview",
+        "cfghash": None,
+        "config": dict(config_dict),
+        "requested_by": None,
+        "auth_tier": None,
+        "priority_rank": PRIORITY_PREVIEW,
+        "status": "queued",
+        "created_at": now,
+        "started_at": None,
+        "finished_at": None,
+        "last_heartbeat": now,
+        "queue_position": None,
+        "retrying_after_restart": False,
+        "recovery_count": 0,
+        "error": None,
+        "current_part": None,
+    }
+
+
+def _prune_stale_previews(application):
+    now = time.time()
+    with application.queue_lock:
+        stale_results = [jid for jid, res in application.preview_results.items()
+                         if now - res.get("completed_at", 0) > PREVIEW_RESULT_TTL_SEC]
+        for jid in stale_results:
+            del application.preview_results[jid]
+        stale_jobs = [jid for jid, job in application.in_memory_jobs.items()
+                      if job.get("job_type") == "preview"
+                      and job.get("status") in ("complete", "failed")
+                      and now - job.get("finished_at", job.get("created_at", 0)) > PREVIEW_RESULT_TTL_SEC]
+        for jid in stale_jobs:
+            del application.in_memory_jobs[jid]
+
+
+def _find_active_job(application, cfghash):
+    with application.queue_lock:
+        job_id = application.active_jobs.get(cfghash)
+    if not job_id:
+        return None
+    job = _load_job(job_id)
+    if job is None or job.get("status") in ("complete", "failed"):
+        with application.queue_lock:
+            if application.active_jobs.get(cfghash) == job_id:
+                application.active_jobs.pop(cfghash, None)
+            if job_id in application.pending_job_ids:
+                application.pending_job_ids.remove(job_id)
+        return None
+    return job
+
+
+def _promote_job_if_needed(application, job, auth_user):
+    if auth_user and job.get("auth_tier") != "authenticated":
+        job["auth_tier"] = "authenticated"
+        job["priority_rank"] = PRIORITY_AUTHENTICATED
+        job["requested_by"] = auth_user
+        if job.get("status") == "queued":
+            _queue_job(application, job)
+        else:
+            _persist_job(job)
+            _write_render_status(job)
+    return job
+
+
+def _effective_priority(job, now):
+    rank = job.get("priority_rank", PRIORITY_GUEST)
+    if job.get("auth_tier") == "guest":
+        promotions = int(max(0, now - job.get("created_at", now)) // QUEUE_AGING_SEC)
+        rank = max(PRIORITY_AUTHENTICATED, rank - (promotions * QUEUE_AGING_STEP))
+    return rank
+
+
+def _queued_jobs(application):
+    with application.queue_lock:
+        job_ids = list(application.pending_job_ids)
+    jobs = []
+    seen = set()
+    for job_id in job_ids:
+        if job_id in seen:
+            continue
+        seen.add(job_id)
+        job = _load_job(job_id)
+        if job and job.get("status") == "queued":
+            jobs.append(job)
+    return jobs
+
+
+def _refresh_queue_positions(application):
+    jobs = _queued_jobs(application)
+    now = time.time()
+    jobs.sort(key=lambda job: (_effective_priority(job, now), job.get("created_at", now), job.get("job_id")))
+    with application.queue_lock:
+        application.pending_job_ids = [job["job_id"] for job in jobs]
+    for idx, job in enumerate(jobs, start=1):
+        if job.get("queue_position") != idx:
+            job["queue_position"] = idx
+            _persist_job(job)
+            _write_render_status(job)
+
+
+def _queue_job(application, job):
+    job["status"] = "queued"
+    job["error"] = None
+    job["last_heartbeat"] = time.time()
+    with application.queue_lock:
+        if job["job_id"] not in application.pending_job_ids:
+            application.pending_job_ids.append(job["job_id"])
+        if job.get("job_type") != "preview" and job.get("cfghash"):
+            application.active_jobs[job["cfghash"]] = job["job_id"]
+    _persist_job(job)
+    _write_render_status(job)
+    _refresh_queue_positions(application)
+    application.queue_event.set()
+
+
+def _dequeue_next_job(application):
+    jobs = _queued_jobs(application)
+    if not jobs:
+        with application.queue_lock:
+            application.pending_job_ids = []
+        return None
+    now = time.time()
+    jobs.sort(key=lambda job: (_effective_priority(job, now), job.get("created_at", now), job.get("job_id")))
+    job = jobs[0]
+    with application.queue_lock:
+        if job["job_id"] in application.pending_job_ids:
+            application.pending_job_ids.remove(job["job_id"])
+    _refresh_queue_positions(application)
+    return job
+
+
+def _mark_job_complete(application, job):
+    job["status"] = "complete"
+    job["finished_at"] = time.time()
+    job["last_heartbeat"] = job["finished_at"]
+    job["queue_position"] = None
+    job["retrying_after_restart"] = False
+    _persist_job(job)
+    _write_render_status(job)
+    if job.get("job_type") != "preview" and job.get("cfghash"):
+        with application.queue_lock:
+            if application.active_jobs.get(job["cfghash"]) == job["job_id"]:
+                application.active_jobs.pop(job["cfghash"], None)
+
+
+def _mark_job_failed(application, job, exc):
+    job["status"] = "failed"
+    job["finished_at"] = time.time()
+    job["last_heartbeat"] = job["finished_at"]
+    job["queue_position"] = None
+    job["error"] = str(exc)
+    _persist_job(job)
+    _write_render_status(job)
+    if job.get("job_type") != "preview" and job.get("cfghash"):
+        with application.queue_lock:
+            if application.active_jobs.get(job["cfghash"]) == job["job_id"]:
+                application.active_jobs.pop(job["cfghash"], None)
+
+
+def _recover_jobs(application):
+    recovered_any = False
+    try:
+        objs = list(FingerServer().dir(JOB_PREFIX))
+    except Exception as exc:
+        print("Job recovery skipped: %s" % exc)
+        return
+    for obj in objs:
+        try:
+            job = FingerServer().get(obj.key, load=True)
+            if not job:
+                continue
+            if _bundle_exists(job["cfghash"]):
+                if job.get("status") != "complete":
+                    job["status"] = "complete"
+                    job["finished_at"] = time.time()
+                    job["queue_position"] = None
+                    _persist_job(job)
+                    _write_render_status(job)
+                continue
+            if job.get("status") not in ("queued", "running"):
+                continue
+            job["status"] = "queued"
+            job["retrying_after_restart"] = True
+            job["recovery_count"] = int(job.get("recovery_count") or 0) + 1
+            job["last_heartbeat"] = time.time()
+            _queue_job(application, job)
+            recovered_any = True
+        except Exception as exc:
+            print("Job recovery entry skipped: %s" % exc)
+    if recovered_any:
+        application.queue_event.set()
 
 def create_zip(files):
     '''create a big ol zip file'''
@@ -714,7 +1121,90 @@ def build(p, config, q=RenderQuality.NONE):
             return model.scad
     return None
 
-async def make_app():
+
+def _render_worker(application):
+    while True:
+        _prune_stale_previews(application)
+        job = _dequeue_next_job(application)
+        if job is None:
+            application.queue_event.wait(1)
+            application.queue_event.clear()
+            continue
+
+        is_preview = job.get("job_type") == "preview"
+
+        if not is_preview and _bundle_exists(job["cfghash"]):
+            _mark_job_complete(application, job)
+            continue
+
+        job["status"] = "running"
+        if job.get("started_at") is None:
+            job["started_at"] = time.time()
+        job["last_heartbeat"] = time.time()
+        job["queue_position"] = None
+        _persist_job(job)
+        _write_render_status(job)
+
+        last_beat = {"at": 0}
+
+        def heartbeat(part_name=None):
+            now = time.time()
+            if part_name is not None:
+                job["current_part"] = part_name
+            if part_name is None and now - last_beat["at"] < JOB_HEARTBEAT_SEC:
+                return
+            last_beat["at"] = now
+            job["last_heartbeat"] = now
+            _persist_job(job)
+            _write_render_status(job)
+
+        try:
+            heartbeat()
+            if is_preview:
+                cfghash, config, stl_urls = _run_sync_preview_or_render(
+                    job["config"], preview_quality=True, store_in_s3=False, heartbeat_cb=heartbeat)
+                finger_check = DangerFinger()
+                Params.apply_config(finger_check, dict(config))
+                param_warnings = finger_check.validate_params()
+                preview_cfg = _preview_config(dict(config))
+                with application.queue_lock:
+                    application.preview_results[job["job_id"]] = {
+                        "cfghash": cfghash,
+                        "config": dict(config),
+                        "stl_urls": stl_urls,
+                        "warnings": param_warnings,
+                        "previewConfig": preview_cfg,
+                        "completed_at": time.time(),
+                    }
+                job["cfghash"] = cfghash
+            else:
+                _run_sync_preview_or_render(
+                    job["config"], preview_quality=False, store_in_s3=True, heartbeat_cb=heartbeat)
+            _mark_job_complete(application, job)
+        except Exception as exc:
+            print("Job failed: %s\n%s" % (exc, traceback.format_exc()))
+            _mark_job_failed(application, job, exc)
+
+
+def _init_application_state(application):
+    global _app_ref
+    _app_ref = application
+    application.queue_lock = Lock()
+    application.queue_event = Event()
+    application.pending_job_ids = []
+    application.active_jobs = {}
+    application.guest_render_hits = {}
+    application.in_memory_jobs = {}
+    application.preview_results = {}
+
+
+def _start_render_worker(application):
+    worker = Thread(target=_render_worker, args=(application,), daemon=True, name="danger-finger-render-worker")
+    worker.start()
+    application.render_worker = worker
+
+
+async def make_app(fs):
     ''' create server async'''
     settings = dict(
         #debug=tornado.options.options.debug,
@@ -723,7 +1213,11 @@ async def make_app():
     app = tornado.web.Application(handlers, **settings)
     app.executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     app.counter = 0
+    _init_application_state(app)
+    _recover_jobs(app)
+    _start_render_worker(app)
     app.listen(fs.http_port)
+    return app
 
 if __name__ == "__main__":
     sys.stdout = UnbufferedStdOut(sys.stdout)
@@ -731,12 +1225,11 @@ if __name__ == "__main__":
     fs = FingerServer()
     Params.parse(fs)
     fs.setup()
-    a = make_app()
 
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    loop.run_until_complete(a)
+    loop.run_until_complete(make_app(fs))
     loop.run_forever()

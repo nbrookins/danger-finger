@@ -39,7 +39,7 @@ class DangerFingerParams:
     render_quality = Prop(val=RenderQuality.EXTRAMEDIUM, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=_render_quality_setter, hidden=True)
 
     # **************************************** parameters ****************************************
-    intermediate_length = Prop(val=24, minv=8, maxv=30, custom=CustomType.SLIDER, name="intermediate_length", doc=''' length of the intermediate finger segment ''')
+    intermediate_length = Prop(val=24, minv=8, maxv=30, custom=CustomType.SLIDER, name="intermediate_length", doc=''' length of the intermediate finger segment ''', section="common", order=1)
     intermediate_distal_height = Prop(val=9.5, minv=4, maxv=16, custom=CustomType.SLIDER, name="intermediate_distal_height", doc=''' height of the middle section at the distal end.  roughly the height of the hinge circle ''')
     intermediate_proximal_height = Prop(val=11.0, minv=4, maxv=16, custom=CustomType.SLIDER, name="intermediate_proximal_height", doc=''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
     intermediate_bumper_width = Prop(val=3.6, minv=0, maxv=20, custom=CustomType.SLIDER, name="intermediate_bumper_width", doc=''' width of optional bumper around middle section ''')
@@ -47,18 +47,18 @@ class DangerFingerParams:
     knuckle_tendon_offset = Prop(val=3.0, minv=0, maxv=10, custom=CustomType.SLIDER, name="knuckle_tendon_offset", doc='''vertical offset of tendon anchor on base; 0 disables the bulge''')
 
     proximal_length = Prop(val=-.5, minv=-2, maxv=30, custom=CustomType.SLIDER, name="proximal_length", doc=''' length of the proximal/base finger segment ''') #TODO 3 - dynamic min auto of knuckle radius
-    distal_length = Prop(val=24.0, minv=8, maxv=30, custom=CustomType.SLIDER, name="distal_length", doc=''' length of the distal/tip finger segment ''')
-    distal_base_length = Prop(val=6.0, minv=0, maxv=20, custom=CustomType.SLIDER, name="distal_base_length", doc=''' length of the base of the distal/tip finger segment ''')
+    distal_length = Prop(val=24.0, minv=8, maxv=30, custom=CustomType.SLIDER, name="distal_length", doc=''' length of the distal/tip finger segment ''', section="common", order=20)
+    distal_base_length = Prop(val=6.0, minv=0, maxv=20, custom=CustomType.SLIDER, name="distal_base_length", doc=''' length of the base of the distal/tip finger segment ''', section="common", order=21)
 
     knuckle_proximal_width = Prop(val=18.5, minv=10, maxv=28, custom=CustomType.SLIDER, name="knuckle_proximal_width", doc=''' width of the proximal knuckle hinge''')
     knuckle_distal_width = Prop(val=16.0, minv=10, maxv=28, custom=CustomType.SLIDER, name="knuckle_distal_width", doc=''' width of the distal knuckle hinge ''')
     tip_circumference = Prop(val=47, minv=4, maxv=100, custom=CustomType.SLIDER, name="tip_circumference", doc=''' circumference of tip ''')
 
-    socket_depth = Prop(val=34, minv=5, maxv=60, doc=''' length of the portion that interfaces socket and base ''')
+    socket_depth = Prop(val=34, minv=5, maxv=60, doc=''' length of the portion that interfaces socket and base ''', section="common", order=12)
     socket_bottom_cut = Prop(val=9, minv=0, maxv=60, doc='''radius of the bottom cutout on the socket; larger values remove more material from the palm side''')
 
-    socket_circumference_distal = Prop(val=57.3, minv=20, maxv=160, doc='''circumference of the socket closest to the base''')
-    socket_circumference_proximal = Prop(val=63.4, minv=20, maxv=160, doc='''circumference of the socket closest to the hand''')
+    socket_circumference_distal = Prop(val=57.3, minv=20, maxv=160, doc='''circumference of the socket closest to the base''', section="common", order=11)
+    socket_circumference_proximal = Prop(val=63.4, minv=20, maxv=160, doc='''circumference of the socket closest to the hand''', section="common", order=10)
     #1.6
     socket_thickness_distal = Prop(val=1.9, minv=.5, maxv=4, doc='''thickness of the socket closest to the base''') #from 1.2
     socket_thickness_middle = Prop(val=1.6, minv=.5, maxv=4, doc='''thickness of the socket at interface''') #from .42
@@ -356,21 +356,27 @@ class DangerFingerParams:
     def get_params(self, adv=False, allv=True, extended=False):
         ''' return all parameters for this finger model '''
         from enum import Enum as _Enum
-        params = {}
+        _SECTION_RANK = {"common": 0, None: 1}
+        items = []
         for name, prop in inspect.getmembers(DangerFingerParams):
             if name.startswith("_"): continue
             if isinstance(prop, Prop):
                 inst_val = getattr(self, name)
                 if (prop.advanced and (adv or allv)) or (not prop.advanced and not adv):
                     if not extended:
-                        params[name] = inst_val
+                        items.append((_SECTION_RANK.get(prop.section, 1), prop.order, name, inst_val, None))
                     else:
-                        row = {"Value": inst_val, "Default": prop.default, "Minimum": prop.minimum, "Maximum": prop.maximum, "Advanced": prop.advanced, "Documentation": prop.docs, "Hidden": prop.hidden}
+                        row = {"Value": inst_val, "Default": prop.default, "Minimum": prop.minimum, "Maximum": prop.maximum, "Advanced": prop.advanced, "Documentation": prop.docs, "Hidden": prop.hidden, "Section": prop.section, "Order": prop.order}
                         if isinstance(inst_val, _Enum):
                             row["EnumOptions"] = list(type(inst_val).__members__.keys())
                             row["Value"] = inst_val.name
                             row["Default"] = prop.default.name if isinstance(prop.default, _Enum) else prop.default
-                        params[name] = row
+                        items.append((_SECTION_RANK.get(prop.section, 1), prop.order, name, None, row))
+        items.sort(key=lambda t: (t[0], t[1], t[2]))
+        from collections import OrderedDict
+        params = OrderedDict()
+        for _, _, name, val, row in items:
+            params[name] = val if row is None else row
         return params
 
     @property

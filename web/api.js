@@ -12,7 +12,10 @@ var Api = (function () {
     var _onPreviewReady = null;
     var _onPreviewError = null;
     var _previewDebounceTimer = null;
+    var _previewPollTimer = null;
+    var _latestPreviewJobId = null;
     var PREVIEW_DEBOUNCE_MS = 500;
+    var PREVIEW_POLL_MS = 2000;
     var RENDER_OFFLINE_MSG = "Render server is offline. You can still browse configurations, but live preview is unavailable.";
 
     function init(opts) {
@@ -28,9 +31,12 @@ var Api = (function () {
 
     function setAuthToken(token) { _authToken = token || null; }
     function getAuthToken() { return _authToken; }
-
     function _readBase() { return _readUrl || _baseurl; }
     function _renderBase() { return _renderUrl || _baseurl; }
+
+    function _parseJson(text) {
+        try { return JSON.parse(text || "{}"); } catch (e) { return {}; }
+    }
 
     function _xhr(method, url, body, onSuccess, onError, urlMode) {
         var xhttp = new XMLHttpRequest();
@@ -48,41 +54,18 @@ var Api = (function () {
         var base = urlMode === "read" ? _readBase() : urlMode === "render" ? _renderBase() : _baseurl;
         xhttp.open(method, base + url, true);
         xhttp.setRequestHeader("Content-Type", "application/json");
-        if (_authToken) {
-            xhttp.setRequestHeader("Authorization", "Bearer " + _authToken);
-        }
-        if (body !== null && body !== undefined) {
-            xhttp.send(body);
-        } else {
-            xhttp.send("");
-        }
+        if (_authToken) xhttp.setRequestHeader("Authorization", "Bearer " + _authToken);
+        xhttp.send(body !== null && body !== undefined ? body : "");
     }
 
-    /**
-     * Exchange a WordPress Application Password for a JWT token.
-     * Called after the authorize-application.php callback returns user_login + password.
-     *
-     * @param {string}   wpAuthUrl    WordPress base URL (e.g. "https://dangercreations.com")
-     * @param {string}   userLogin    WP username from callback URL
-     * @param {string}   appPassword  Application Password from callback URL
-     * @param {Function} onSuccess    Called with { token, user_nicename, user_display_name, user_email }
-     * @param {Function} onError      Called with error message string
-     */
     function fetchWpJwt(wpAuthUrl, userLogin, appPassword, onSuccess, onError) {
         var xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function () {
             if (this.readyState !== 4) return;
             if (this.status === 200) {
-                try {
-                    var data = JSON.parse(this.responseText);
-                    if (data.token) {
-                        onSuccess && onSuccess(data);
-                    } else {
-                        onError && onError(data.message || "No token in response");
-                    }
-                } catch (e) {
-                    onError && onError("JSON parse error: " + e.message);
-                }
+                var data = _parseJson(this.responseText);
+                if (data.token) onSuccess && onSuccess(data);
+                else onError && onError(data.message || "No token in response");
             } else {
                 var msg = "JWT request failed (" + this.status + ")";
                 try { msg = JSON.parse(this.responseText).message || msg; } catch (e2) {}
@@ -131,11 +114,8 @@ var Api = (function () {
         var xhttp = new XMLHttpRequest();
         xhttp.responseType = "arraybuffer";
         xhttp.onload = function () {
-            if (xhttp.status === 200) {
-                onSuccess && onSuccess(xhttp.response);
-            } else {
-                onError && onError("Failed to load bundle.zip (" + xhttp.status + ")");
-            }
+            if (xhttp.status === 200) onSuccess && onSuccess(xhttp.response);
+            else onError && onError("Failed to load bundle.zip (" + xhttp.status + ")");
         };
         xhttp.onerror = function () { onError && onError("Network error loading bundle.zip"); };
         xhttp.open("GET", _readBase() + "render/" + cfghash + "/bundle.zip", true);
@@ -146,59 +126,118 @@ var Api = (function () {
         return _readBase() + "render/" + cfghash + "/bundle.zip";
     }
 
+    function fetchRenderStatus(cfghash, onSuccess, onError) {
+        _xhr("GET", "render/" + cfghash + "/status", null, function (text) {
+            onSuccess && onSuccess(_parseJson(text));
+        }, function (text, status) {
+            if (status === 0) { onError && onError(RENDER_OFFLINE_MSG, status); return; }
+            var data = _parseJson(text);
+            onError && onError(data.error || ("Status request failed (" + status + ")"), status, data);
+        }, "read");
+    }
+
+    function fetchJobStatus(jobId, onSuccess, onError) {
+        _xhr("GET", "jobs/" + jobId, null, function (text) {
+            onSuccess && onSuccess(_parseJson(text));
+        }, function (text, status) {
+            if (status === 0) { onError && onError(RENDER_OFFLINE_MSG, status); return; }
+            var data = _parseJson(text);
+            onError && onError(data.error || ("Job request failed (" + status + ")"), status, data);
+        }, "read");
+    }
+
     function requestPreview(getCurrentParams) {
         if (_previewDebounceTimer) clearTimeout(_previewDebounceTimer);
+        if (_previewPollTimer) clearTimeout(_previewPollTimer);
         _previewDebounceTimer = setTimeout(function () {
             _previewDebounceTimer = null;
-            _onPreviewError && _onPreviewError("Updating preview\u2026", false);
+            _onPreviewError && _onPreviewError("Updating preview...", false);
             var body = JSON.stringify(getCurrentParams());
-            _xhr("POST", "api/preview", body, function (text) {
-                try {
-                    var res = JSON.parse(text || "{}");
-                    if (res.stl_urls && Object.keys(res.stl_urls).length) {
-                        _onPreviewReady && _onPreviewReady(res);
-                    } else {
-                        _onPreviewError && _onPreviewError("Preview returned no models.", true);
-                    }
-                } catch (e) {
-                    _onPreviewError && _onPreviewError("Preview parse error.", true);
+            _xhr("POST", "api/preview", body, function (text, status) {
+                var res = _parseJson(text);
+                if (status === 202 && res.job_id) {
+                    _latestPreviewJobId = res.job_id;
+                    _onPreviewError && _onPreviewError("Preview queued...", false);
+                    _pollPreview(res.job_id);
+                } else if (res.stl_urls && Object.keys(res.stl_urls).length) {
+                    _onPreviewReady && _onPreviewReady(res);
+                } else {
+                    _onPreviewError && _onPreviewError("Preview returned no models.", true);
                 }
             }, function (text, status) {
                 if (status === 0) {
                     _onPreviewError && _onPreviewError(RENDER_OFFLINE_MSG, true);
                     return;
                 }
-                var err = "Preview failed (" + status + ")";
-                try { var r = JSON.parse(text); if (r.error) err = r.error; } catch (e) {}
-                _onPreviewError && _onPreviewError(err, true);
+                var r = _parseJson(text);
+                _onPreviewError && _onPreviewError(r.error || ("Preview failed (" + status + ")"), true);
             }, "render");
         }, PREVIEW_DEBOUNCE_MS);
     }
 
+    function _pollPreview(jobId) {
+        if (_previewPollTimer) clearTimeout(_previewPollTimer);
+        _previewPollTimer = setTimeout(function () {
+            _previewPollTimer = null;
+            if (_latestPreviewJobId !== jobId) return;
+            _xhr("GET", "jobs/" + jobId, null, function (text) {
+                if (_latestPreviewJobId !== jobId) return;
+                var payload = _parseJson(text);
+                if (payload.status === "complete" && payload.result) {
+                    var res = payload.result;
+                    if (res.stl_urls && Object.keys(res.stl_urls).length) {
+                        _onPreviewReady && _onPreviewReady(res);
+                    } else {
+                        _onPreviewError && _onPreviewError("Preview returned no models.", true);
+                    }
+                } else if (payload.status === "failed") {
+                    _onPreviewError && _onPreviewError(payload.error || "Preview failed.", true);
+                } else {
+                    var msg = payload.status === "running" ? "Rendering preview..." : "Preview queued...";
+                    _onPreviewError && _onPreviewError(msg, false);
+                    _pollPreview(jobId);
+                }
+            }, function (text, status) {
+                if (_latestPreviewJobId !== jobId) return;
+                if (status === 0) {
+                    _onPreviewError && _onPreviewError(RENDER_OFFLINE_MSG, true);
+                    return;
+                }
+                _onPreviewError && _onPreviewError("Failed to check preview status.", true);
+            }, "render");
+        }, PREVIEW_POLL_MS);
+    }
+
     function saveConfig(username, cfgName, currentParams, onSuccess, onError) {
-        _xhr("POST", "profile/" + username + "/config/" + encodeURIComponent(cfgName),
-            JSON.stringify(currentParams),
-            function (text, status) {
-                var res = {};
-                try { res = JSON.parse(text || "{}"); } catch (e) {}
-                onSuccess && onSuccess(res);
-            },
-            function (text, status) {
-                if (status === 0) { onError && onError(RENDER_OFFLINE_MSG); return; }
-                var errMsg = text || String(status);
-                try { errMsg = JSON.parse(text).error || errMsg; } catch (e) {}
-                onError && onError(errMsg);
-            },
-            "render"
-        );
+        _xhr("POST", "profile/" + username + "/config/" + encodeURIComponent(cfgName), JSON.stringify(currentParams), function (text) {
+            onSuccess && onSuccess(_parseJson(text));
+        }, function (text, status) {
+            if (status === 0) { onError && onError(RENDER_OFFLINE_MSG); return; }
+            var data = _parseJson(text);
+            onError && onError(data.error || text || String(status), data, status);
+        }, "render");
+    }
+
+    function renderConfig(currentParams, onSuccess, onError) {
+        _xhr("POST", "api/render", JSON.stringify(currentParams), function (text, status) {
+            onSuccess && onSuccess(_parseJson(text), status);
+        }, function (text, status) {
+            if (status === 0) { onError && onError(RENDER_OFFLINE_MSG); return; }
+            var data = _parseJson(text);
+            onError && onError(data.error || text || String(status), data, status);
+        }, "render");
     }
 
     function deleteConfig(username, cfgName, onSuccess, onError) {
         var xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function () {
             if (this.readyState !== 4) return;
-            if (this.status === 204) { onSuccess && onSuccess(); }
-            else if (this.status === 0) { onError && onError(RENDER_OFFLINE_MSG); }
+            if (this.status === 204) onSuccess && onSuccess();
+            else if (this.status === 0) onError && onError(RENDER_OFFLINE_MSG);
+            else {
+                var data = _parseJson(this.responseText);
+                onError && onError(data.error || "Delete failed.");
+            }
         };
         xhttp.onerror = function () { onError && onError(RENDER_OFFLINE_MSG); };
         xhttp.open("DELETE", _renderBase() + "profile/" + username + "/config/" + encodeURIComponent(cfgName), true);
@@ -217,8 +256,11 @@ var Api = (function () {
         fetchConfig: fetchConfig,
         fetchBundleZip: fetchBundleZip,
         getBundleUrl: getBundleUrl,
+        fetchRenderStatus: fetchRenderStatus,
+        fetchJobStatus: fetchJobStatus,
         requestPreview: requestPreview,
         saveConfig: saveConfig,
+        renderConfig: renderConfig,
         deleteConfig: deleteConfig,
     };
 })();

@@ -127,7 +127,7 @@ class Params():
 #********************************* Parameterization system **********************************
 class Prop(object):
     ''' a simple property replacement that enforces min and max values'''
-    def __init__(self, val=None, minv=None, maxv=None, doc=None, getter=None, setter=None, adv=False, hidden=False, custom=None, name=None):
+    def __init__(self, val=None, minv=None, maxv=None, doc=None, getter=None, setter=None, adv=False, hidden=False, custom=None, name=None, order=100, section=None):
         self._value = val
         self._hidden = hidden
         self._min = minv
@@ -138,6 +138,8 @@ class Prop(object):
         self._adv = adv
         self._default = val
         self.name = name
+        self._order = order
+        self._section = section
 
     advanced = property(lambda self: self._adv)
     value = property(lambda self: self._value)
@@ -146,6 +148,8 @@ class Prop(object):
     docs = property(lambda self: self.__doc__)
     default = property(lambda self: self._default)
     hidden = property(lambda self: self._hidden)
+    order = property(lambda self: self._order)
+    section = property(lambda self: self._section)
 
     @staticmethod
     def minmax(value, minv=None, maxv=None):

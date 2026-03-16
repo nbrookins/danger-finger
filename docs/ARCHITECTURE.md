@@ -163,9 +163,11 @@ openscad --enable manifold --export-format binstl -o part.stl part.scad
 |-------|---------|--------|------|---------|
 | `/` | `IndexHandler` | GET | No | Serves `index.html` with build-ID-stamped `?v=` cache busters |
 | `/api/parts` | `ApiPartsHandler` | GET | No | Part list, version, build ID, preview config |
-| `/api/preview` | `ApiPreviewHandler` | POST | No | Sync preview: build all parts, serve temp STLs |
-| `/api/render` | `ApiRenderHandler` | POST | JWT | Sync render: build + bundle.zip to S3 |
+| `/api/preview` | `ApiPreviewHandler` | POST | No | Async preview: enqueues job at PRIORITY_PREVIEW=-10, returns 202 with job_id |
+| `/api/render` | `ApiRenderHandler` | POST | Optional JWT | Queue a full render job; authenticated requests get higher priority |
 | `/api/preview/temp/...` | `ApiPreviewTempHandler` | GET | No | Serve temp STL files from disk (local only, not S3) |
+| `/jobs/{job_id}` | `JobStatusHandler` | GET | No | Job status: preview results from memory, render jobs from S3 |
+| `/render/{cfghash}/status` | `RenderStatusHandler` | GET | No | Render status by content hash |
 | `/params/...` | `FingerHandler` | GET | No | Parameter metadata (extended JSON) |
 | `/profile/.../config/...` | `FingerHandler` | POST/DELETE | JWT | Save/remove config in S3 profile (ownership enforced) |
 | `/profiles/...`, `/configs/...`, `/render/...` | `FingerHandler` | GET | No | S3 read fallback (primary is Lambda) |
@@ -173,10 +175,11 @@ openscad --enable manifold --export-format binstl -o part.stl part.scad
 
 ### Preview vs render
 
-- **Preview** (`/api/preview`): EXTRAMEDIUM quality, temp directory, no S3. Files served via `/api/preview/temp/{run_id}/`. Run directory cleaned on next request.
-- **Render** (`/api/render` or via `/profile/.../config/...`): HIGH quality, creates `bundle.zip` in S3. Config and profile updated atomically.
+- **Preview** (`/api/preview`): Returns 202 immediately. Job enqueued at PRIORITY_PREVIEW=-10 (always first). Worker runs EXTRAMEDIUM quality, writes STLs to temp dir, stores result in `application.preview_results` (in-memory dict, pruned after 10 min). Frontend polls `/jobs/{id}` until complete. No S3 persistence for preview jobs.
+- **Save** (`/profile/.../config/...`): authenticated only. Saves config/profile metadata immediately and does not block on rendering.
+- **Render** (`/api/render`): HIGH quality, durable async job that eventually writes `bundle.zip` to S3. Guests may render, but guest jobs are deprioritized and rate-limited.
 
-Both use `_run_sync_preview_or_render()` in a `ThreadPoolExecutor` with a 10-second timeout.
+Both preview and render jobs share the same worker queue. Preview jobs are in-memory only (`application.in_memory_jobs`); render jobs are additionally persisted to S3 for restart recovery. The module-level `_app_ref` provides access to application state from helper functions.
 
 ### Config hashing
 
@@ -185,8 +188,10 @@ Both use `_run_sync_preview_or_render()` in a `ThreadPoolExecutor` with a 10-sec
 ### S3 layout
 
 ```
-configs/{cfghash}          — JSON config (brotli-compressed with "42" prefix)
-profiles/{userhash}        — JSON profile with configs map (brotli)
+configs/{cfghash}           — JSON config (brotli-compressed with "42" prefix)
+profiles/{userhash}         — JSON profile with configs map (brotli)
+jobs/{job_id}               — durable render job records for polling and restart recovery
+render/{cfghash}/status     — latest render status payload for hash-based polling
 render/{cfghash}/bundle.zip — ZIP containing STLs, SCADs, config.json, LICENSE, README
 ```
 
@@ -197,16 +202,19 @@ render/{cfghash}/bundle.zip — ZIP containing STLs, SCADs, config.json, LICENSE
 Four vanilla JS modules loaded as global IIFEs (no bundler):
 
 ### `api.js` — HTTP client
-- XHR-based, three base URLs: `baseurl` (default/relative), `readUrl` (Lambda reads), `renderUrl` (EC2 render API)
-- `requestPreview()` debounced at 500ms, uses `renderUrl` with graceful offline detection
-- `saveConfig()`/`deleteConfig()` also route through `renderUrl`
+- XHR-based, three base URLs: `baseurl` (default/relative), `readUrl` (Lambda reads), `renderUrl` (EC2 write/render API)
+- `requestPreview()` debounced at 500ms; POST returns 202, frontend polls `/jobs/{id}` every 2s via `_pollPreview()`; superseded previews ignored via `_latestPreviewJobId`
+- `saveConfig()` is authenticated profile persistence only; `renderConfig()` queues full renders for guests or logged-in users
+- `fetchRenderStatus()` / `fetchJobStatus()` poll durable status through the read path
 - `fetchBundleZip()` uses `arraybuffer` responseType for JSZip extraction
 - Network errors (status 0) on render endpoints show "server offline" message
 
 ### `params.js` — Parameter form
-- Renders parameter table from `/params/all` metadata
-- Standard params visible by default; advanced in collapsible section
+- Renders parameter table from `/params/all` metadata in three sections: Common (params with `Section === "common"`), Standard, and Advanced (collapsible)
+- Preset configurations dropdown above Common section (Adult index, Adult pinky, Child index, Adult thumb)
+- Per-param reset button (×) shown on modified rows; global "Reset all to defaults" link
 - Tracks dirty (unsaved) and changed (differs from default) states per param
+- `setRenderDisabled()` controls render button independently from save
 - `getCurrentParams()` returns current form values as `{name: numericValue}` dict
 
 ### `viewer.js` — 3D viewer manager
@@ -218,8 +226,14 @@ Four vanilla JS modules loaded as global IIFEs (no bundler):
 
 ### `app.js` — Orchestrator
 - Initializes all modules, wires callbacks
-- Manages profile table, save/load/download workflow
-- `loadBundleZip()` — fetches ZIP via Lambda, extracts STLs with JSZip, creates blob URLs
+- Manages guest draft persistence across the WordPress login redirect via `sessionStorage`
+- Splits authenticated `Save` from guest-capable `Render`, polls queued jobs, and resumes save after login
+- Render button intelligence: tracks `_lastRenderedCfghash`, disables button when config matches last render
+- Iframe detection: shows "Open full page" button when embedded; "Share link" encodes params in URL hash
+- `restoreFromHash()` loads config from `#config=...` URL hash on page load
+- Profile table includes Status column (Saved/Rendering.../Ready) with polling for active renders
+- Quality indicator in preview status: "(draft quality)" vs "(print quality)"
+- `loadBundleZip()` fetches ZIP via Lambda, extracts STLs with JSZip, and creates blob URLs
 
 ### `stl_viewer.js` — Three.js wrapper
 - Compatibility wrapper over Three.js r160 + STLLoader r170 + OrbitControls r170

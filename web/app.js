@@ -7,12 +7,20 @@
     var renderUrl = window.__RENDER_URL__ || "";
     var cachedBundleBlob = null;
     var cachedBundleCfghash = null;
-
-    // --- Auth state ---
     var _authToken = null;
-    var _authUser = null;         // WP user_nicename — used as S3 profile key
-    var _authDisplay = null;      // WP user_display_name — shown in UI
-    var _wpAuthUrl = "";          // Populated from /api/parts response
+    var _authUser = null;
+    var _authDisplay = null;
+    var _wpAuthUrl = "";
+    var _latestPreviewHash = null;
+    var _latestRenderHash = null;
+    var _latestJobId = null;
+    var _lastRenderedCfghash = null;
+    var _pollTimer = null;
+    var _paramsLoaded = false;
+    var _authSettled = false;
+    var _restoredDraft = false;
+    var DRAFT_KEY = "df_guest_draft";
+    var DRAFT_TTL_MS = 10 * 60 * 1000;
 
     function isAuthenticated() { return !!_authToken; }
     function getUsername() { return _authUser || ""; }
@@ -27,6 +35,7 @@
         try { sessionStorage.setItem("wp_user", nicename); } catch (e) {}
         try { sessionStorage.setItem("wp_display", displayName || nicename); } catch (e) {}
         updateAuthUI();
+        updateProfilesUI();
     }
 
     function clearAuthState() {
@@ -39,6 +48,7 @@
         try { sessionStorage.removeItem("wp_user"); } catch (e) {}
         try { sessionStorage.removeItem("wp_display"); } catch (e) {}
         updateAuthUI();
+        updateProfilesUI();
     }
 
     function loadStoredAuth() {
@@ -72,6 +82,14 @@
         }
     }
 
+    function updateProfilesUI() {
+        var container = document.getElementById("profiles");
+        if (!container) return;
+        if (!isAuthenticated()) {
+            container.innerHTML = '<div class="text-muted small">Log in to view and manage saved configs.</div>';
+        }
+    }
+
     function buildLoginUrl() {
         var base = _wpAuthUrl || "https://dangercreations.com";
         var appUrl = window.location.origin + window.location.pathname;
@@ -83,26 +101,56 @@
             + "&reject_url=" + encodeURIComponent(appUrl);
     }
 
+    function saveDraftState(intent) {
+        var state = {
+            params: Params.getCurrentParams(),
+            configName: Params.getConfigName(),
+            latestPreviewHash: _latestPreviewHash,
+            latestRenderHash: _latestRenderHash,
+            latestJobId: _latestJobId,
+            pendingAction: intent || null,
+            savedAt: Date.now(),
+        };
+        try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(state)); } catch (e) {}
+    }
+
+    function loadDraftState() {
+        try {
+            var raw = sessionStorage.getItem(DRAFT_KEY);
+            if (!raw) return null;
+            var state = JSON.parse(raw);
+            if (!state.savedAt || (Date.now() - state.savedAt) > DRAFT_TTL_MS) {
+                sessionStorage.removeItem(DRAFT_KEY);
+                return null;
+            }
+            return state;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function clearDraftState() {
+        try { sessionStorage.removeItem(DRAFT_KEY); } catch (e) {}
+    }
+
+    function startLoginFlow(intent) {
+        saveDraftState(intent || null);
+        window.location.href = buildLoginUrl();
+    }
+
     function initLoginLogout() {
         var loginBtn = document.getElementById("auth_login_btn");
         var logoutBtn = document.getElementById("auth_logout_btn");
-        if (loginBtn) {
-            loginBtn.onclick = function () {
-                window.location.href = buildLoginUrl();
-            };
-        }
+        if (loginBtn) loginBtn.onclick = function () { startLoginFlow(null); };
         if (logoutBtn) {
             logoutBtn.onclick = function () {
                 clearAuthState();
-                var profilesEl = document.getElementById("profiles");
-                if (profilesEl) profilesEl.innerHTML = "";
+                updateProfilesUI();
             };
         }
         updateAuthUI();
     }
 
-    // Handle the ?jwt_auth=1&user_login=...&password=... callback from WP.
-    // Immediately cleans URL to prevent credentials in browser history.
     function handleAuthCallback(onDone) {
         var params = new URLSearchParams(window.location.search);
         if (params.get("jwt_auth") !== "1") {
@@ -111,46 +159,35 @@
         }
         var userLogin = params.get("user_login");
         var appPassword = params.get("password");
-
-        // Remove all auth params from URL immediately
         history.replaceState(null, "", window.location.pathname);
-
         if (!userLogin || !appPassword) {
             onDone(false);
             return;
         }
-
-        setPreviewStatus("Signing in\u2026");
+        setPreviewStatus("Signing in...", false);
         var wpBase = _wpAuthUrl || params.get("site_url") || "https://dangercreations.com";
-        Api.fetchWpJwt(wpBase, userLogin, appPassword,
-            function (data) {
-                setAuthState(data.token, data.user_nicename, data.user_display_name);
-                setPreviewStatus("Signed in as " + (_authDisplay || _authUser || ""));
-                onDone(true);
-            },
-            function (err) {
-                setPreviewStatus("Sign-in failed: " + err, true);
-                onDone(false);
-            }
-        );
+        Api.fetchWpJwt(wpBase, userLogin, appPassword, function (data) {
+            setAuthState(data.token, data.user_nicename, data.user_display_name);
+            setPreviewStatus("Signed in as " + (_authDisplay || _authUser || ""), false);
+            onDone(true);
+        }, function (err) {
+            setPreviewStatus("Sign-in failed: " + err, true);
+            onDone(false);
+        });
     }
 
-    // Shared parts map: id -> {name, pos, exp}
     var parts = {
-        0: { name: "base",     pos: [0, -3, 0],  exp: [0, -0.5, 0] },
-        1: { name: "middle",   pos: [1, 12, 0],  exp: [0,  0,   0] },
-        2: { name: "tip",      pos: [1, 26, 0],  exp: [0,  1,   0] },
-        3: { name: "linkage",  pos: [0,  0, 20], exp: [0,  0,   1] },
-        4: { name: "tipcover", pos: [0, 39, 0],  exp: [0,  1.5, 0] },
-        5: { name: "socket",   pos: [0,-25, 0],  exp: [0, -1,   0] },
-        6: { name: "plug",     pos: [0,  0, 0],  exp: [0,  0,   0] },
-        7: { name: "stand",    pos: [0,-30, 0],  exp: [0, -1.5, 0] },
+        0: { name: "base", pos: [0, -3, 0], exp: [0, -0.5, 0] },
+        1: { name: "middle", pos: [1, 12, 0], exp: [0, 0, 0] },
+        2: { name: "tip", pos: [1, 26, 0], exp: [0, 1, 0] },
+        3: { name: "linkage", pos: [0, 0, 20], exp: [0, 0, 1] },
+        4: { name: "tipcover", pos: [0, 39, 0], exp: [0, 1.5, 0] },
+        5: { name: "socket", pos: [0, -25, 0], exp: [0, -1, 0] },
+        6: { name: "plug", pos: [0, 0, 0], exp: [0, 0, 0] },
+        7: { name: "stand", pos: [0, -30, 0], exp: [0, -1.5, 0] }
     };
-
     var partNameToId = {};
-    Object.keys(parts).forEach(function (id) {
-        partNameToId[parts[id].name] = parseInt(id);
-    });
+    Object.keys(parts).forEach(function (id) { partNameToId[parts[id].name] = parseInt(id, 10); });
 
     function setPreviewStatus(msg, isError) {
         var el = document.getElementById("preview_status");
@@ -160,12 +197,9 @@
     }
 
     function onPartsLoaded(json) {
-        // Capture WP auth URL and app URL from server config
         if (json.wpAuthUrl) _wpAuthUrl = json.wpAuthUrl;
-
-        // Update title and build badge
         if (json.version) {
-            var title = "DangerFinger v" + json.version + " \u2013 Configure and Preview";
+            var title = "DangerFinger v" + json.version + " - Configure and Preview";
             document.title = title;
             var h1 = document.querySelector("h1");
             if (h1) {
@@ -179,39 +213,68 @@
                 }
             }
         }
-        // Build part toggles
-        if (json.parts) {
-            Params.buildPartToggles(json.parts);
-        }
-        // Apply preview config (positions, rotations, plug instances, explode offsets)
+        if (json.parts) Params.buildPartToggles(json.parts);
         Viewer.applyPreviewConfig(json, Params.getPartVisibility());
+    }
+
+    function maybeRestoreDraft() {
+        if (_restoredDraft || !_paramsLoaded || !_authSettled) return;
+        _restoredDraft = true;
+        if (restoreFromHash()) {
+            Api.requestPreview(Params.getCurrentParams);
+            return;
+        }
+        var state = loadDraftState();
+        if (!state) {
+            Api.requestPreview(Params.getCurrentParams);
+            return;
+        }
+        if (state.params) Params.applyLoadedConfig(state.params);
+        if (state.configName) Params.setConfigName(state.configName);
+        _latestPreviewHash = state.latestPreviewHash || null;
+        _latestRenderHash = state.latestRenderHash || null;
+        _latestJobId = state.latestJobId || null;
+        Api.requestPreview(Params.getCurrentParams);
+        if (state.pendingAction === "save" && isAuthenticated()) {
+            window.setTimeout(function () {
+                handleSaveRequested({
+                    username: getUsername(),
+                    configName: Params.getConfigName(),
+                    params: Params.getCurrentParams()
+                });
+            }, 50);
+        }
     }
 
     function onParamsLoaded(json) {
         Params.fillParams(json);
-        Api.requestPreview(Params.getCurrentParams);
+        _paramsLoaded = true;
+        maybeRestoreDraft();
     }
 
-    function onProfilesLoaded(json) {
-        fillProfiles(json);
-    }
+    function onProfilesLoaded(json) { fillProfiles(json); }
 
     function onPreviewReady(res) {
-        if (res.previewConfig) {
-            Viewer.applyPreviewConfig(res, Params.getPartVisibility());
-        }
+        if (res.previewConfig) Viewer.applyPreviewConfig(res, Params.getPartVisibility());
         Viewer.updateFromStlUrls(res.stl_urls, Params.getPartVisibility());
-        setPreviewStatus("Preview ready.");
+        _latestPreviewHash = res.cfghash || null;
+        saveDraftState(loadDraftState() && loadDraftState().pendingAction ? loadDraftState().pendingAction : null);
+        if (_lastRenderedCfghash && _latestPreviewHash === _lastRenderedCfghash) {
+            Params.setRenderDisabled(true);
+            Params.setRenderButtonLabel("Rendered");
+            setPreviewStatus("Preview ready (print quality).", false);
+        } else {
+            Params.setRenderDisabled(false);
+            Params.setRenderButtonLabel("Render");
+            setPreviewStatus("Preview ready (draft quality).", false);
+        }
     }
 
-    function onPreviewError(msg, isError) {
-        setPreviewStatus(msg, isError);
-    }
+    function onPreviewError(msg, isError) { setPreviewStatus(msg, isError); }
 
     function onPartToggle(partName, visible) {
         var id = partNameToId[partName];
         if (id === undefined) return;
-        // Plug is never added as a single centered model; setPlugVisibility owns all 4 instances.
         if (partName === "plug") {
             Viewer.setPlugVisibility(visible, Params.getPartVisibility());
             return;
@@ -225,19 +288,112 @@
         }
     }
 
-    function onSaveSuccess(cfgName, res) {
-        Api.fetchProfiles(getUsername());
-        if (res && res.cfghash) showDownloadButton(res.cfghash);
+    function updateRenderStatusUi(payload) {
+        if (!payload) return;
+        if (payload.cfghash) _latestRenderHash = payload.cfghash;
+        if (payload.job_id) _latestJobId = payload.job_id;
+        if (payload.status_message) setPreviewStatus(payload.status_message, payload.status === "failed");
+        if (payload.status === "complete" && payload.cfghash) {
+            _lastRenderedCfghash = payload.cfghash;
+            Params.setButtonsDisabled(false);
+            Params.setRenderDisabled(true);
+            Params.setRenderButtonLabel("Rendered");
+            showDownloadButton(payload.cfghash);
+            clearDraftState();
+            if (isAuthenticated()) Api.fetchProfiles(getUsername());
+            stopPolling();
+        } else if (payload.status === "running") {
+            Params.setButtonsDisabled(false);
+            Params.setRenderDisabled(true);
+            Params.setRenderButtonLabel("Rendering...");
+        } else if (payload.status === "queued") {
+            Params.setButtonsDisabled(false);
+            Params.setRenderDisabled(true);
+            Params.setRenderButtonLabel("Queued...");
+        } else if (payload.status === "failed") {
+            Params.setButtonsDisabled(false);
+            Params.setRenderDisabled(false);
+            Params.setRenderButtonLabel("Render");
+        }
+    }
+
+    function stopPolling() {
+        if (_pollTimer) {
+            clearTimeout(_pollTimer);
+            _pollTimer = null;
+        }
+    }
+
+    function schedulePoll() {
+        stopPolling();
+        _pollTimer = setTimeout(pollRenderStatus, 3000);
+    }
+
+    function pollRenderStatus() {
+        if (_latestJobId) {
+            Api.fetchJobStatus(_latestJobId, function (payload) {
+                updateRenderStatusUi(payload);
+                if (payload.status === "queued" || payload.status === "running") schedulePoll();
+            }, function (err) {
+                setPreviewStatus(err || "Failed to check render status.", true);
+                Params.setButtonsDisabled(false);
+            });
+            return;
+        }
+        if (_latestRenderHash) {
+            Api.fetchRenderStatus(_latestRenderHash, function (payload) {
+                updateRenderStatusUi(payload);
+                if (payload.status === "queued" || payload.status === "running") schedulePoll();
+            }, function (err) {
+                setPreviewStatus(err || "Failed to check render status.", true);
+                Params.setButtonsDisabled(false);
+            });
+        }
+    }
+
+    function handleRenderRequested(payload) {
+        Params.setButtonsDisabled(true);
+        Params.setRenderButtonLabel("Submitting...");
+        saveDraftState(null);
+        Api.renderConfig(payload.params, function (res) {
+            updateRenderStatusUi(res);
+            if (res.status === "queued" || res.status === "running") schedulePoll();
+        }, function (err) {
+            Params.setButtonsDisabled(false);
+            Params.setRenderButtonLabel("Render");
+            setPreviewStatus("Render failed: " + err, true);
+        });
+    }
+
+    function handleSaveRequested(payload) {
+        if (!isAuthenticated()) {
+            setPreviewStatus("Log in to save this configuration to your profile.", false);
+            saveDraftState("save");
+            startLoginFlow("save");
+            return;
+        }
+        Params.setButtonsDisabled(true);
+        Api.saveConfig(getUsername(), payload.configName, payload.params, function (res) {
+            Params.setButtonsDisabled(false);
+            Params.clearDirty();
+            clearDraftState();
+            setPreviewStatus('Saved as "' + payload.configName + '".', false);
+            if (res && res.render_status) {
+                updateRenderStatusUi(res.render_status);
+                if (res.render_status.status === "queued" || res.render_status.status === "running") schedulePoll();
+            }
+            Api.fetchProfiles(getUsername());
+        }, function (err) {
+            Params.setButtonsDisabled(false);
+            setPreviewStatus("Save failed: " + err, true);
+        });
     }
 
     function showDownloadButton(cfghash) {
         var btn = document.getElementById("download_btn");
         if (!btn) return;
-        if (cachedBundleBlob && cachedBundleCfghash === cfghash) {
-            btn.href = URL.createObjectURL(cachedBundleBlob);
-        } else {
-            btn.href = Api.getBundleUrl(cfghash);
-        }
+        if (cachedBundleBlob && cachedBundleCfghash === cfghash) btn.href = URL.createObjectURL(cachedBundleBlob);
+        else btn.href = Api.getBundleUrl(cfghash);
         btn.download = "danger_finger_" + cfghash.substring(0, 8) + ".zip";
         btn.style.display = "";
     }
@@ -251,40 +407,37 @@
         var configs = json["configs"] || {};
         var container = document.getElementById("profiles");
         if (!container) return;
-
         var table = document.createElement("table");
         table.className = "table table-sm table-bordered mb-0";
-        var thead = "<thead class='thead-light'><tr><th>#</th><th>Name</th><th>Load</th><th>Download</th><th>Remove</th></tr></thead>";
-        table.innerHTML = thead;
+        table.innerHTML = "<thead class='thead-light'><tr><th>#</th><th>Name</th><th>Status</th><th>Load</th><th>Download</th><th>Remove</th></tr></thead>";
         var tbody = document.createElement("tbody");
-
         var rowNum = 0;
         for (var cfgName in configs) {
             if (!configs.hasOwnProperty(cfgName)) continue;
             var entry = configs[cfgName];
             var cfghash = (typeof entry === "string") ? entry : entry.cfghash;
             if (!cfghash) continue;
-
             var tr = tbody.insertRow(-1);
             tr.insertCell(-1).textContent = ++rowNum;
             tr.insertCell(-1).textContent = cfgName;
-
+            var statusCell = tr.insertCell(-1);
+            statusCell.id = "profile_status_" + cfghash.substring(0, 8);
+            statusCell.innerHTML = '<span class="text-muted small">Checking...</span>';
+            _checkProfileStatus(cfghash, statusCell);
             var loadBtn = document.createElement("button");
             loadBtn.type = "button";
             loadBtn.className = "btn btn-sm btn-outline-primary";
             loadBtn.textContent = "Load";
-            loadBtn.onclick = (function (name, hash) {
-                return function () { loadConfig(name, hash); };
-            })(cfgName, cfghash);
+            loadBtn.onclick = (function (name, hash) { return function () { loadConfig(name, hash); }; })(cfgName, cfghash);
             tr.insertCell(-1).appendChild(loadBtn);
-
+            var dlCell = tr.insertCell(-1);
+            dlCell.id = "profile_dl_" + cfghash.substring(0, 8);
             var dlLink = document.createElement("a");
             dlLink.href = Api.getBundleUrl(cfghash);
             dlLink.className = "btn btn-sm btn-outline-success";
             dlLink.textContent = "Download";
             dlLink.download = "danger_finger_" + cfghash.substring(0, 8) + ".zip";
-            tr.insertCell(-1).appendChild(dlLink);
-
+            dlCell.appendChild(dlLink);
             var delBtn = document.createElement("button");
             delBtn.type = "button";
             delBtn.className = "btn btn-sm btn-outline-secondary";
@@ -301,24 +454,37 @@
             })(cfgName);
             tr.insertCell(-1).appendChild(delBtn);
         }
-
         table.appendChild(tbody);
         container.innerHTML = "";
         container.appendChild(table);
     }
 
+    function _checkProfileStatus(cfghash, statusCell) {
+        Api.fetchRenderStatus(cfghash, function (payload) {
+            if (payload.status === "complete") {
+                statusCell.innerHTML = '<span class="badge badge-success">Ready</span>';
+            } else if (payload.status === "running" || payload.status === "queued") {
+                statusCell.innerHTML = '<span class="badge badge-warning">' + (payload.status === "running" ? "Rendering..." : "Queued...") + '</span>';
+                setTimeout(function () { _checkProfileStatus(cfghash, statusCell); }, 5000);
+            } else {
+                statusCell.innerHTML = '<span class="badge badge-secondary">Saved</span>';
+            }
+        }, function () {
+            statusCell.innerHTML = '<span class="badge badge-secondary">Saved</span>';
+        });
+    }
+
     function loadConfig(cfgName, cfghash) {
-        setPreviewStatus("Loading config\u2026");
+        setPreviewStatus("Loading config...", false);
         Api.fetchConfig(cfghash, function (config) {
             Params.applyLoadedConfig(config);
-            var cfgEl = document.getElementById("configname");
-            if (cfgEl) cfgEl.value = cfgName;
+            Params.setConfigName(cfgName);
             loadBundleZip(cfghash);
         });
     }
 
     function loadBundleZip(cfghash) {
-        setPreviewStatus("Loading model files\u2026");
+        setPreviewStatus("Loading model files...", false);
         Api.fetchBundleZip(cfghash, function (arrayBuffer) {
             var blob = new Blob([arrayBuffer], { type: "application/zip" });
             cachedBundleBlob = blob;
@@ -337,7 +503,8 @@
                 Promise.all(promises).then(function () {
                     Viewer.updateFromStlUrls(stlUrls, Params.getPartVisibility(), true);
                     showDownloadButton(cfghash);
-                    setPreviewStatus("Model loaded.");
+                    _lastRenderedCfghash = cfghash;
+                    setPreviewStatus("Model loaded (print quality).", false);
                     Api.requestPreview(Params.getCurrentParams);
                 });
             }).catch(function (err) {
@@ -355,12 +522,73 @@
         if (cont) cont.style.height = height * 0.4 + "px";
     }
 
+    function isInIframe() {
+        try { return window.self !== window.top; } catch (e) { return true; }
+    }
+
+    function launchFullPage() {
+        var state = { params: Params.getCurrentParams(), configName: Params.getConfigName() };
+        var hash = "#config=" + encodeURIComponent(JSON.stringify(state));
+        var url = window.location.origin + window.location.pathname + hash;
+        window.open(url, "_blank");
+    }
+
+    function copyShareLink() {
+        var state = { params: Params.getCurrentParams(), configName: Params.getConfigName() };
+        var hash = "#config=" + encodeURIComponent(JSON.stringify(state));
+        var url = window.location.origin + window.location.pathname + hash;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(function () { _showShareTooltip("Copied!"); });
+        } else {
+            var ta = document.createElement("textarea");
+            ta.value = url;
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            _showShareTooltip("Copied!");
+        }
+    }
+
+    function _showShareTooltip(msg) {
+        var btn = document.getElementById("share_btn");
+        if (!btn) return;
+        var orig = btn.textContent;
+        btn.textContent = msg;
+        setTimeout(function () { btn.textContent = orig; }, 1500);
+    }
+
+    function restoreFromHash() {
+        var hash = window.location.hash;
+        if (!hash || !hash.startsWith("#config=")) return false;
+        try {
+            var json = decodeURIComponent(hash.substring(8));
+            var state = JSON.parse(json);
+            if (state.params) Params.applyLoadedConfig(state.params);
+            if (state.configName) Params.setConfigName(state.configName);
+            history.replaceState(null, "", window.location.pathname + window.location.search);
+            return true;
+        } catch (e) {
+            console.error("Failed to restore from hash:", e);
+            return false;
+        }
+    }
+
     window.addEventListener("load", function () {
         doResize();
-
-        // Restore any previously saved auth state before initialising modules
         loadStoredAuth();
         initLoginLogout();
+        updateProfilesUI();
+        hideDownloadButton();
+
+        if (isInIframe()) {
+            var fpBtn = document.getElementById("fullpage_btn");
+            if (fpBtn) { fpBtn.style.display = ""; fpBtn.onclick = launchFullPage; }
+        }
+        var shareBtn = document.getElementById("share_btn");
+        if (shareBtn) shareBtn.onclick = copyShareLink;
 
         Api.init({
             baseurl: baseurl,
@@ -373,10 +601,7 @@
             onPreviewError: onPreviewError,
         });
 
-        Viewer.init({
-            baseurl: baseurl,
-            onStatus: setPreviewStatus,
-        });
+        Viewer.init({ baseurl: baseurl, onStatus: setPreviewStatus });
         Viewer.setPartData(parts, partNameToId);
         Viewer.initResizeHandle();
 
@@ -384,31 +609,26 @@
             username: getUsername(),
             onPreviewRequest: function () { Api.requestPreview(Params.getCurrentParams); },
             onPartToggle: onPartToggle,
-            onSaveSuccess: onSaveSuccess,
+            onSaveRequested: handleSaveRequested,
+            onRenderRequested: handleRenderRequested,
             onStatus: setPreviewStatus,
         });
 
-        // Fetch public data immediately (no auth required)
         Api.fetchParts();
         Api.fetchParams();
 
-        // Handle auth callback AFTER fetching parts (so _wpAuthUrl is ready if it's in the
-        // /api/parts response — but we also pass the site_url from the callback as fallback).
-        // We kick off fetchParts async and handle the callback in parallel since the callback
-        // URL already contains site_url from WordPress.
-        handleAuthCallback(function (authed) {
-            // Fetch profiles once auth state is settled (whether we just authed or loaded from storage)
-            if (isAuthenticated()) {
-                Api.fetchProfiles(getUsername());
-            }
+        handleAuthCallback(function () {
+            _authSettled = true;
+            maybeRestoreDraft();
+            if (isAuthenticated()) Api.fetchProfiles(getUsername());
         });
 
-        // If already authenticated from sessionStorage (no callback), fetch profiles now
-        if (isAuthenticated() && !new URLSearchParams(window.location.search).get("jwt_auth")) {
-            Api.fetchProfiles(getUsername());
+        if (!new URLSearchParams(window.location.search).get("jwt_auth")) {
+            _authSettled = true;
+            maybeRestoreDraft();
+            if (isAuthenticated()) Api.fetchProfiles(getUsername());
         }
     });
 
-    // Expose slide_change globally for inline oninput handler in HTML
     window.slide_change = function () { Viewer.slideChange(); };
 })();

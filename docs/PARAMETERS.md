@@ -33,6 +33,28 @@ Preview vs print orientation
 - **`_preview_plug_instances`**: List of four `{ "position": (x,y,z), "rotation": (rx,ry,rz) }` entries for the four plug instances (proximal L/R, distal L/R). Same plug STL is shown four times in the viewer at these positions/rotations so plugs appear in their tip holes.
 - **`_preview_position_override`** *(planned)*: Optional overrides on top of `_preview_position_offsets` for a single part (viewer only).
 
+Parameter ordering and sections
+-------------------------------
+
+Parameters are displayed in three sections via the `section` and `order` attributes on `Prop`:
+
+- **Common** (`section="common"`): Most-used sizing params shown first in a highlighted section. Order determines display position within the section.
+- **Standard** (no section, `adv=False`): All other non-advanced params, sorted by order then name.
+- **Advanced** (`adv=True`): Collapsed by default, for parameters that affect print fit.
+
+`get_params()` sorts by `(section_rank, order, name)` where `section_rank` is 0 for "common" and 1 for everything else. The API response includes `Section` and `Order` fields in extended mode.
+
+| Param | Section | Order | Rationale |
+|-------|---------|-------|-----------|
+| `intermediate_length` | common | 1 | Primary sizing param |
+| `socket_circumference_proximal` | common | 10 | Socket fit (widest) |
+| `socket_circumference_distal` | common | 11 | Socket fit (narrow end) |
+| `socket_depth` | common | 12 | Socket depth |
+| `distal_length` | common | 20 | Tip segment length |
+| `distal_base_length` | common | 21 | Tip base length |
+
+All other standard params keep `order=100` (default). Advanced params keep `adv=True`.
+
 Notes
 -----
 
