@@ -1033,7 +1033,10 @@ def _mark_job_failed(application, job, exc):
     job["last_heartbeat"] = job["finished_at"]
     job["queue_position"] = None
     job["error"] = str(exc)
-    _persist_job(job)
+    try:
+        _persist_job(job)
+    except Exception as persist_exc:
+        print("Secondary S3 failure in _mark_job_failed: %s" % persist_exc)
     _write_render_status(job)
     if job.get("job_type") != "preview" and job.get("cfghash"):
         with application.queue_lock:
@@ -1155,6 +1158,7 @@ def build(p, config, q=RenderQuality.NONE):
 
 def _render_worker(application):
     while True:
+      try:
         _prune_stale_previews(application)
         job = _dequeue_next_job(application)
         if job is None:
@@ -1221,6 +1225,9 @@ def _render_worker(application):
         except Exception as exc:
             print("Job failed: %s\n%s" % (exc, traceback.format_exc()))
             _mark_job_failed(application, job, exc)
+      except Exception as outer_exc:
+        print("Render worker error (will retry): %s\n%s" % (outer_exc, traceback.format_exc()))
+        time.sleep(2)
 
 
 def _init_application_state(application):

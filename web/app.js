@@ -662,13 +662,14 @@
         Api.fetchParts();
         Api.fetchParams();
 
+        var isAuthRedirect = new URLSearchParams(window.location.search).get("jwt_auth") === "1";
         handleAuthCallback(function () {
             _authSettled = true;
             maybeRestoreDraft();
             if (isAuthenticated()) Api.fetchProfiles(getUsername());
         });
 
-        if (!new URLSearchParams(window.location.search).get("jwt_auth")) {
+        if (!isAuthRedirect) {
             _authSettled = true;
             maybeRestoreDraft();
             if (isAuthenticated()) Api.fetchProfiles(getUsername());
