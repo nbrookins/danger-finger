@@ -144,7 +144,7 @@ WP_AUTH_URL     ?= $(or $(wp_auth_url),https://dangercreations.com)
 APP_BASE_URL    ?= $(or $(app_base_url),$(shell cd infra && terraform output -raw app_url 2>/dev/null))
 STATIC_SITE_URL ?= $(or $(static_site_url),$(shell cd infra && terraform output -raw static_site_https_url 2>/dev/null))
 
-deploy-ec2:
+deploy-ec2: deploy-static
 	@if [ -z "$(JWT_SECRET)" ]; then \
 		echo "WARNING: JWT_SECRET is empty — auth will be disabled (dev mode)."; \
 		echo "  Pass it via: make deploy-ec2 JWT_SECRET=your_secret"; \
@@ -174,7 +174,7 @@ deploy-ec2:
 deploy-infra:
 	cd infra && terraform plan -var-file=environments/$(environ).tfvars -out=tfplan && terraform apply tfplan
 
-deploy: build push-ecr deploy-ec2 deploy-static check-health
+deploy: build push-ecr deploy-ec2 check-health
 	@echo "Full deployment complete."
 
 test-deploy:

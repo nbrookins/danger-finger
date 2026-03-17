@@ -81,6 +81,7 @@ var Api = (function () {
     function fetchParts() {
         if (window.__STATIC_PARTS__) {
             _onPartsLoaded && _onPartsLoaded(window.__STATIC_PARTS__);
+            _refreshVersionFromApi(window.__STATIC_PARTS__);
             return;
         }
         _xhr("GET", "api/parts", null, function (text) {
@@ -88,6 +89,18 @@ var Api = (function () {
         }, function (text, status) {
             console.error("fetchParts failed", status, text);
         });
+    }
+
+    function _refreshVersionFromApi(bootstrapData) {
+        _xhr("GET", "api/parts", null, function (text) {
+            try {
+                var live = JSON.parse(text);
+                if (live.version && live.version !== bootstrapData.version) {
+                    console.info("Version updated from API: " + bootstrapData.version + " -> " + live.version);
+                    _onPartsLoaded && _onPartsLoaded(live);
+                }
+            } catch (e) {}
+        }, null, "render");
     }
 
     function fetchParams() {
