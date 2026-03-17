@@ -422,6 +422,8 @@ class DangerFinger(DangerFingerBase):
         return mod.color(PART_COLORS["stand"])
 
     def part_bumper(self):
+        if self.intermediate_bumper_style != BumperStyle.COVER:
+            return None
         l=self.intermediate_distal_height+self.tunnel_height*2
         t=self.intermediate_distal_height*.5
         avgk=(self.knuckle_width_[Orient.DISTAL] +self.knuckle_width_[Orient.PROXIMAL])/2 - .5
