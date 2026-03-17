@@ -23,6 +23,7 @@
     var _initialRenderDone = false;
     var _appVersion = "";
     var _defaultCfghash = "";
+    var _configSaved = false;
     var DRAFT_KEY = "df_guest_draft";
     var DRAFT_TTL_MS = 10 * 60 * 1000;
 
@@ -32,6 +33,20 @@
     function _downloadName(suffix) {
         var v = _appVersion || "0";
         return "DangerFinger_v" + v + "_" + suffix + ".zip";
+    }
+
+    function updateConfigIndicator() {
+        var el = document.getElementById("config_indicator");
+        if (!el) return;
+        var hash = _lastRenderedCfghash;
+        var isDefault = !hash || hash === _defaultCfghash;
+        var label = isDefault ? "default" : hash.substring(0, 8);
+        var saved = _configSaved ? "saved" : (_paramsDirty ? "modified" : "unsaved");
+        if (isDefault && !_paramsDirty) saved = "";
+        var color = _configSaved ? "#28a745" : (_paramsDirty ? "#dc3545" : "#6c757d");
+        el.style.color = color;
+        el.textContent = label + (saved ? " \u00b7 " + saved : "");
+        el.title = hash ? "Config hash: " + hash : "Default configuration";
     }
 
     function setAuthState(token, nicename, displayName) {
@@ -218,7 +233,9 @@
 
     function onParamsDirty() {
         _paramsDirty = true;
+        _configSaved = false;
         if (_initialRenderDone) showRenderOverlay(true);
+        updateConfigIndicator();
     }
 
     function triggerRender(quality) {
@@ -259,10 +276,12 @@
             stlUrls[name] = "/defaults/" + name + ".stl";
         });
         Viewer.updateFromStlUrls(stlUrls, Params.getPartVisibility());
+        _lastRenderedCfghash = _defaultCfghash || null;
         _initialRenderDone = true;
         _paramsDirty = false;
         setPreviewStatus("", false);
         showDefaultDownloadButton();
+        updateConfigIndicator();
     }
 
     function showDefaultDownloadButton() {
@@ -319,13 +338,17 @@
         _latestPreviewHash = res.cfghash || null;
         _lastRenderedCfghash = res.cfghash || null;
         _initialRenderDone = true;
+        _paramsDirty = false;
         saveDraftState(loadDraftState() && loadDraftState().pendingAction ? loadDraftState().pendingAction : null);
         var qualityLabel = (res.quality === "high") ? "high" : "default";
         setPreviewStatus("Render complete (" + qualityLabel + " quality).", false);
         showRenderOverlay(false);
         if (res.quality === "high" && res.cfghash) {
             showDownloadButton(res.cfghash);
+        } else if (res.stl_urls) {
+            buildPreviewZipDownload(res.stl_urls, res.scad_urls || {}, res.cfghash);
         }
+        updateConfigIndicator();
     }
 
     function onPreviewError(msg, isError) {
@@ -437,8 +460,10 @@
         Api.saveConfig(getUsername(), payload.configName, payload.params, function (res) {
             Params.setButtonsDisabled(false);
             Params.clearDirty();
+            _configSaved = true;
             clearDraftState();
             setPreviewStatus('Saved as "' + payload.configName + '".', false);
+            updateConfigIndicator();
             if (res && res.render_status) {
                 updateRenderStatusUi(res.render_status);
                 if (res.render_status.status === "queued" || res.render_status.status === "running") schedulePoll();
@@ -462,6 +487,64 @@
     function hideDownloadButton() {
         var btn = document.getElementById("download_btn");
         if (btn) btn.style.display = "none";
+    }
+
+    function _resolveUrl(relativeUrl) {
+        if (relativeUrl.indexOf("http") === 0) return relativeUrl;
+        var base = (window.__RENDER_URL__ || "").replace(/\/+$/, "");
+        return base + relativeUrl;
+    }
+
+    function buildPreviewZipDownload(stlUrls, scadUrls, cfghash) {
+        if (typeof JSZip === "undefined") return;
+        var btn = document.getElementById("download_btn");
+        if (!btn) return;
+        var hash8 = cfghash ? cfghash.substring(0, 8) : "preview";
+        btn.textContent = "Preparing ZIP...";
+        btn.style.display = "";
+        btn.removeAttribute("href");
+
+        var zip = new JSZip();
+        var scadFolder = zip.folder("scad");
+        var fetches = [];
+        for (var partName in stlUrls) {
+            if (!stlUrls.hasOwnProperty(partName) || partName === "bundle") continue;
+            (function (name, url) {
+                fetches.push(
+                    fetch(_resolveUrl(url)).then(function (r) {
+                        if (!r.ok) throw new Error(r.status);
+                        return r.arrayBuffer();
+                    }).then(function (buf) {
+                        zip.file(name + ".stl", buf);
+                    }).catch(function () {})
+                );
+            })(partName, stlUrls[partName]);
+        }
+        for (var scadPart in scadUrls) {
+            if (!scadUrls.hasOwnProperty(scadPart)) continue;
+            (function (name, url) {
+                fetches.push(
+                    fetch(_resolveUrl(url)).then(function (r) {
+                        if (!r.ok) throw new Error(r.status);
+                        return r.text();
+                    }).then(function (txt) {
+                        scadFolder.file(name + ".scad", txt);
+                    }).catch(function () {})
+                );
+            })(scadPart, scadUrls[scadPart]);
+        }
+        zip.file("config.json", JSON.stringify(Params.getCurrentParams(), null, 2));
+        Promise.all(fetches).then(function () {
+            return zip.generateAsync({ type: "blob" });
+        }).then(function (blob) {
+            var fname = _downloadName(hash8);
+            btn.href = URL.createObjectURL(blob);
+            btn.download = fname;
+            btn.textContent = "Download ZIP";
+        }).catch(function () {
+            btn.textContent = "Download ZIP";
+            btn.style.display = "none";
+        });
     }
 
     function fillProfiles(json) {
@@ -636,6 +719,13 @@
             return false;
         }
     }
+
+    window.addEventListener("beforeunload", function (e) {
+        if (_paramsDirty && !_configSaved) {
+            e.preventDefault();
+            e.returnValue = "";
+        }
+    });
 
     window.addEventListener("load", function () {
         doResize();

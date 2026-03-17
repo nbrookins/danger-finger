@@ -77,7 +77,7 @@ curl -s "https://d1n87lopz9qnnf.cloudfront.net/api/jobs/$JOB_ID"
 ```bash
 # Roll back to a specific image tag
 cd infra
-terraform apply -var docker_image_tag=5.3-dev-abc1234 -var-file=environments/dev.tfvars
+terraform apply -var docker_image_tag=5.4-dev-abc1234 -var-file=environments/dev.tfvars
 ```
 
 ## Debugging

@@ -33,7 +33,7 @@ PART_COLORS = {
 class DangerFinger(DangerFingerBase):
     ''' The actual finger model '''
     # #**************************************** finger bits ****************************************
-    VERSION = 5.3
+    VERSION = 5.4
 
     # Knuckle inner anchor offsets
     ANCHOR_OFFSET_DISTAL = -0.485  # TODO: derive from strut_height_ratio, knuckle_clearance
@@ -414,7 +414,7 @@ class DangerFinger(DangerFingerBase):
             rcylinder(r=self.socket_radius_[Orient.PROXIMAL]*2, h=3, rnd=1).translate((0,0,depth)).translate((0,0,3)),
             cylinder(r=self.socket_radius_[Orient.PROXIMAL]*2, h=1).translate((0,0,depth)).translate((0,0,5)))
 
-        mod_text = circular_text("DangerFinger v5.1     2014-2026", self.socket_radius_[Orient.PROXIMAL] + 3.5, 3.4, 1.0, 11, [0,180,180], reverse=True).rotate((0,0,0)).translate((0,0,depth+.5))
+        mod_text = circular_text("DangerFinger v%s     2014-2026" % self.VERSION, self.socket_radius_[Orient.PROXIMAL] + 3.5, 3.4, 1.0, 11, [0,180,180], reverse=True).rotate((0,0,0)).translate((0,0,depth+.5))
         cut = cylinder(r1=self.socket_radius_[Orient.DISTAL]-1.5, r2=self.socket_radius_[Orient.PROXIMAL]-1.5, h=self.socket_depth +8) + \
             cylinder(r=self.socket_radius_[Orient.PROXIMAL]*2, h=self.socket_depth).translate((0,0,depth + 5.99))#.debug()
         mod = rotate((90,0,0))((mod_inner + mod_base + mod_text) - cut)

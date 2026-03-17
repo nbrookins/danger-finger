@@ -52,7 +52,7 @@ DangerFingerBase            (finger_base.py)
   │
   ▼
 DangerFinger                (finger.py)
-  │  VERSION = 5.3
+  │  VERSION = 5.4
   │  Class constants: ANCHOR_OFFSET_DISTAL, TENDON_CUT_ROTATE, etc.
   │  PART_COLORS dict
   │  part_base(), part_tip(), part_middle(), part_linkage(), part_socket(),

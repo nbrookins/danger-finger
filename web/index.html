@@ -56,7 +56,10 @@
 				<div id="viewer_resize_handle" title="Drag to resize viewer"
 					style="height:6px;cursor:ns-resize;background:linear-gradient(transparent 40%,#dee2e6 40%,#dee2e6 60%,transparent 60%),linear-gradient(90deg,transparent 33%,#dee2e6 33%,#dee2e6 66%,transparent 66%);background-size:100% 100%,8px 100%;margin:2px 0 4px;border-radius:3px;opacity:0.6;"
 					onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'"></div>
-				<a id="download_btn" class="btn btn-sm btn-outline-success mt-1" style="display:none" download>Download ZIP</a>
+				<div class="d-flex align-items-center mt-1" style="gap:8px;">
+				<a id="download_btn" class="btn btn-sm btn-outline-success" style="display:none" download>Download ZIP</a>
+				<span id="config_indicator" class="small text-muted font-monospace" style="font-size:0.78em;"></span>
+			</div>
 			</div>
 		</section>
 

@@ -398,9 +398,10 @@ _app_ref = None
 
 def _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=False, heartbeat_cb=None):
     '''
-    Run OpenSCAD for all parts synchronously. Returns (cfghash, config, stl_urls_or_run_id).
-    For preview: writes STLs to temp dir, returns run_id and stl_urls point at /api/preview/temp/{run_id}/{part}.stl.
-    For render with store_in_s3: builds a bundle.zip (STL + SCAD + config + LICENSE + README) and uploads once.
+    Run OpenSCAD for all parts synchronously.
+    Returns (cfghash, config, stl_urls, scad_urls).
+    stl_urls/scad_urls map part names to /api/preview/temp/{run_id}/{part}.{ext}.
+    For render with store_in_s3: builds a bundle.zip and uploads once.
     '''
     config, cfgbytes, cfghash = package_config_json(config_dict)
     quality = RenderQuality.EXTRAMEDIUM if preview_quality else RenderQuality.HIGH
@@ -409,42 +410,52 @@ def _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=F
     run_dir = os.path.join(PREVIEW_TEMP_DIR, run_id)
     os.makedirs(run_dir, exist_ok=True)
     stl_urls = {}
-    try:
-        for p in parts:
-            pn = str(p.name).lower()
-            if heartbeat_cb is not None:
-                heartbeat_cb(pn)
-            scad_out = os.path.join(run_dir, pn + ".scad")
-            stl_out = os.path.join(run_dir, pn + ".stl")
-            scad_result = build(pn, dict(config), quality)
-            if scad_result is None:
-                continue
-            scad_str = scad_result if isinstance(scad_result, str) else "\n".join(scad_result)
+    scad_urls = {}
+
+    if heartbeat_cb is not None:
+        heartbeat_cb("building")
+    all_scad = build_all(dict(config), quality)
+
+    for pn in [str(p.name).lower() for p in parts]:
+        if heartbeat_cb is not None:
+            heartbeat_cb(pn)
+        scad_str = all_scad.get(pn)
+        if scad_str is None:
+            print("  Skipping %s (no geometry from build)" % pn)
+            continue
+        scad_out = os.path.join(run_dir, pn + ".scad")
+        stl_out = os.path.join(run_dir, pn + ".stl")
+        try:
             write_file(scad_str.encode('utf-8'), scad_out)
             write_stl(scad_out, stl_out)
-            stl_urls[pn] = "/api/preview/temp/%s/%s.stl" % (run_id, pn)
-        if store_in_s3:
-            zip_files = {}
-            for p in parts:
-                pn = str(p.name).lower()
-                stl_path = os.path.join(run_dir, pn + ".stl")
-                scad_path = os.path.join(run_dir, pn + ".scad")
-                if os.path.isfile(stl_path):
-                    with open(stl_path, 'rb') as f:
-                        zip_files[pn + ".stl"] = f.read()
-                if os.path.isfile(scad_path):
-                    with open(scad_path, 'rb') as f:
-                        zip_files[pn + ".scad"] = f.read()
-            zip_files["config.json"] = json.dumps(dict(config), indent=2)
-            zip_files["LICENSE"] = read_file("LICENSE")
-            zip_files["README.md"] = read_file("README.md")
-            bundle = create_zip(zip_files)
-            bundle_key = _bundle_key(cfghash)
-            FingerServer().put(bundle_key, bundle, compress=False)
-            stl_urls["bundle"] = "/" + bundle_key
-        return cfghash, config, stl_urls
-    finally:
-        pass
+            if os.path.isfile(stl_out) and os.path.getsize(stl_out) > 0:
+                stl_urls[pn] = "/api/preview/temp/%s/%s.stl" % (run_id, pn)
+                scad_urls[pn] = "/api/preview/temp/%s/%s.scad" % (run_id, pn)
+            else:
+                print("  WARNING: %s.stl empty or missing after OpenSCAD" % pn)
+        except Exception as e:
+            print("  ERROR rendering %s: %s" % (pn, e))
+
+    if store_in_s3:
+        zip_files = {}
+        for p in parts:
+            pn = str(p.name).lower()
+            stl_path = os.path.join(run_dir, pn + ".stl")
+            scad_path = os.path.join(run_dir, pn + ".scad")
+            if os.path.isfile(stl_path):
+                with open(stl_path, 'rb') as f:
+                    zip_files[pn + ".stl"] = f.read()
+            if os.path.isfile(scad_path):
+                with open(scad_path, 'rb') as f:
+                    zip_files["scad/" + pn + ".scad"] = f.read()
+        zip_files["config.json"] = json.dumps(dict(config), indent=2)
+        zip_files["LICENSE"] = read_file("LICENSE")
+        zip_files["README.md"] = read_file("README.md")
+        bundle = create_zip(zip_files)
+        bundle_key = _bundle_key(cfghash)
+        FingerServer().put(bundle_key, bundle, compress=False)
+        stl_urls["bundle"] = "/" + bundle_key
+    return cfghash, config, stl_urls, scad_urls
 
 
 class ApiPreviewHandler(CorsMixin, tornado.web.RequestHandler):
@@ -463,7 +474,15 @@ class ApiPreviewHandler(CorsMixin, tornado.web.RequestHandler):
             return
         quality = body.pop("quality", "default")
         high_quality = (quality == "high")
-        # Pre-render validation: catch obviously invalid param combos early
+
+        _config, _cfgbytes, cfghash = package_config_json(dict(body))
+        cached = _find_cached_preview(self.application, cfghash)
+        if cached and not high_quality:
+            print("Preview cache hit for cfghash=%s" % cfghash[:8])
+            self.set_header("Content-Type", "application/json")
+            self.write(json.dumps(cached))
+            return
+
         warnings = []
         try:
             from danger.finger import DangerFinger
@@ -476,6 +495,7 @@ class ApiPreviewHandler(CorsMixin, tornado.web.RequestHandler):
         except Exception as e:
             print(f"Preview validation error (non-fatal): {e}")
         job = _create_preview_job(body, high_quality=high_quality)
+        job["cfghash"] = cfghash
         _queue_job(self.application, job)
         self.set_status(202)
         self.set_header("Content-Type", "application/json")
@@ -908,13 +928,40 @@ def _prune_stale_previews(application):
         stale_results = [jid for jid, res in application.preview_results.items()
                          if now - res.get("completed_at", 0) > PREVIEW_RESULT_TTL_SEC]
         for jid in stale_results:
-            del application.preview_results[jid]
+            res = application.preview_results.pop(jid, None)
+            if res and hasattr(application, 'preview_by_cfghash'):
+                ch = res.get("cfghash")
+                if ch and application.preview_by_cfghash.get(ch) == jid:
+                    del application.preview_by_cfghash[ch]
         stale_jobs = [jid for jid, job in application.in_memory_jobs.items()
                       if job.get("job_type") == "preview"
                       and job.get("status") in ("complete", "failed")
                       and now - job.get("finished_at", job.get("created_at", 0)) > PREVIEW_RESULT_TTL_SEC]
         for jid in stale_jobs:
             del application.in_memory_jobs[jid]
+
+
+def _find_cached_preview(application, cfghash):
+    """Return a cached preview result dict if one exists with valid temp files on disk."""
+    if not cfghash:
+        return None
+    with application.queue_lock:
+        jid = application.preview_by_cfghash.get(cfghash)
+        if not jid:
+            return None
+        cached = application.preview_results.get(jid)
+        if not cached:
+            return None
+    stl_urls = cached.get("stl_urls", {})
+    for pn, url in stl_urls.items():
+        if pn == "bundle":
+            continue
+        if "/api/preview/temp/" in url:
+            parts = url.split("/api/preview/temp/")[1]
+            disk_path = os.path.join(PREVIEW_TEMP_DIR, parts)
+            if not os.path.isfile(disk_path):
+                return None
+    return cached
 
 
 def _find_active_job(application, cfghash):
@@ -1139,21 +1186,32 @@ def floatify(config):
             out[k] = v
     return out
 
-def build(p, config, q=RenderQuality.NONE):
-    '''build a finger model and return scad'''
-    print("Building finger")
+def build_all(config_dict, q=RenderQuality.NONE):
+    '''Build the finger model once and return {part_name: scad_string} for all requested parts.'''
+    print("Building finger (all parts)")
     finger = DangerFinger()
-    config = floatify(config)
-    Params.apply_config(finger, config)
-    finger.render_quality = q  #     INSANE = 2 ULTRAHIGH = 5 HIGH = 10 EXTRAMEDIUM = 13 MEDIUM = 15 SUBMEDIUM = 17 FAST = 20 ULTRAFAST = 25 STUPIDFAST = 30
+    config_dict = floatify(config_dict)
+    Params.apply_config(finger, config_dict)
+    finger.render_quality = q
     finger.build()
-    for _fp, model in finger.models.items():
-        if iterable(model):
-            if str(model[0].part) == p:
-                return flatten([x.scad for x in model])
-        elif str(model.part) == p:
-            return model.scad
-    return None
+    result = {}
+    for part_enum in parts:
+        pn = str(part_enum.name).lower()
+        for _fp, model in finger.models.items():
+            found = False
+            if hasattr(model, '__iter__') and not isinstance(model, str):
+                for m in model:
+                    if str(m.part) == pn:
+                        scad = m.scad if isinstance(m.scad, str) else "\n".join(m.scad)
+                        result[pn] = scad
+                        found = True
+                        break
+            elif str(getattr(model, 'part', '')) == pn:
+                result[pn] = model.scad if isinstance(model.scad, str) else "\n".join(model.scad)
+                found = True
+            if found:
+                break
+    return result
 
 
 def _render_worker(application):
@@ -1198,7 +1256,7 @@ def _render_worker(application):
             if is_preview:
                 high_q = job.get("high_quality", False)
                 use_preview_quality = not high_q
-                cfghash, config, stl_urls = _run_sync_preview_or_render(
+                cfghash, config, stl_urls, scad_urls = _run_sync_preview_or_render(
                     job["config"], preview_quality=use_preview_quality,
                     store_in_s3=high_q, heartbeat_cb=heartbeat)
                 finger_check = DangerFinger()
@@ -1210,16 +1268,19 @@ def _render_worker(application):
                         "cfghash": cfghash,
                         "config": dict(config),
                         "stl_urls": stl_urls,
+                        "scad_urls": scad_urls,
                         "warnings": param_warnings,
                         "previewConfig": preview_cfg,
                         "quality": "high" if high_q else "default",
                         "completed_at": time.time(),
                     }
+                    if hasattr(application, 'preview_by_cfghash'):
+                        application.preview_by_cfghash[cfghash] = job["job_id"]
                 job["cfghash"] = cfghash
                 if high_q:
                     _write_render_status(job)
             else:
-                _run_sync_preview_or_render(
+                _cfghash, _cfg, _stl, _scad = _run_sync_preview_or_render(
                     job["config"], preview_quality=False, store_in_s3=True, heartbeat_cb=heartbeat)
             _mark_job_complete(application, job)
         except Exception as exc:
@@ -1240,6 +1301,7 @@ def _init_application_state(application):
     application.guest_render_hits = {}
     application.in_memory_jobs = {}
     application.preview_results = {}
+    application.preview_by_cfghash = {}
 
 
 def _start_render_worker(application):

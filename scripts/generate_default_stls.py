@@ -99,7 +99,6 @@ def main():
             f.write(scad_str if isinstance(scad_str, str) else "\n".join(scad_str))
 
         if render_stl(scad_path, stl_path):
-            os.remove(scad_path)
             ok += 1
         else:
             fail += 1
@@ -110,6 +109,8 @@ def main():
 
     stl_files = {f: open(os.path.join(OUTPUT_DIR, f), "rb").read()
                  for f in os.listdir(OUTPUT_DIR) if f.endswith(".stl")}
+    scad_files = {f: open(os.path.join(OUTPUT_DIR, f), "r").read()
+                  for f in os.listdir(OUTPUT_DIR) if f.endswith(".scad")}
     if stl_files:
         # cfghash for default config: server.py's package_config_json removes
         # defaults then hashes, so the default config hashes as empty "{}".
@@ -127,6 +128,8 @@ def main():
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for name, data in stl_files.items():
                 zf.writestr(name, data)
+            for name, data in scad_files.items():
+                zf.writestr("scad/" + name, data)
             zf.writestr("config.json", json.dumps(full_defaults, indent=2, default=str))
             for extra in ("LICENSE", "README.md"):
                 path = os.path.join(PROJECT_ROOT, extra)
