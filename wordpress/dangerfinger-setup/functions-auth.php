@@ -60,27 +60,28 @@ add_shortcode('dangerfinger_configurator', function ($atts) {
              . 'or pass <code>url=""</code> to the shortcode.</p>';
     }
 
-    if (!is_user_logged_in()) {
-        // Build the authorize-application redirect so the user logs in and
-        // then grants the app an Application Password in one step.
-        $success_url = add_query_arg('jwt_auth', '1', $app_url);
-        $auth_url = admin_url('authorize-application.php') . '?'
-            . http_build_query([
-                'app_name'    => 'DangerFinger',
-                'app_id'      => 'dangerfinger-configurator',
-                'success_url' => $success_url,
-                'reject_url'  => $app_url,
-            ]);
+    // Build the authorize-application redirect so the user logs in and
+    // then grants the app an Application Password in one step.
+    $success_url = add_query_arg('jwt_auth', '1', $app_url);
+    $auth_url = admin_url('authorize-application.php') . '?'
+        . http_build_query([
+            'app_name'    => 'DangerFinger',
+            'app_id'      => 'dangerfinger-configurator',
+            'success_url' => $success_url,
+            'reject_url'  => $app_url,
+        ]);
 
-        return '<div class="df-login-prompt" style="text-align:center;padding:2em;">'
-             . '<p>You must be logged in to use the DangerFinger configurator.</p>'
-             . '<a class="button" href="' . esc_url($auth_url) . '">Log in and authorise</a>'
-             . '</div>';
+    $guest_notice = '';
+    if (!is_user_logged_in()) {
+        $guest_notice = '<div class="df-login-prompt" style="text-align:center;padding:1em 1em 0;">'
+            . '<p style="margin-bottom:0.75em;">Preview and configure anonymously. Log in only when you want to save a model to your profile.</p>'
+            . '<a class="button" href="' . esc_url($auth_url) . '">Log in and authorise</a>'
+            . '</div>';
     }
 
-    // Logged-in: embed the app in an iframe
     $iframe_url = $app_url;
-    return '<div class="df-iframe-wrapper" style="width:100%;overflow:hidden;">'
+    return $guest_notice
+         . '<div class="df-iframe-wrapper" style="width:100%;overflow:hidden;">'
          . '<iframe src="' . esc_url($iframe_url) . '" '
          . 'width="100%" height="' . $height . '" '
          . 'style="border:none;display:block;" '

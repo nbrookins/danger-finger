@@ -1,0 +1,48 @@
+---
+description: When fixing visual/spatial alignment issues (3D positioning, rotation, offsets), don't analyze coordinate systems — test empirically and change one variable at a time
+globs:
+alwaysApply: true
+---
+
+# Visual/spatial fixes are empirical, not analytical
+
+When the user reports a visual alignment issue (e.g. "bumper is off by a little on one axis", "rotated wrong", "clipping through"):
+
+## What went wrong (the anti-pattern)
+
+A bumper part needed a small Y position offset (+2mm). Instead of testing that directly:
+1. Agent spent 10+ iterations analyzing coordinate systems, SCAD geometry transforms, and rotation matrices
+2. Changed the rotation from its correct value `(0,0,0)` to multiple wrong values `(0,-90,-140)`, `(90,-90,-140)`, `(90,0,0)`, each requiring a deploy cycle
+3. Eventually returned to the original rotation after the user pointed out it was wrong
+4. The actual fix was a 2mm Y offset — a single number change
+
+Total waste: ~$2+ in compute, 30+ minutes, and user frustration.
+
+## The correct approach
+
+1. **Read the user's description literally.** "Off a little on one axis" means: change ONE position coordinate by a small amount. Do not touch rotation.
+2. **Separate rotation from position.** If the user says the shape looks correct but is in the wrong place, it's a position fix. If the shape itself looks wrong (rotated, flipped, mirrored), it's a rotation fix. Never change both simultaneously.
+3. **Use Playwright route interception to test candidates in batch.** Don't deploy each guess — intercept `config-bootstrap.js` and modify the value in-flight. Test 4-6 values in one script run.
+4. **Start with ±1, ±2, ±3 increments** on the axis the user identified. If they didn't specify which axis, test each independently.
+5. **Never analyze SCAD rotation matrices.** The geometry pipeline (SCAD → STL → auto-center → world-axis rotation) has too many transforms to reason about reliably. The screenshot is the only source of truth.
+
+## The Playwright interception pattern
+
+```python
+def make_handler(target_value):
+    def handler(route):
+        resp = route.fetch()
+        body = resp.text()
+        # Find and replace the specific value in config-bootstrap.js
+        section_start = body.find('positionOffsets')  # or 'rotateOffsets'
+        key_pos = body.find('"bumper":', section_start)
+        bracket_start = body.index('[', key_pos)
+        bracket_end = body.index(']', bracket_start)
+        body = body[:bracket_start] + json.dumps(target_value) + body[bracket_end+1:]
+        route.fulfill(body=body, headers=resp.headers)
+    return handler
+
+page.route('**/config-bootstrap.js*', make_handler([1, 14, 0]))
+```
+
+This avoids the regenerate→upload→invalidate→wait cycle for each test.

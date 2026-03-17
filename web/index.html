@@ -43,6 +43,15 @@
 				<div id="wrap" style="position:relative; min-height:280px;">
 					<div id="stl_cont" style="width:100%;height:280px;visibility:hidden;border:1px solid #dee2e6; border-radius:4px;"></div>
 					<img id="loader" style="position:absolute;top:50%;left:50%;margin-left:-40px;margin-top:-40px;" alt="Loading...">
+					<div id="render_progress_overlay" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(255,255,255,0.55); z-index:9; pointer-events:none; border-radius:4px;">
+						<div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center;">
+							<div class="spinner-border text-primary" role="status" style="width:2rem; height:2rem;"></div>
+							<div class="small text-muted mt-1">Rendering...</div>
+						</div>
+					</div>
+					<div id="render_overlay" style="display:none; position:absolute; bottom:16px; left:50%; transform:translateX(-50%); z-index:10;">
+						<button id="viewer_render_btn" type="button" class="btn btn-success btn-sm px-4 py-2 shadow">Render</button>
+					</div>
 				</div>
 				<div id="viewer_resize_handle" title="Drag to resize viewer"
 					style="height:6px;cursor:ns-resize;background:linear-gradient(transparent 40%,#dee2e6 40%,#dee2e6 60%,transparent 60%),linear-gradient(90deg,transparent 33%,#dee2e6 33%,#dee2e6 66%,transparent 66%);background-size:100% 100%,8px 100%;margin:2px 0 4px;border-radius:3px;opacity:0.6;"
@@ -55,11 +64,16 @@
 			<div class="card-header py-2">Parts</div>
 			<div class="card-body p-2">
 				<div id="part-toggles" class="mb-2"></div>
-				<div class="form-group mb-1">
-					<label class="small font-weight-bold mb-1">Explode</label>
-					<input type="range" min="0" max="100" value="0" class="form-control-range" id="explode" oninput="slide_change();">
+				<div class="d-flex flex-wrap" style="gap:0 1.5rem;">
+					<div class="form-group mb-1 flex-fill" style="min-width:120px;">
+						<label class="small font-weight-bold mb-1">Flex</label>
+						<input type="range" min="0" max="100" value="0" class="form-control-range" id="flex" oninput="flex_change();">
+					</div>
+					<div class="form-group mb-1 flex-fill" style="min-width:120px;">
+						<label class="small font-weight-bold mb-1">Explode</label>
+						<input type="range" min="0" max="100" value="0" class="form-control-range" id="explode" oninput="slide_change();">
+					</div>
 				</div>
-				<!-- Future: Rotate slider -->
 			</div>
 		</section>
 

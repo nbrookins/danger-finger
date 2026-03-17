@@ -231,6 +231,21 @@ Failure behavior:
 - If the instance is up but Tornado/container is unhealthy, the scheduled Lambda attempts a restart through SSM.
 - If the app stays unhealthy across consecutive checks, CloudWatch triggers the SNS alert and manual intervention is needed.
 
+### Guest access and render recovery
+
+The configurator now supports anonymous preview and anonymous render submission. Profile saves still require login.
+
+Operational details:
+- Full renders are queued as durable job records under `jobs/{job_id}` and mirrored to `render/{cfghash}/status` for hash-based polling.
+- Authenticated jobs are dispatched ahead of guest jobs; guests are also rate-limited.
+- On restart, the Tornado server scans queued/running jobs and requeues interrupted work. Recovery is whole-job requeue only; it does not resume partial OpenSCAD output mid-file.
+- Bundle existence at `render/{cfghash}/bundle.zip` is the final source of truth for completion and dedupe.
+
+Verification notes:
+- Verify guest access from the WordPress wrapper, not just the raw app URL.
+- Verify that a guest save click redirects to login and restores the draft after JWT callback.
+- If testing restart recovery, kill the Tornado process during a queued/running render, let watchdog restart it, then poll the job/status endpoint until it resumes or completes.
+
 ## CI/CD (GitHub Actions)
 
 The `.github/workflows/deploy.yml` workflow:

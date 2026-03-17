@@ -32,12 +32,18 @@ DOCKER_TAG ?= $(DOCKER_REGISTRY)$(project):$(version)-$(BUILD_NUMBER)
 echo-tag:
 	@echo $(DOCKER_TAG)
 
+DOCKER_PLATFORM ?= linux/amd64
+
 build:
 	make build_internal
 	make list
 
+build-native:
+	DOCKER_PLATFORM= make build_internal
+	make list
+
 build_internal:
-	docker build --rm --compress  -f docker/Dockerfile --tag $(DOCKER_TAG) . #\
+	docker build --rm --compress $(if $(DOCKER_PLATFORM),--platform $(DOCKER_PLATFORM)) -f docker/Dockerfile --tag $(DOCKER_TAG) .
 	
 list:
 	#Checking for running instances
@@ -131,22 +137,44 @@ push-ecr: ecr-login
 deploy-lambda:
 	cd infra && terraform apply -auto-approve -target=aws_lambda_function.s3_read -target=aws_lambda_layer_version.brotli -var-file=environments/$(environ).tfvars
 
-JWT_SECRET     ?= $(jwt_secret)
-WP_AUTH_URL    ?= $(wp_auth_url)
-APP_BASE_URL   ?= $(app_base_url)
-STATIC_SITE_URL ?= $(static_site_url)
+# Deploy env vars: resolve from terraform where possible, fall back to
+# explicit overrides for secrets.  WP_AUTH_URL has a sensible default.
+JWT_SECRET      ?= $(jwt_secret)
+WP_AUTH_URL     ?= $(or $(wp_auth_url),https://dangercreations.com)
+APP_BASE_URL    ?= $(or $(app_base_url),$(shell cd infra && terraform output -raw app_url 2>/dev/null))
+STATIC_SITE_URL ?= $(or $(static_site_url),$(shell cd infra && terraform output -raw static_site_https_url 2>/dev/null))
 
 deploy-ec2:
+	@if [ -z "$(JWT_SECRET)" ]; then \
+		echo "WARNING: JWT_SECRET is empty — auth will be disabled (dev mode)."; \
+		echo "  Pass it via: make deploy-ec2 JWT_SECRET=your_secret"; \
+	fi
 	@echo "Updating EC2 container via SSM..."
 	@INSTANCE_ID=$$(cd infra && terraform output -raw ec2_instance_id) && \
-	aws ssm send-command --instance-ids $$INSTANCE_ID --document-name "AWS-RunShellScript" \
-	  --parameters "commands=[\"docker pull $(ECR_REPO):latest && docker stop $(project) || true && docker rm $(project) || true && docker run -d --restart=unless-stopped --name $(project) -p 8081:8081 -e S3_BUCKET=$(project) -e AWS_DEFAULT_REGION=$(AWS_REGION) -e jwt_secret=$(JWT_SECRET) -e wp_auth_url=$(WP_AUTH_URL) -e app_base_url=$(APP_BASE_URL) -e static_site_url=$(STATIC_SITE_URL) $(ECR_REPO):latest\"]" \
-	  --region $(AWS_REGION)
+	ECR_REPO_URL="$(ECR_REPO):latest" && \
+	CMD="aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com && docker pull $$ECR_REPO_URL && docker stop $(project) || true && docker rm $(project) || true && docker run -d --restart=unless-stopped --name $(project) -p 8081:8081 -e S3_BUCKET=$(project) -e AWS_DEFAULT_REGION=$(AWS_REGION) -e jwt_secret=$(JWT_SECRET) -e wp_auth_url=$(WP_AUTH_URL) -e app_base_url=$(APP_BASE_URL) -e static_site_url=$(STATIC_SITE_URL) $$ECR_REPO_URL" && \
+	CMD_ID=$$(aws ssm send-command --instance-ids $$INSTANCE_ID --document-name "AWS-RunShellScript" \
+	  --parameters "commands=[\"$$CMD\"]" \
+	  --region $(AWS_REGION) --query 'Command.CommandId' --output text) && \
+	echo "SSM command sent: $$CMD_ID" && \
+	echo "Waiting for SSM command to complete..." && \
+	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+		STATUS=$$(aws ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID \
+			--region $(AWS_REGION) --query 'Status' --output text 2>/dev/null || echo "Pending"); \
+		if [ "$$STATUS" = "Success" ]; then echo "SSM command succeeded."; break; fi; \
+		if [ "$$STATUS" = "Failed" ] || [ "$$STATUS" = "Cancelled" ] || [ "$$STATUS" = "TimedOut" ]; then \
+			echo "ERROR: SSM command $$STATUS"; \
+			aws ssm get-command-invocation --command-id $$CMD_ID --instance-id $$INSTANCE_ID \
+				--region $(AWS_REGION) --query 'StandardErrorContent' --output text 2>/dev/null; \
+			exit 1; \
+		fi; \
+		sleep 5; \
+	done
 
 deploy-infra:
 	cd infra && terraform plan -var-file=environments/$(environ).tfvars -out=tfplan && terraform apply tfplan
 
-deploy: build push-ecr deploy-infra
+deploy: build push-ecr deploy-ec2 deploy-static check-health
 	@echo "Full deployment complete."
 
 test-deploy:
@@ -160,7 +188,7 @@ check-health:
 		echo "ERROR: terraform app_url output unavailable"; \
 		exit 1; \
 	fi; \
-	curl -sS --max-time 15 "$$APP_URL/api/parts" | $(PYTHON) -c "import json,sys; data=json.load(sys.stdin); print('status=healthy parts=%s' % len(data.get('parts', [])))"
+	curl -sS --max-time 15 "$$APP_URL/api/parts" | $(or $(PYTHON),python3) -c "import json,sys; data=json.load(sys.stdin); print('status=healthy parts=%s' % len(data.get('parts', [])))"
 
 check-monitoring:
 	@aws cloudwatch describe-alarms --region $(AWS_REGION) \
@@ -176,25 +204,37 @@ benchmark-ec2:
 
 STATIC_BUCKET ?= danger-finger-static
 READ_URL ?= $(shell cd infra && terraform output -raw api_gateway_url 2>/dev/null)
-RENDER_URL ?= $(shell cd infra && terraform output -raw app_url 2>/dev/null)/
-# Use CloudFront HTTPS URL so the site can be embedded in the HTTPS WordPress page.
-STATIC_SITE_URL ?= $(shell cd infra && terraform output -raw static_site_https_url 2>/dev/null)
+# RENDER_URL points to CloudFront (HTTPS) which proxies /api/* and /render/*
+# to EC2. This avoids mixed-content blocking when embedded in HTTPS WordPress.
+RENDER_URL ?= $(shell cd infra && terraform output -raw static_site_https_url 2>/dev/null)/
 
 generate-static:
 	@$(or $(PYTHON),python3) scripts/generate_static.py
+
+generate-default-stls:
+	@echo "Generating default STLs (requires OpenSCAD)..."
+	@$(or $(PYTHON),python3) scripts/generate_default_stls.py
 
 deploy-static: generate-static
 	@echo "Deploying static site to s3://$(STATIC_BUCKET)..."
 	@cp web/index.html web/static/index.html
 	@sed -i.bak 's|</head>|<script>window.__READ_URL__="$(READ_URL)";window.__RENDER_URL__="$(RENDER_URL)";</script></head>|' web/static/index.html && rm -f web/static/index.html.bak
+	@sed -i.bak 's|<script src="/api.js|<script src="/config-bootstrap.js"></script><script src="/api.js|' web/static/index.html && rm -f web/static/index.html.bak
 	aws s3 sync web/ s3://$(STATIC_BUCKET)/ \
 		--exclude "*.py" --exclude "__pycache__/*" --exclude "static/*" \
+		--exclude "defaults/*" \
 		--delete --cache-control "max-age=300"
 	aws s3 sync web/static/ s3://$(STATIC_BUCKET)/ --cache-control "max-age=60"
 	aws s3 cp web/static/api/parts.json s3://$(STATIC_BUCKET)/api/parts \
 		--content-type "application/json" --cache-control "max-age=60"
 	aws s3 cp web/static/params/all.json s3://$(STATIC_BUCKET)/params/all \
 		--content-type "application/json" --cache-control "max-age=60"
+	@CF_ID=$$(cd infra && terraform output -raw cloudfront_distribution_id 2>/dev/null); \
+	if [ -n "$$CF_ID" ]; then \
+		echo "Invalidating CloudFront cache ($$CF_ID)..."; \
+		aws cloudfront create-invalidation --distribution-id $$CF_ID --paths "/*" \
+			--query 'Invalidation.Status' --output text; \
+	fi
 	@echo "Static site deployed: http://$(STATIC_BUCKET).s3-website-us-east-1.amazonaws.com"
 
 kbrs:

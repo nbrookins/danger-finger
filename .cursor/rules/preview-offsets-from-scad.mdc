@@ -1,0 +1,60 @@
+---
+description: How to derive and calibrate web viewer preview position offsets from SCAD assembly data
+globs: 
+  - danger/finger_params.py
+  - scripts/generate_static.py
+  - web/viewer.js
+alwaysApply: false
+---
+
+# Preview offsets: derive from SCAD part_all, fine-tune empirically
+
+## The web viewer pipeline
+
+Each part STL goes through: **load → geometry.center() → preview rotation → position offset**.
+
+The `geometry.center()` step moves the bounding-box center to origin, erasing the part's native SCAD position. The position offset must restore it.
+
+## Ground truth: SCAD part_all assembly
+
+`_translate_offsets["all"]` in `finger_params.py` has the SCAD assembly positions. Most parts sit at origin (zero offset) because the geometry is built relative to hinge axes. The viewer offsets compensate for the bbox-center displacement.
+
+### How to compute correct offsets from STL files
+
+```python
+# For each part STL (which has print rotation baked in):
+# 1. Load vertices
+# 2. Apply the INVERSE of print rotation (= preview rotation)
+# 3. The bbox center of the result = correct web viewer offset
+# 4. Add any explicit SCAD "all" translate offset
+
+verts = load_stl(part)
+R_inv = rotation_matrix(*PREVIEW_ROTATION[part])
+scad_verts = verts @ R_inv.T
+scad_center = (scad_verts.min(0) + scad_verts.max(0)) / 2
+offset = scad_center + SCAD_ALL_OFFSET[part]
+```
+
+## Critical lessons
+
+1. **The original v5.1 offsets were nearly correct.** They were measured from the same STLs. The SCAD-derived calculation confirmed them within 1-2mm. Never make large changes (±5mm+) unless the geometry itself changed.
+
+2. **Hinge overlaps are expected.** Adjacent parts overlap by ~5-10mm at hinge joints because the fork/socket geometry interleaves. This is NOT compression — do not try to eliminate it by spreading parts apart.
+
+3. **Over-correction is worse than under-correction.** Moving parts 6mm apart at a hinge joint that should interleave by 5mm creates visible gaps and disconnected-looking assembly. The user went from "slight overlap" to "super far off" in one change.
+
+4. **Fine-tune ±1mm at a time.** After deriving the base values from SCAD, the user will always want small adjustments. Use Playwright route interception, change ONE axis on ONE part, verify visually.
+
+5. **Bumper and plug are special:**
+   - Bumper: SCAD center is at origin, but web viewer needs it at middle_y since geometry.center() moves it. Use same Y as middle section.
+   - Plugs: use per-instance positions at hinge axes (Y=0 proximal, Y=int_len distal). No Y nudge needed.
+
+6. **Stand position:** SCAD places stand much lower (Y≈-45) than the old web value (-31). The SCAD value is correct for assembly accuracy. Stand is hidden by default so it rarely matters visually.
+
+7. **Bumper X must match middle X.** Both wrap the same strut section. If middle moves, bumper follows on all axes except Z.
+
+8. **Check from multiple angles.** Front view hides X-axis errors; side/back view reveals them. Always verify from at least front + side before declaring an offset correct.
+
+## Reference document
+
+See `docs/PREVIEW_GEOMETRY_REFERENCE.md` for the full offset table, SCAD ground truth values, rotated bbox dimensions, and a change log of all adjustments.

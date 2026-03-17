@@ -79,6 +79,10 @@ var Api = (function () {
     }
 
     function fetchParts() {
+        if (window.__STATIC_PARTS__) {
+            _onPartsLoaded && _onPartsLoaded(window.__STATIC_PARTS__);
+            return;
+        }
         _xhr("GET", "api/parts", null, function (text) {
             try { _onPartsLoaded && _onPartsLoaded(JSON.parse(text)); } catch (e) { console.error("fetchParts parse error", e); }
         }, function (text, status) {
@@ -87,6 +91,10 @@ var Api = (function () {
     }
 
     function fetchParams() {
+        if (window.__STATIC_PARAMS__) {
+            _onParamsLoaded && _onParamsLoaded(window.__STATIC_PARAMS__);
+            return;
+        }
         _xhr("GET", "params/all", null, function (text) {
             try { _onParamsLoaded && _onParamsLoaded(JSON.parse(text)); } catch (e) { console.error("fetchParams parse error", e); }
         }, function (text, status) {
@@ -137,7 +145,7 @@ var Api = (function () {
     }
 
     function fetchJobStatus(jobId, onSuccess, onError) {
-        _xhr("GET", "jobs/" + jobId, null, function (text) {
+        _xhr("GET", "api/jobs/" + jobId, null, function (text) {
             onSuccess && onSuccess(_parseJson(text));
         }, function (text, status) {
             if (status === 0) { onError && onError(RENDER_OFFLINE_MSG, status); return; }
@@ -146,33 +154,32 @@ var Api = (function () {
         }, "read");
     }
 
-    function requestPreview(getCurrentParams) {
+    function requestPreview(currentParams, quality) {
         if (_previewDebounceTimer) clearTimeout(_previewDebounceTimer);
         if (_previewPollTimer) clearTimeout(_previewPollTimer);
-        _previewDebounceTimer = setTimeout(function () {
-            _previewDebounceTimer = null;
-            _onPreviewError && _onPreviewError("Updating preview...", false);
-            var body = JSON.stringify(getCurrentParams());
-            _xhr("POST", "api/preview", body, function (text, status) {
-                var res = _parseJson(text);
-                if (status === 202 && res.job_id) {
-                    _latestPreviewJobId = res.job_id;
-                    _onPreviewError && _onPreviewError("Preview queued...", false);
-                    _pollPreview(res.job_id);
-                } else if (res.stl_urls && Object.keys(res.stl_urls).length) {
-                    _onPreviewReady && _onPreviewReady(res);
-                } else {
-                    _onPreviewError && _onPreviewError("Preview returned no models.", true);
-                }
-            }, function (text, status) {
-                if (status === 0) {
-                    _onPreviewError && _onPreviewError(RENDER_OFFLINE_MSG, true);
-                    return;
-                }
-                var r = _parseJson(text);
-                _onPreviewError && _onPreviewError(r.error || ("Preview failed (" + status + ")"), true);
-            }, "render");
-        }, PREVIEW_DEBOUNCE_MS);
+        var payload = Object.assign({}, currentParams);
+        if (quality) payload.quality = quality;
+        _onPreviewError && _onPreviewError("Rendering...", false);
+        var body = JSON.stringify(payload);
+        _xhr("POST", "api/preview", body, function (text, status) {
+            var res = _parseJson(text);
+            if (status === 202 && res.job_id) {
+                _latestPreviewJobId = res.job_id;
+                _onPreviewError && _onPreviewError("Render queued...", false);
+                _pollPreview(res.job_id);
+            } else if (res.stl_urls && Object.keys(res.stl_urls).length) {
+                _onPreviewReady && _onPreviewReady(res);
+            } else {
+                _onPreviewError && _onPreviewError("Render returned no models.", true);
+            }
+        }, function (text, status) {
+            if (status === 0) {
+                _onPreviewError && _onPreviewError(RENDER_OFFLINE_MSG, true);
+                return;
+            }
+            var r = _parseJson(text);
+            _onPreviewError && _onPreviewError(r.error || ("Render failed (" + status + ")"), true);
+        }, "render");
     }
 
     function _pollPreview(jobId) {
@@ -180,7 +187,7 @@ var Api = (function () {
         _previewPollTimer = setTimeout(function () {
             _previewPollTimer = null;
             if (_latestPreviewJobId !== jobId) return;
-            _xhr("GET", "jobs/" + jobId, null, function (text) {
+            _xhr("GET", "api/jobs/" + jobId, null, function (text) {
                 if (_latestPreviewJobId !== jobId) return;
                 var payload = _parseJson(text);
                 if (payload.status === "complete" && payload.result) {
@@ -193,7 +200,7 @@ var Api = (function () {
                 } else if (payload.status === "failed") {
                     _onPreviewError && _onPreviewError(payload.error || "Preview failed.", true);
                 } else {
-                    var msg = payload.status === "running" ? "Rendering preview..." : "Preview queued...";
+                    var msg = payload.status === "running" ? "Rendering..." : "Render queued...";
                     _onPreviewError && _onPreviewError(msg, false);
                     _pollPreview(jobId);
                 }

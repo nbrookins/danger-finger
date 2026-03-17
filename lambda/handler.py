@@ -36,6 +36,16 @@ def handler(event, context):
     if m:
         return _serve_json("profiles/" + m.group(1))
 
+    # GET /jobs/{job_id}
+    m = re.match(r"^/jobs/([a-zA-Z0-9\-]+)$", path)
+    if m:
+        return _serve_json("jobs/" + m.group(1))
+
+    # GET /render/{cfghash}/status
+    m = re.match(r"^/render/([a-fA-F0-9]+)/status$", path)
+    if m:
+        return _serve_json("render/%s/status" % m.group(1))
+
     # GET /render/{cfghash}/bundle.zip
     m = re.match(r"^/render/([a-fA-F0-9]+)/bundle\.zip$", path)
     if m:

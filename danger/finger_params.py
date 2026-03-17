@@ -39,32 +39,33 @@ class DangerFingerParams:
     render_quality = Prop(val=RenderQuality.EXTRAMEDIUM, doc='''- auto to use fast for preview.  higher quality take much longer for scad rendering''', adv=True, setter=_render_quality_setter, hidden=True)
 
     # **************************************** parameters ****************************************
-    intermediate_length = Prop(val=24, minv=8, maxv=30, custom=CustomType.SLIDER, name="intermediate_length", doc=''' length of the intermediate finger segment ''', section="common", order=1)
+    intermediate_length = Prop(val=24, minv=12, maxv=28, custom=CustomType.SLIDER, name="intermediate_length", doc=''' length of the intermediate finger segment ''', section="common", order=1)
     intermediate_distal_height = Prop(val=9.5, minv=4, maxv=16, custom=CustomType.SLIDER, name="intermediate_distal_height", doc=''' height of the middle section at the distal end.  roughly the height of the hinge circle ''')
     intermediate_proximal_height = Prop(val=11.0, minv=4, maxv=16, custom=CustomType.SLIDER, name="intermediate_proximal_height", doc=''' height of the middle section at the proximal end.  roughly the height of the hinge circle ''')
     intermediate_bumper_width = Prop(val=3.6, minv=0, maxv=20, custom=CustomType.SLIDER, name="intermediate_bumper_width", doc=''' width of optional bumper around middle section ''')
-    intermediate_bumper_style= Prop(val=BumperStyle.COVER, setter=_bumper_style_setter, doc='''style of bumper around middle section: NONE, MINIMAL, COVER, or FULL''')
+    intermediate_bumper_style= Prop(val=BumperStyle.COVER, setter=_bumper_style_setter, doc='''style of bumper around middle section: NONE, MINIMAL, COVER, or FULL''', section="common", order=5)
+    strut_width = Prop(val=2.0, minv=1.2, maxv=4.0, doc='''width of the structural struts connecting the hinges; thicker struts are stronger but reduce tendon clearance''', section="common", order=6)
     knuckle_tendon_offset = Prop(val=3.0, minv=0, maxv=10, custom=CustomType.SLIDER, name="knuckle_tendon_offset", doc='''vertical offset of tendon anchor on base; 0 disables the bulge''')
 
-    proximal_length = Prop(val=-.5, minv=-2, maxv=30, custom=CustomType.SLIDER, name="proximal_length", doc=''' length of the proximal/base finger segment ''') #TODO 3 - dynamic min auto of knuckle radius
-    distal_length = Prop(val=24.0, minv=8, maxv=30, custom=CustomType.SLIDER, name="distal_length", doc=''' length of the distal/tip finger segment ''', section="common", order=20)
-    distal_base_length = Prop(val=6.0, minv=0, maxv=20, custom=CustomType.SLIDER, name="distal_base_length", doc=''' length of the base of the distal/tip finger segment ''', section="common", order=21)
+    proximal_length = Prop(val=-.5, minv=-1, maxv=8, custom=CustomType.SLIDER, name="proximal_length", doc='''extension of the base/proximal section beyond the hinge; positive values make a sturdier base''', section="common", order=13)
+    distal_length = Prop(val=24.0, minv=12, maxv=28, custom=CustomType.SLIDER, name="distal_length", doc=''' length of the distal/tip finger segment ''', section="common", order=20)
+    distal_base_length = Prop(val=6.0, minv=2, maxv=12, custom=CustomType.SLIDER, name="distal_base_length", doc='''length of the base of the distal/tip finger segment; typically ~25%% of distal_length''')
 
-    knuckle_proximal_width = Prop(val=18.5, minv=10, maxv=28, custom=CustomType.SLIDER, name="knuckle_proximal_width", doc=''' width of the proximal knuckle hinge''')
-    knuckle_distal_width = Prop(val=16.0, minv=10, maxv=28, custom=CustomType.SLIDER, name="knuckle_distal_width", doc=''' width of the distal knuckle hinge ''')
-    tip_circumference = Prop(val=47, minv=4, maxv=100, custom=CustomType.SLIDER, name="tip_circumference", doc=''' circumference of tip ''')
+    knuckle_proximal_width = Prop(val=18.5, minv=12, maxv=24, custom=CustomType.SLIDER, name="knuckle_proximal_width", doc=''' width of the proximal knuckle hinge''')
+    knuckle_distal_width = Prop(val=16.0, minv=10, maxv=22, custom=CustomType.SLIDER, name="knuckle_distal_width", doc=''' width of the distal knuckle hinge ''')
+    tip_circumference = Prop(val=47, minv=28, maxv=65, custom=CustomType.SLIDER, name="tip_circumference", doc=''' circumference of tip ''')
 
-    socket_depth = Prop(val=34, minv=5, maxv=60, doc=''' length of the portion that interfaces socket and base ''', section="common", order=12)
+    socket_depth = Prop(val=34, minv=10, maxv=48, doc=''' length of the portion that interfaces socket and base ''', section="common", order=12)
     socket_bottom_cut = Prop(val=9, minv=0, maxv=60, doc='''radius of the bottom cutout on the socket; larger values remove more material from the palm side''')
 
-    socket_circumference_distal = Prop(val=57.3, minv=20, maxv=160, doc='''circumference of the socket closest to the base''', section="common", order=11)
-    socket_circumference_proximal = Prop(val=63.4, minv=20, maxv=160, doc='''circumference of the socket closest to the hand''', section="common", order=10)
+    socket_circumference_distal = Prop(val=57.3, minv=34, maxv=88, doc='''circumference of the socket closest to the base''', section="common", order=11)
+    socket_circumference_proximal = Prop(val=63.4, minv=38, maxv=95, doc='''circumference of the socket closest to the hand''', section="common", order=10)
     #1.6
     socket_thickness_distal = Prop(val=1.9, minv=.5, maxv=4, doc='''thickness of the socket closest to the base''') #from 1.2
     socket_thickness_middle = Prop(val=1.6, minv=.5, maxv=4, doc='''thickness of the socket at interface''') #from .42
     socket_thickness_proximal = Prop(val=.85, minv=.5, maxv=4, doc='''thickness of the socket at flare''') #from .42
 
-    linkage_length = Prop(val=70, minv=10, maxv=120, doc=''' length of the wrist linkage ''')
+    linkage_length = Prop(val=70, minv=35, maxv=100, doc=''' length of the wrist linkage ''')
 
     socket_scallop_depth_left = Prop(val=10, minv=-10, maxv=20, adv=True, doc='''depth of the left scallop cutout on the socket; negative values disable''')
     socket_scallop_depth_right = Prop(val=0, minv=-10, maxv=20, adv=True, doc='''depth of the right scallop cutout on the socket; 0 for symmetric with left''')
@@ -172,25 +173,24 @@ class DangerFingerParams:
 
     # Fallback preview positions (mm) from v5.1 STL bounding-box centers (used when no config is applied)
     _preview_position_offsets = {
-        "socket":   (0, -24, 0),
-        "base":     (0, -3, 0),
-        "middle":   (1, 12, 0),
-        "tip":      (1, 27, 0),
-        "tipcover": (0, 39, 0),
-        "linkage":  (0, 0, 20),
-        "stand":    (0, -31, 0),
+        "socket":   (0, -26, 0),
+        "base":     (0, -4, 0),
+        "middle":   (0, 11, 0),
+        "tip":      (1, 26, 0),
+        "tipcover": (0, 38, 0),
+        "linkage":  (0, -3, 20),
+        "stand":    (0, -45, 0),
         "pins":     (0, 0, 0),
+        "bumper":   (0.5, 11, 0),
     }
 
     def compute_preview_positions(self):
         """Compute dynamic preview positions from current params.
 
-        Estimates bounding-box centers for each part in assembled orientation
-        based on parametric dimensions, without requiring STL rendering.
-        Returns dict of part_name -> (x, y, z) tuples.
-
-        Y=0 is the proximal hinge. Formulas derived from Y-span midpoints documented
-        in docs/VIEWER_ASSEMBLY.md section 3.1, cross-checked against v5.1 STL measurements.
+        These approximate the SCAD bbox centers in assembled ("part_all")
+        orientation. The viewer's center→rotate→reposition pipeline
+        recreates assembly from per-part STLs; offsets here are the
+        assembled-space bbox centers derived from SCAD geometry.
         """
         prox_h = self.intermediate_proximal_height
         int_len = self.intermediate_length
@@ -200,22 +200,15 @@ class DangerFingerParams:
         sock_iface_len = self.socket_interface_length
         distal_base_len = self.distal_base_length
         flange_h = self.distal_flange_height
-        # SCALLOP_HEIGHT is a DangerFinger class constant; fall back to 9 if called on bare params
         scallop_h = getattr(self, 'SCALLOP_HEIGHT', 9)
 
-        # base: from -(prox_len + prox_h) to 0, center at midpoint
         base_y = -(prox_len + prox_h / 2) / 2
-        # middle: from 0 to int_len, center at midpoint
         middle_y = int_len / 2
-        # tip: rigid hinge section from int_len to int_len + distal_base_len
         tip_y = int_len + distal_base_len / 2
-        # tipcover: dome section from int_len + distal_base_len to int_len + dist_len
         tipcover_y = int_len + (distal_base_len + dist_len) / 2
-        # socket: top at -(socket_top + flange_h), bottom trimmed by scallops
         socket_top = prox_len + prox_h / 2 + flange_h
         socket_y = -(socket_top + (sock_iface_len + sock_depth - scallop_h / 2) / 2)
-        # stand sits near the bottom of the socket body
-        stand_y = socket_y - sock_depth * 0.15
+        stand_y = socket_y - sock_depth * 0.6
         linkage_z = 20
 
         return {
@@ -224,38 +217,48 @@ class DangerFingerParams:
             "middle":   (1, round(middle_y, 1), 0),
             "tip":      (1, round(tip_y, 1), 0),
             "tipcover": (0, round(tipcover_y, 1), 0),
-            "linkage":  (0, 0, linkage_z),
+            "linkage":  (0, round(-base_y, 1), linkage_z),
             "stand":    (0, round(stand_y, 1), 0),
             "pins":     (0, 0, 0),
+            "bumper":   (2, round(middle_y, 1), 0),
         }
 
     # Fallback plug placements (default params). Use compute_preview_plug_instances() for dynamic values.
-    # Y nudged up by knuckle_plug_radius/2 (~1.5mm) to visually center on hinge after bbox-center pipeline.
+    # Y = hinge axis (0 for proximal, int_len for distal); no nudge needed.
     _preview_plug_instances = [
-        {"position": (0,  1.5, -8.6), "rotation": (0,   0, 0)},   # proximal left
-        {"position": (0,  1.5,  8.6), "rotation": (0, 180, 0)},   # proximal right
-        {"position": (0, 25.5, -7.4), "rotation": (0,   0, 0)},   # distal left
-        {"position": (0, 25.5,  7.4), "rotation": (0, 180, 0)},   # distal right
+        {"position": (0,  0, -8.6), "rotation": (0,   0, 0)},     # proximal left
+        {"position": (0,  0,  8.6), "rotation": (0, 180, 0)},     # proximal right
+        {"position": (0, 24, -7.4), "rotation": (0,   0, 0)},     # distal left
+        {"position": (0, 24,  7.4), "rotation": (0, 180, 0)},     # distal right
     ]
 
     def compute_preview_plug_instances(self):
         """Compute plug instance positions from current params.
 
         Plugs cap the hinge pin holes at the outer faces of each hinge.
-        Z = outer face of hinge; Y = hinge axis + plug_radius nudge to visually center
-        after the viewer's bbox-center / rotate / reposition pipeline.
+        Z = outer face of hinge; Y = hinge axis (0 for proximal, int_len for distal).
         """
         prox_z = round(-(self.knuckle_proximal_width / 2 - self.knuckle_plug_thickness / 2) - 0.01, 2)
         dist_z = round(-(self.knuckle_distal_width / 2 - self.knuckle_plug_thickness / 2), 2)
         int_len = self.intermediate_length
-        r = self.knuckle_plug_radius
-        nudge = r / 2
         return [
-            {"position": (0,              nudge, prox_z), "rotation": (0,   0, 0)},
-            {"position": (0,              nudge, -prox_z), "rotation": (0, 180, 0)},
-            {"position": (0, int_len + nudge, dist_z), "rotation": (0,   0, 0)},
-            {"position": (0, int_len + nudge, -dist_z), "rotation": (0, 180, 0)},
+            {"position": (0,       0, prox_z), "rotation": (0,   0, 0)},
+            {"position": (0,       0, -prox_z), "rotation": (0, 180, 0)},
+            {"position": (0, int_len, dist_z), "rotation": (0,   0, 0)},
+            {"position": (0, int_len, -dist_z), "rotation": (0, 180, 0)},
         ]
+
+    _preview_hinge_pivots = {
+        "proximal": (0, 0, 0),
+        "distal":   (0, 24, 0),
+    }
+
+    def compute_hinge_pivots(self):
+        """Return hinge pivot points in assembled viewer space."""
+        return {
+            "proximal": (0, 0, 0),
+            "distal":   (0, round(self.intermediate_length, 1), 0),
+        }
 
     # Explode offsets: unit direction vectors away from middle (Y≈12) in assembled space
     _preview_explode_offsets = {
@@ -268,6 +271,7 @@ class DangerFingerParams:
         "stand":    (0, -1.5, 0),
         "plug":     (0,    0, 1),
         "pins":     (0,    0, 0),
+        "bumper":   (1,    0, 0),
     }
 
     #**************************************** dynamic properties ******************************
@@ -276,8 +280,8 @@ class DangerFingerParams:
     intermediate_distal_width_ = property(lambda self: (self.knuckle_distal_width - self.knuckle_distal_thickness*2 - self.knuckle_side_clearance*2))
     intermediate_width_ = property(lambda self: orient_pair(self.intermediate_distal_width_, self.intermediate_proximal_width_))
     tip_interface_post_radius_ = property(lambda self: (self.tip_radius - self.tipcover_thickness- self.tip_interface_ridge_radius))# - self.tip_interface_ridge_radius - self.tipcover_thickness))
-    tunnel_inner_width_ = property(lambda self: ({Orient.DISTAL: self.intermediate_width_[Orient.DISTAL]- self.knuckle_inset_border*2 + self.tunnel_radius/2, \
-        Orient.PROXIMAL: self.intermediate_width_[Orient.PROXIMAL]- self.knuckle_inset_border*2 + self.tunnel_radius/2}))
+    tunnel_inner_width_ = property(lambda self: ({Orient.DISTAL: self.intermediate_width_[Orient.DISTAL]- self.strut_width*2 + self.tunnel_radius/2, \
+        Orient.PROXIMAL: self.intermediate_width_[Orient.PROXIMAL]- self.strut_width*2 + self.tunnel_radius/2}))
     tunnel_inner_cutheight_ = property(lambda self: ({Orient.DISTAL: self.intermediate_height_[Orient.DISTAL] / 2 + self.tunnel_inner_height, \
         Orient.PROXIMAL: self.intermediate_height_[Orient.PROXIMAL] / 2 + self.tunnel_inner_height}))
     knuckle_inner_width_ = property(lambda self: ({Orient.PROXIMAL: self.intermediate_width_[Orient.PROXIMAL] + self.knuckle_side_clearance*2, \
@@ -294,8 +298,8 @@ class DangerFingerParams:
     distal_offset_ = property(lambda self: (self.intermediate_length))
     socket_interface_radius_ = property(lambda self: {Orient.DISTAL: self.socket_interface_radius_distal, # - self.socket_interface_radius_offset,
                                 Orient.PROXIMAL: self.socket_interface_radius_proximal}) # - self.socket_interface_radius_offset + self.socket_interface_flare_radius})
-    bottom_strut_width_ = property(lambda self: {Orient.DISTAL: self.intermediate_bottom_width_factor * (self.intermediate_width_[Orient.DISTAL]-(self.knuckle_inset_border*2)), \
-        Orient.PROXIMAL: self.intermediate_bottom_width_factor * (self.intermediate_width_[Orient.PROXIMAL]-(self.knuckle_inset_border*2))})
+    bottom_strut_width_ = property(lambda self: {Orient.DISTAL: self.intermediate_bottom_width_factor * (self.intermediate_width_[Orient.DISTAL]-(self.strut_width*2)), \
+        Orient.PROXIMAL: self.intermediate_bottom_width_factor * (self.intermediate_width_[Orient.PROXIMAL]-(self.strut_width*2))})
 
     def __init__(self):
         self._models = {}
@@ -340,7 +344,6 @@ class DangerFingerParams:
         # socket_interface_length max should be <= socket_depth
         if self.socket_interface_length > self.socket_depth:
             warnings.append(f"socket_interface_length ({self.socket_interface_length}) > socket_depth ({self.socket_depth})")
-        # intermediate_tunnel_length should be <= maxv (already bounded by Prop, but check)
         # knuckle_washer_radius + knuckle_pin_radius should fit within hinge
         for orient_name, height in [("distal", self.intermediate_distal_height), ("proximal", self.intermediate_proximal_height)]:
             hinge_r = height / 2
@@ -351,6 +354,19 @@ class DangerFingerParams:
         tip_post_r = self.tip_radius - self.tipcover_thickness - self.tip_interface_ridge_radius
         if tip_post_r <= 0:
             warnings.append(f"tip_interface_post_radius_ ({tip_post_r:.2f}) <= 0: tip too small for interface (depends_on: tip_circumference, tipcover_thickness, tip_interface_ridge_radius)")
+        # socket circumference ratio: distal should not exceed proximal
+        if self.socket_circumference_distal > self.socket_circumference_proximal:
+            warnings.append(f"socket_circumference_distal ({self.socket_circumference_distal}) > proximal ({self.socket_circumference_proximal})")
+        # distal_base_length should not exceed distal_length
+        if self.distal_base_length >= self.distal_length:
+            warnings.append(f"distal_base_length ({self.distal_base_length}) >= distal_length ({self.distal_length})")
+        # strut_width must fit inside the intermediate width (each side)
+        for orient_name, width in [("distal", self.intermediate_distal_width_), ("proximal", self.intermediate_proximal_width_)]:
+            if self.strut_width * 2 >= width:
+                warnings.append(f"strut_width ({self.strut_width}) x2 >= {orient_name} intermediate width ({width:.1f})")
+        # socket_bottom_cut should not exceed socket_depth
+        if self.socket_bottom_cut > self.socket_depth:
+            warnings.append(f"socket_bottom_cut ({self.socket_bottom_cut}) > socket_depth ({self.socket_depth})")
         return warnings
 
     def get_params(self, adv=False, allv=True, extended=False):

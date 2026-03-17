@@ -43,6 +43,11 @@ output "static_site_https_url" {
   value       = "https://${aws_cloudfront_distribution.static.domain_name}"
 }
 
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution ID (for cache invalidation)"
+  value       = aws_cloudfront_distribution.static.id
+}
+
 output "static_bucket" {
   description = "S3 static website bucket name"
   value       = aws_s3_bucket.static.id

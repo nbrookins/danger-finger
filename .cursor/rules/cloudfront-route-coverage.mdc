@@ -1,0 +1,46 @@
+---
+description: Ensure all Tornado server routes are covered by CloudFront behaviors
+globs: web/server.py
+alwaysApply: false
+---
+
+# CloudFront route coverage
+
+All HTTP routes in `web/server.py` **must** be reachable through CloudFront. The static site is served via CloudFront HTTPS, and all API/render requests from the frontend go through the same CloudFront distribution.
+
+## How CloudFront routing works
+
+CloudFront uses path-based behaviors defined in `infra/static.tf`:
+- `/api/*` → EC2 backend
+- `/render/*` → EC2 backend
+- `/profile/*` → EC2 backend
+- `/profiles/*` → EC2 backend
+- `/configs/*` → EC2 backend
+- `/params/*` → EC2 backend
+- Default → S3 static site
+
+Routes that don't match any behavior fall through to **S3**, which returns `index.html` (SPA fallback) — silently breaking the endpoint.
+
+## When adding or moving server routes
+
+1. Ensure the URL path starts with a prefix that has a CloudFront behavior (prefer `/api/`)
+2. If a new prefix is needed, add a corresponding `ordered_cache_behavior` in `infra/static.tf`
+3. Test the route through the CloudFront URL, not just the direct EC2 URL
+
+## What goes wrong
+
+A route like `/jobs/{id}` that doesn't match `/api/*` will:
+- Work when tested against EC2 directly
+- Return `index.html` through CloudFront (SPA 404 fallback)
+- Cause the frontend to receive HTML where it expects JSON
+- Silently fail with no error visible in server logs
+
+## Fix: use `/api/` prefix for all backend routes
+
+```python
+# ✅ Reachable through CloudFront /api/* behavior
+(r"/api/jobs/([a-zA-Z0-9\-]+)", JobStatusHandler),
+
+# ❌ Not covered by any CloudFront behavior — falls to S3
+(r"/jobs/([a-zA-Z0-9\-]+)", JobStatusHandler),
+```

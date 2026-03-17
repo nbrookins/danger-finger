@@ -12,17 +12,20 @@ from danger.finger_base import *
 
 # RGB 0-1 for SCAD color(); matches web PREVIEW_PART_COLORS for comparing part_all STL to web preview
 PART_COLORS = {
-    "tip": [0.753, 0.224, 0.169],       # #c0392b
-    "base": [0.161, 0.502, 0.725],      # #2980b9
-    "linkage": [0.153, 0.682, 0.376],   # #27ae60
-    "middle": [0.827, 0.329, 0.0],     # #d35400
-    "tipcover": [0.557, 0.267, 0.678], # #8e44ad
-    "socket": [0.086, 0.627, 0.522],   # #16a085
-    "stand": [0.498, 0.549, 0.553],    # #7f8c8d
-    "pins": [0.173, 0.243, 0.314],     # #2c3e50
-    "plug": [0.902, 0.494, 0.133],     # #e67e22
-    "peg": [0.902, 0.494, 0.133],      # same as plug
-    "bumper": [0.498, 0.549, 0.553],   # same as stand (gray)
+    # Hard parts (PLA/PETG) — warm sandy/almond tones
+    "tip":     [0.780, 0.718, 0.635],   # #C7B7A2 warm almond
+    "base":    [0.725, 0.663, 0.580],   # #B9A994 slightly darker sand
+    "middle":  [0.780, 0.718, 0.635],   # same as tip
+    "linkage": [0.725, 0.663, 0.580],   # same as base
+    # Soft parts (TPU) — saturated teal/cyan, clearly distinct from hard parts
+    "tipcover": [0.180, 0.557, 0.608],  # #2E8E9B deep teal
+    "socket":   [0.220, 0.498, 0.557],  # #387F8E darker teal
+    "plug":     [0.259, 0.588, 0.643],  # #4296A4 medium teal
+    "bumper":   [0.180, 0.557, 0.608],  # #2E8E9B deep teal (same as tipcover)
+    # Neutral
+    "stand":   [0.620, 0.635, 0.640],   # #9EA2A3 neutral gray
+    "pins":    [0.173, 0.243, 0.314],   # #2c3e50 dark slate
+    "peg":     [0.259, 0.588, 0.643],   # same as plug (soft)
 }
 
 #TODO - make snap knucles instead of pins?
@@ -463,7 +466,7 @@ class DangerFinger(DangerFingerBase):
         c = union()
         dd= 0
         d = (self.socket_radius_[Orient.PROXIMAL] - self.socket_radius_[Orient.DISTAL]) / self.socket_depth
-        for i in range(1, self.socket_depth):
+        for i in range(1, int(self.socket_depth)):
             dd += d + i*self.SOCKET_RIDGE_SPACING_FACTOR
             c=c+ circle(r = 1).translate(self.socket_radius_[Orient.DISTAL]+self.socket_thickness_proximal+ dd, 0, 0).rotate_extrude(convexity = 10).translate(0,0,i*(self.socket_interface_thickness + self.socket_thickness_proximal) + self.socket_interface_depth)# .debug()
         c = intersection()(c.rotate((0, 0, 0)), bottom_cut)#.debug()
@@ -659,8 +662,8 @@ class DangerFinger(DangerFingerBase):
         ''' create the hinges at either end of a intermediate/middle segment '''
         width = self.intermediate_width_[orient]
         radius = self.intermediate_height_[orient]/2
-        st_height = self.knuckle_inset_border*self.strut_height_ratio
-        st_offset = self.knuckle_inset_border/2
+        st_height = self.strut_width*self.strut_height_ratio
+        st_offset = self.strut_width/2
 
 #TODO - config, and diff distal/prox angles                   #rounding on proximal for strength
         mod_hinge = cylinder(h=width, r=radius, center=True) if orient == Orient.DISTAL else \
@@ -698,8 +701,8 @@ class DangerFinger(DangerFingerBase):
 
     def strut(self, width=0, height=0, length=.01):
         ''' create a strut that connects the two middle hinges  '''
-        if width == 0: width = self.knuckle_inset_border
-        if height == 0: height = self.knuckle_inset_border
+        if width == 0: width = self.strut_width
+        if height == 0: height = self.strut_width
         return rcube((height, width, length), rnd=self.strut_rounding, center=True)
 
     def socket_interface(self, orient, ridges=False, half=False):
@@ -725,7 +728,7 @@ class DangerFinger(DangerFingerBase):
         if ridges and self.socket_interface_ridges > 0:
             o = self.socket_interface_ridge_outer / (2 if half else 1)
             i = self.socket_interface_ridge_inner / (2 if half else 1)
-            cub = union()([cube((self.socket_interface_ridge_width,30,30), center=True).rotate((0, 360/(self.socket_interface_ridges-1)*i, 0)) for i in range(1, self.socket_interface_ridges)])
+            cub = union()([cube((self.socket_interface_ridge_width,30,30), center=True).rotate((0, 360/(self.socket_interface_ridges-1)*i, 0)) for i in range(1, int(self.socket_interface_ridges))])
             final += intersection()(final.scale((1+o,1,1+o)), cub)#.debug())
             final += intersection()(final.scale((1+i,1,1+i)), cub)
 
@@ -775,7 +778,7 @@ class DangerFinger(DangerFingerBase):
 
     def cross_strut(self):
         ''' center cross strut'''
-        brace_length = min(self.intermediate_distal_width_, self.intermediate_proximal_width_) - self.knuckle_inset_border
-        x_shift = self.intermediate_distal_height/2 -self.knuckle_inset_border/2
-        h = self.knuckle_inset_border*self.knuckle_brace_height_factor+.4
+        brace_length = min(self.intermediate_distal_width_, self.intermediate_proximal_width_) - self.strut_width
+        x_shift = self.intermediate_distal_height/2 -self.strut_width/2
+        h = self.strut_width*self.knuckle_brace_height_factor+.4
         return rcube((h, h*2,brace_length), rnd=self.strut_rounding).translate((x_shift-.2, self.distal_offset_/2+h/4, 0))

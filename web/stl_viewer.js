@@ -25,7 +25,8 @@
         Float32BufferAttribute, Loader, Vector3, SRGBColorSpace,
         AmbientLight, DirectionalLight, Mesh, MeshStandardMaterial,
         PerspectiveCamera, Raycaster, Scene, WebGLRenderer, Vector2,
-        EventDispatcher
+        EventDispatcher, ArrowHelper, CanvasTexture, SpriteMaterial, Sprite,
+        OrthographicCamera
     } = THREE;
 
     /* -------------------------------------------------------------------------
@@ -496,6 +497,9 @@ class STLLoader extends Loader {
                 ro.observe(element);
             }
 
+            // Axis compass overlay
+            this._initCompass(element);
+
             // Render loop
             this._animate();
         }
@@ -569,6 +573,19 @@ class STLLoader extends Loader {
             if (entry) entry.mesh.position.set(x, y, z);
         }
 
+        /** Reset rotation to identity then reapply world-axis rotations X -> Y -> Z. */
+        set_rotation(id, rx, ry, rz) {
+            const entry = this._models[id];
+            if (!entry) return;
+            entry.mesh.quaternion.identity();
+            const AX = new Vector3(1, 0, 0);
+            const AY = new Vector3(0, 1, 0);
+            const AZ = new Vector3(0, 0, 1);
+            if (rx) entry.mesh.rotateOnWorldAxis(AX, rx);
+            if (ry) entry.mesh.rotateOnWorldAxis(AY, ry);
+            if (rz) entry.mesh.rotateOnWorldAxis(AZ, rz);
+        }
+
         /**
          * Return info about a loaded model.
          * pos is returned as an array so inspect_ui.py's Array.isArray(pos) check passes.
@@ -615,6 +632,76 @@ class STLLoader extends Loader {
             requestAnimationFrame(() => this._animate());
             this._controls.update();
             this._renderer.render(this._scene, this._camera);
+            this._renderCompass();
+        }
+
+        /** Create the axis compass overlay in the bottom-left corner. */
+        _initCompass(container) {
+            const SIZE = 130;
+
+            const div = document.createElement('div');
+            div.style.cssText = 'position:absolute;bottom:8px;left:8px;width:' + SIZE +
+                'px;height:' + SIZE + 'px;pointer-events:none;z-index:10;' +
+                'border-radius:8px;background:rgba(0,0,0,0.06);';
+            container.style.position = container.style.position || 'relative';
+            container.appendChild(div);
+
+            this._compassRenderer = new WebGLRenderer({ antialias: true, alpha: true });
+            this._compassRenderer.setPixelRatio(window.devicePixelRatio);
+            this._compassRenderer.setSize(SIZE, SIZE);
+            this._compassRenderer.setClearColor(0x000000, 0);
+            div.appendChild(this._compassRenderer.domElement);
+            this._compassRenderer.domElement.style.borderRadius = '8px';
+
+            this._compassScene  = new Scene();
+            this._compassCamera = new OrthographicCamera(-2.2, 2.2, 2.2, -2.2, 0.1, 10);
+            this._compassCamera.position.set(0, 0, 4);
+
+            const axisLen = 1.2;
+            const headLen = 0.3;
+            const headW   = 0.16;
+            const axes = [
+                { dir: new Vector3(1, 0, 0), color: 0xdc2626, label: 'X' },
+                { dir: new Vector3(0, 1, 0), color: 0x16a34a, label: 'Y' },
+                { dir: new Vector3(0, 0, 1), color: 0x2563eb, label: 'Z' },
+            ];
+
+            for (const a of axes) {
+                const arrow = new ArrowHelper(a.dir, new Vector3(0, 0, 0), axisLen, a.color, headLen, headW);
+                arrow.line.material.linewidth = 2;
+                this._compassScene.add(arrow);
+
+                const sprite = this._makeLabel(a.label, a.color);
+                sprite.position.copy(a.dir).multiplyScalar(axisLen + 0.35);
+                sprite.scale.set(0.5, 0.5, 1);
+                this._compassScene.add(sprite);
+            }
+        }
+
+        /** Create a text sprite for an axis label. */
+        _makeLabel(text, hexColor) {
+            const canvas = document.createElement('canvas');
+            canvas.width  = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.font = 'bold 96px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const c = new Color(hexColor);
+            ctx.fillStyle = '#' + c.getHexString();
+            ctx.fillText(text, 64, 64);
+            const tex = new CanvasTexture(canvas);
+            const mat = new SpriteMaterial({ map: tex, depthTest: false });
+            return new Sprite(mat);
+        }
+
+        /** Render the compass scene with rotation matching the main camera. */
+        _renderCompass() {
+            if (!this._compassRenderer) return;
+            this._compassCamera.position.copy(this._camera.position).normalize().multiplyScalar(4);
+            this._compassCamera.lookAt(0, 0, 0);
+            this._compassCamera.up.copy(this._camera.up);
+            this._compassRenderer.render(this._compassScene, this._compassCamera);
         }
 
     } // end class StlViewer

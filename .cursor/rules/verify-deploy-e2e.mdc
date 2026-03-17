@@ -1,0 +1,52 @@
+---
+description: After deploying, verify the full user-facing flow — not just health checks
+alwaysApply: true
+---
+
+# Verify deploys end-to-end
+
+A deploy is not done until the **user-facing flow** works. Health checks (`/api/parts` returning 200) are necessary but not sufficient.
+
+## After every deploy, verify through CloudFront
+
+The canonical URL is `https://d1n87lopz9qnnf.cloudfront.net/` — test there, not against the raw EC2 IP.
+
+```bash
+# 1. Health check (necessary but not sufficient)
+make check-health
+
+# 2. Verify RENDER_URL points to CloudFront HTTPS (not raw EC2 HTTP)
+curl -s https://d1n87lopz9qnnf.cloudfront.net/index.html | grep '__RENDER_URL__'
+# Must show https://d1n87lopz9qnnf.cloudfront.net/
+
+# 3. Test preview flow end-to-end through CloudFront
+JOB=$(curl -s -X POST https://d1n87lopz9qnnf.cloudfront.net/api/preview \
+  -H "Content-Type: application/json" -d '{"params":{}}')
+JOB_ID=$(echo "$JOB" | python3 -c "import json,sys; print(json.load(sys.stdin)['job_id'])")
+sleep 10
+curl -s "https://d1n87lopz9qnnf.cloudfront.net/api/jobs/$JOB_ID" | python3 -c "
+import json,sys; d=json.load(sys.stdin)
+print('status:', d['status'], '| stls:', len(d.get('result',{}).get('stl_urls',{})) if d.get('result') else 0)
+"
+# Must show: status: complete | stls: 8
+```
+
+## Common post-deploy failures
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| "Render server is offline" | CORS origin mismatch or mixed content | Check `static_site_url` env var has `https://` prefix |
+| "Preview queued..." forever | Route not covered by CloudFront behavior | Ensure route uses `/api/` prefix; check `infra/static.tf` |
+| Stale content after deploy | CloudFront cache | Run `aws cloudfront create-invalidation --distribution-id E6P6W4VNARX5W --paths "/*"` |
+| Container won't start | Architecture mismatch (arm64 vs amd64) | Use `make build` (defaults to `--platform linux/amd64`) |
+| `docker pull` fails on EC2 | ECR token expired | `deploy-ec2` target now handles this; if manual, run `aws ecr get-login-password` first |
+
+## Invalidate CloudFront after static deploys
+
+Always invalidate after `make deploy-static`:
+
+```bash
+aws cloudfront create-invalidation --distribution-id E6P6W4VNARX5W --paths "/*"
+```
+
+Consider adding this to the `deploy-static` target itself.

@@ -42,7 +42,19 @@ tornado.options.define('debug', type=bool, default=False, help='run in debug mod
 WP_AUTH_URL = os.environ.get("wp_auth_url", "").rstrip("/")
 APP_BASE_URL = os.environ.get("app_base_url", "").rstrip("/")
 STATIC_SITE_URL = os.environ.get("static_site_url", "").rstrip("/")
-_CORS_ALLOWED = set(filter(None, [WP_AUTH_URL, APP_BASE_URL, STATIC_SITE_URL]))
+
+
+def _normalize_origin(url: str) -> str:
+    """Ensure origin has a protocol prefix so it matches browser Origin headers."""
+    url = url.strip().rstrip("/")
+    if not url:
+        return ""
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    return url
+
+
+_CORS_ALLOWED = set(filter(None, [_normalize_origin(u) for u in [WP_AUTH_URL, APP_BASE_URL, STATIC_SITE_URL]]))
 
 
 def _cors_origin(request_origin: str) -> str:
@@ -328,13 +340,16 @@ def _preview_config(config_dict=None):
             _position_cache[cache_key] = {
                 "positions": finger.compute_preview_positions(),
                 "plugInstances": finger.compute_preview_plug_instances(),
+                "hingePivots": finger.compute_hinge_pivots(),
             }
         cached = _position_cache[cache_key]
         positions = cached["positions"]
         plug_instances = cached["plugInstances"]
+        hinge_pivots = cached["hingePivots"]
     else:
         positions = P._preview_position_offsets
         plug_instances = P._preview_plug_instances
+        hinge_pivots = P._preview_hinge_pivots
 
     return {
         "rotateOffsets": {k: list(v) for k, v in P._preview_rotate_offsets.items()},
@@ -342,6 +357,7 @@ def _preview_config(config_dict=None):
         "plugInstances": [{"position": list(p["position"]), "rotation": list(p["rotation"])} for p in plug_instances],
         "explodeOffsets": {k: list(v) for k, v in P._preview_explode_offsets.items()},
         "partColors": {k: v for k, v in PART_COLORS.items()},
+        "hingePivots": {k: list(v) for k, v in hinge_pivots.items()},
     }
 
 
@@ -406,8 +422,7 @@ def _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=F
             scad_str = scad_result if isinstance(scad_result, str) else "\n".join(scad_result)
             write_file(scad_str.encode('utf-8'), scad_out)
             write_stl(scad_out, stl_out)
-            if not store_in_s3:
-                stl_urls[pn] = "/api/preview/temp/%s/%s.stl" % (run_id, pn)
+            stl_urls[pn] = "/api/preview/temp/%s/%s.stl" % (run_id, pn)
         if store_in_s3:
             zip_files = {}
             for p in parts:
@@ -429,30 +444,45 @@ def _run_sync_preview_or_render(config_dict, preview_quality=True, store_in_s3=F
             stl_urls["bundle"] = "/" + bundle_key
         return cfghash, config, stl_urls
     finally:
-        if store_in_s3:
-            try:
-                shutil.rmtree(run_dir, ignore_errors=True)
-            except Exception:
-                pass
+        pass
 
 
 class ApiPreviewHandler(CorsMixin, tornado.web.RequestHandler):
-    '''POST /api/preview - enqueue an async preview job and return 202 with job_id.'''
+    '''POST /api/preview - enqueue a render job and return 202 with job_id.
+    Accepts optional "quality" field: "default" (EXTRAMEDIUM) or "high" (HIGH).
+    Both save to S3; high produces a downloadable bundle.'''
     def set_default_headers(self):
         set_def_headers(self)
 
     async def post(self):
         try:
-            config_dict = json.loads(self.request.body or b'{}')
+            body = json.loads(self.request.body or b'{}')
         except json.JSONDecodeError:
             self.set_status(400)
             self.write(json.dumps({"error": "Invalid JSON"}))
             return
-        job = _create_preview_job(config_dict)
+        quality = body.pop("quality", "default")
+        high_quality = (quality == "high")
+        # Pre-render validation: catch obviously invalid param combos early
+        warnings = []
+        try:
+            from danger.finger import DangerFinger
+            from danger.Params import Params
+            check = DangerFinger()
+            Params.apply_config(check, dict(body))
+            warnings = check.validate_params()
+            if warnings:
+                print(f"Preview param warnings: {warnings}")
+        except Exception as e:
+            print(f"Preview validation error (non-fatal): {e}")
+        job = _create_preview_job(body, high_quality=high_quality)
         _queue_job(self.application, job)
         self.set_status(202)
         self.set_header("Content-Type", "application/json")
-        self.write(json.dumps({"job_id": job["job_id"], "status": "queued"}))
+        resp = {"job_id": job["job_id"], "status": "queued", "quality": quality}
+        if warnings:
+            resp["warnings"] = warnings
+        self.write(json.dumps(resp))
 
 
 class ApiRenderHandler(CorsMixin, WpAuthMixin, tornado.web.RequestHandler):
@@ -574,14 +604,14 @@ class ApiPreviewTempHandler(tornado.web.RequestHandler):
             self.write(f.read())
 
 
-parts = [FingerPart.TIP, FingerPart.BASE, FingerPart.LINKAGE, FingerPart.MIDDLE, FingerPart.TIPCOVER, FingerPart.SOCKET, FingerPart.PLUG, FingerPart.STAND]
+parts = [FingerPart.TIP, FingerPart.BASE, FingerPart.LINKAGE, FingerPart.MIDDLE, FingerPart.TIPCOVER, FingerPart.SOCKET, FingerPart.PLUG, FingerPart.STAND, FingerPart.BUMPER]
 
 handlers = [
         (r"/api/parts", ApiPartsHandler),
         (r"/api/preview", ApiPreviewHandler),
         (r"/api/render", ApiRenderHandler),
         (r"/api/preview/temp/([a-zA-Z0-9\-]+)/([a-zA-Z0-9_.]+)", ApiPreviewTempHandler),
-        (r"/jobs/([a-zA-Z0-9\-]+)", JobStatusHandler),
+        (r"/api/jobs/([a-zA-Z0-9\-]+)", JobStatusHandler),
         (r"/render/([a-fA-F0-9]+)/status", RenderStatusHandler),
         (r"/params(/?\w*)", FingerHandler),
         (r"/profile/([a-zA-Z0-9.]+)/config/([a-zA-Z0-9.]+)", FingerHandler),
@@ -848,11 +878,12 @@ def _create_render_job(config, cfghash, requested_by=None):
     }
 
 
-def _create_preview_job(config_dict):
+def _create_preview_job(config_dict, high_quality=False):
     now = time.time()
     return {
         "job_id": str(uuid.uuid4()),
         "job_type": "preview",
+        "high_quality": high_quality,
         "cfghash": None,
         "config": dict(config_dict),
         "requested_by": None,
@@ -1161,8 +1192,11 @@ def _render_worker(application):
         try:
             heartbeat()
             if is_preview:
+                high_q = job.get("high_quality", False)
+                use_preview_quality = not high_q
                 cfghash, config, stl_urls = _run_sync_preview_or_render(
-                    job["config"], preview_quality=True, store_in_s3=False, heartbeat_cb=heartbeat)
+                    job["config"], preview_quality=use_preview_quality,
+                    store_in_s3=high_q, heartbeat_cb=heartbeat)
                 finger_check = DangerFinger()
                 Params.apply_config(finger_check, dict(config))
                 param_warnings = finger_check.validate_params()
@@ -1174,9 +1208,12 @@ def _render_worker(application):
                         "stl_urls": stl_urls,
                         "warnings": param_warnings,
                         "previewConfig": preview_cfg,
+                        "quality": "high" if high_q else "default",
                         "completed_at": time.time(),
                     }
                 job["cfghash"] = cfghash
+                if high_q:
+                    _write_render_status(job)
             else:
                 _run_sync_preview_or_render(
                     job["config"], preview_quality=False, store_in_s3=True, heartbeat_cb=heartbeat)

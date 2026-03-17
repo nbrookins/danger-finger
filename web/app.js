@@ -19,6 +19,8 @@
     var _paramsLoaded = false;
     var _authSettled = false;
     var _restoredDraft = false;
+    var _paramsDirty = false;
+    var _initialRenderDone = false;
     var DRAFT_KEY = "df_guest_draft";
     var DRAFT_TTL_MS = 10 * 60 * 1000;
 
@@ -184,7 +186,8 @@
         4: { name: "tipcover", pos: [0, 39, 0], exp: [0, 1.5, 0] },
         5: { name: "socket", pos: [0, -25, 0], exp: [0, -1, 0] },
         6: { name: "plug", pos: [0, 0, 0], exp: [0, 0, 0] },
-        7: { name: "stand", pos: [0, -30, 0], exp: [0, -1.5, 0] }
+        7: { name: "stand", pos: [0, -30, 0], exp: [0, -1.5, 0] },
+        8: { name: "bumper", pos: [1, 12, 0], exp: [1, 0, 0] }
     };
     var partNameToId = {};
     Object.keys(parts).forEach(function (id) { partNameToId[parts[id].name] = parseInt(id, 10); });
@@ -194,6 +197,28 @@
         if (!el) return;
         el.textContent = msg || "";
         el.className = "small mb-1 " + (isError ? "text-danger" : "text-muted");
+    }
+
+    function showRenderOverlay(show) {
+        var overlay = document.getElementById("render_overlay");
+        if (overlay) overlay.style.display = show ? "" : "none";
+    }
+
+    function showRenderProgress(show) {
+        var el = document.getElementById("render_progress_overlay");
+        if (el) el.style.display = show ? "" : "none";
+    }
+
+    function onParamsDirty() {
+        _paramsDirty = true;
+        if (_initialRenderDone) showRenderOverlay(true);
+    }
+
+    function triggerRender(quality) {
+        _paramsDirty = false;
+        showRenderOverlay(false);
+        showRenderProgress(true);
+        Api.requestPreview(Params.getCurrentParams(), quality || "default");
     }
 
     function onPartsLoaded(json) {
@@ -217,16 +242,29 @@
         Viewer.applyPreviewConfig(json, Params.getPartVisibility());
     }
 
+    var DEFAULT_STL_PARTS = ["base", "middle", "tip", "linkage", "tipcover", "socket", "plug", "stand", "bumper"];
+
+    function loadDefaultStls() {
+        var stlUrls = {};
+        DEFAULT_STL_PARTS.forEach(function (name) {
+            stlUrls[name] = "/defaults/" + name + ".stl";
+        });
+        Viewer.updateFromStlUrls(stlUrls, Params.getPartVisibility());
+        _initialRenderDone = true;
+        _paramsDirty = false;
+        setPreviewStatus("", false);
+    }
+
     function maybeRestoreDraft() {
         if (_restoredDraft || !_paramsLoaded || !_authSettled) return;
         _restoredDraft = true;
         if (restoreFromHash()) {
-            Api.requestPreview(Params.getCurrentParams);
+            triggerRender();
             return;
         }
         var state = loadDraftState();
         if (!state) {
-            Api.requestPreview(Params.getCurrentParams);
+            loadDefaultStls();
             return;
         }
         if (state.params) Params.applyLoadedConfig(state.params);
@@ -234,7 +272,7 @@
         _latestPreviewHash = state.latestPreviewHash || null;
         _latestRenderHash = state.latestRenderHash || null;
         _latestJobId = state.latestJobId || null;
-        Api.requestPreview(Params.getCurrentParams);
+        triggerRender();
         if (state.pendingAction === "save" && isAuthenticated()) {
             window.setTimeout(function () {
                 handleSaveRequested({
@@ -255,22 +293,25 @@
     function onProfilesLoaded(json) { fillProfiles(json); }
 
     function onPreviewReady(res) {
+        showRenderProgress(false);
         if (res.previewConfig) Viewer.applyPreviewConfig(res, Params.getPartVisibility());
         Viewer.updateFromStlUrls(res.stl_urls, Params.getPartVisibility());
         _latestPreviewHash = res.cfghash || null;
+        _lastRenderedCfghash = res.cfghash || null;
+        _initialRenderDone = true;
         saveDraftState(loadDraftState() && loadDraftState().pendingAction ? loadDraftState().pendingAction : null);
-        if (_lastRenderedCfghash && _latestPreviewHash === _lastRenderedCfghash) {
-            Params.setRenderDisabled(true);
-            Params.setRenderButtonLabel("Rendered");
-            setPreviewStatus("Preview ready (print quality).", false);
-        } else {
-            Params.setRenderDisabled(false);
-            Params.setRenderButtonLabel("Render");
-            setPreviewStatus("Preview ready (draft quality).", false);
+        var qualityLabel = (res.quality === "high") ? "high" : "default";
+        setPreviewStatus("Render complete (" + qualityLabel + " quality).", false);
+        showRenderOverlay(false);
+        if (res.quality === "high" && res.cfghash) {
+            showDownloadButton(res.cfghash);
         }
     }
 
-    function onPreviewError(msg, isError) { setPreviewStatus(msg, isError); }
+    function onPreviewError(msg, isError) {
+        if (isError) showRenderProgress(false);
+        setPreviewStatus(msg, isError);
+    }
 
     function onPartToggle(partName, visible) {
         var id = partNameToId[partName];
@@ -504,8 +545,8 @@
                     Viewer.updateFromStlUrls(stlUrls, Params.getPartVisibility(), true);
                     showDownloadButton(cfghash);
                     _lastRenderedCfghash = cfghash;
+                    _initialRenderDone = true;
                     setPreviewStatus("Model loaded (print quality).", false);
-                    Api.requestPreview(Params.getCurrentParams);
                 });
             }).catch(function (err) {
                 console.error("JSZip extract failed:", err);
@@ -590,6 +631,9 @@
         var shareBtn = document.getElementById("share_btn");
         if (shareBtn) shareBtn.onclick = copyShareLink;
 
+        var viewerRenderBtn = document.getElementById("viewer_render_btn");
+        if (viewerRenderBtn) viewerRenderBtn.onclick = triggerRender;
+
         Api.init({
             baseurl: baseurl,
             readUrl: readUrl,
@@ -607,10 +651,11 @@
 
         Params.init({
             username: getUsername(),
-            onPreviewRequest: function () { Api.requestPreview(Params.getCurrentParams); },
+            onParamsDirty: onParamsDirty,
             onPartToggle: onPartToggle,
             onSaveRequested: handleSaveRequested,
             onRenderRequested: handleRenderRequested,
+            onHighQualityRequested: function() { triggerRender("high"); },
             onStatus: setPreviewStatus,
         });
 
@@ -631,4 +676,5 @@
     });
 
     window.slide_change = function () { Viewer.slideChange(); };
+    window.flex_change = function () { Viewer.flexChange(); };
 })();

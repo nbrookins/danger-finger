@@ -5,22 +5,24 @@ var Params = (function () {
     var _params = {};
     var _partVisibility = {};
     var _username = "";
-    var _onPreviewRequest = null;
+    var _onParamsDirty = null;
     var _onPartToggle = null;
     var _onSaveRequested = null;
     var _onRenderRequested = null;
+    var _onHighQualityRequested = null;
     var _onStatus = null;
 
     function init(opts) {
         _username = opts.username || "";
-        _onPreviewRequest = opts.onPreviewRequest || null;
+        _onParamsDirty = opts.onParamsDirty || null;
         _onPartToggle = opts.onPartToggle || null;
         _onSaveRequested = opts.onSaveRequested || null;
         _onRenderRequested = opts.onRenderRequested || null;
+        _onHighQualityRequested = opts.onHighQualityRequested || null;
         _onStatus = opts.onStatus || null;
     }
 
-    function setUsername(username) { _username = username || ""; }
+    function setUsername(username) { _username = username || ""; updateHqButtonVisibility(); }
     function getUsername() { return _username || ""; }
     function getParams() { return _params; }
     function getPartVisibility() { return _partVisibility; }
@@ -100,7 +102,7 @@ var Params = (function () {
         p["Changed"] = (String(val) !== String(p["Default"]));
         p.dirty = true;
         _updateParamRow(k);
-        _onPreviewRequest && _onPreviewRequest();
+        _onParamsDirty && _onParamsDirty();
     }
 
     var _presets = {
@@ -115,10 +117,6 @@ var Params = (function () {
         "Child index (age 8-12)": {
             intermediate_length: 18, distal_length: 18, distal_base_length: 5,
             socket_circumference_proximal: 48, socket_circumference_distal: 42, socket_depth: 26
-        },
-        "Adult thumb": {
-            intermediate_length: 20, distal_length: 22, distal_base_length: 7,
-            socket_circumference_proximal: 72, socket_circumference_distal: 64, socket_depth: 30
         },
     };
 
@@ -206,7 +204,7 @@ var Params = (function () {
             var name = presetSelect.value;
             if (!name || !_presets[name]) return;
             applyLoadedConfig(_presets[name]);
-            _onPreviewRequest && _onPreviewRequest();
+            _onParamsDirty && _onParamsDirty();
             presetSelect.value = "";
         };
         presetDiv.appendChild(presetSelect);
@@ -224,39 +222,54 @@ var Params = (function () {
             form.appendChild(commonTable);
         }
 
-        if (stdRows) {
-            var stdHeader = document.createElement("h6");
-            stdHeader.className = "mt-2 mb-1 text-muted";
-            stdHeader.textContent = "Standard Parameters";
-            form.appendChild(stdHeader);
-            var stdTable = document.createElement("table");
-            stdTable.className = "table table-sm table-hover table-bordered mb-2";
-            stdTable.innerHTML = theadHtml + '<tbody>' + stdRows + '</tbody>';
-            form.appendChild(stdTable);
-        }
-
         var actionDiv = document.createElement("div");
         actionDiv.className = "form-inline mb-2";
         actionDiv.innerHTML = ''
             + '<label class="mr-2" for="configname">Save as:</label>'
             + '<input id="configname" type="text" class="form-control form-control-sm mr-2" placeholder="Config name" />'
             + '<button id="save_btn" type="button" class="btn btn-primary btn-sm mr-2" onclick="Params.submitSave()">Save</button>'
-            + '<button id="render_btn" type="button" class="btn btn-outline-success btn-sm" onclick="Params.submitRender()">Render</button>';
+            + '<button id="hq_render_btn" type="button" class="btn btn-outline-secondary btn-sm" style="display:none" onclick="Params.submitHighQualityRender()" title="Re-render at high quality for download">High quality render</button>';
         form.appendChild(actionDiv);
-        container.appendChild(form);
 
-        var advDiv = document.createElement("div");
-        advDiv.innerHTML = ''
-            + '<div class="mt-2">'
-            + '<a class="text-muted small" data-toggle="collapse" href="#advancedParams" role="button" aria-expanded="false">'
-            + 'Show advanced settings <span class="badge badge-warning">⚠ affects print fit</span>'
-            + '</a>'
-            + '<div class="collapse" id="advancedParams">'
-            + '<div class="alert alert-warning mt-1 mb-1 py-1 small">These parameters affect print fit and physical dimensions. Change only if you know what you are doing.</div>'
-            + '<table class="table table-sm table-hover table-bordered">'
-            + theadHtml + '<tbody>' + advRows + '</tbody>'
-            + '</table></div></div>';
-        container.appendChild(advDiv);
+        if (stdRows) {
+            var stdDiv = document.createElement("div");
+            stdDiv.className = "mt-2";
+            var stdToggle = document.createElement("a");
+            stdToggle.className = "text-muted small";
+            stdToggle.setAttribute("data-toggle", "collapse");
+            stdToggle.setAttribute("href", "#standardParams");
+            stdToggle.setAttribute("role", "button");
+            stdToggle.setAttribute("aria-expanded", "false");
+            stdToggle.textContent = "Show standard parameters";
+            stdDiv.appendChild(stdToggle);
+            var stdCollapse = document.createElement("div");
+            stdCollapse.className = "collapse";
+            stdCollapse.id = "standardParams";
+            var stdTable = document.createElement("table");
+            stdTable.className = "table table-sm table-hover table-bordered mb-2 mt-1";
+            stdTable.innerHTML = theadHtml + '<tbody>' + stdRows + '</tbody>';
+            stdCollapse.appendChild(stdTable);
+
+            if (advRows) {
+                var advInner = document.createElement("div");
+                advInner.className = "mt-1 mb-2";
+                advInner.innerHTML = ''
+                    + '<a class="text-muted small" data-toggle="collapse" href="#advancedParams" role="button" aria-expanded="false">'
+                    + 'Show advanced settings <span class="badge badge-warning">⚠ affects print fit</span>'
+                    + '</a>'
+                    + '<div class="collapse" id="advancedParams">'
+                    + '<div class="alert alert-warning mt-1 mb-1 py-1 small">These parameters affect print fit and physical dimensions. Change only if you know what you are doing.</div>'
+                    + '<table class="table table-sm table-hover table-bordered">'
+                    + theadHtml + '<tbody>' + advRows + '</tbody>'
+                    + '</table></div>';
+                stdCollapse.appendChild(advInner);
+            }
+
+            stdDiv.appendChild(stdCollapse);
+            form.appendChild(stdDiv);
+        }
+
+        container.appendChild(form);
 
         var adv2 = document.getElementById("advData");
         if (adv2) adv2.innerHTML = "";
@@ -272,7 +285,7 @@ var Params = (function () {
         var el = document.getElementById("param_val_" + k);
         if (el) el.value = def;
         _updateParamRow(k);
-        _onPreviewRequest && _onPreviewRequest();
+        _onParamsDirty && _onParamsDirty();
     }
 
     function resetAll() {
@@ -287,7 +300,7 @@ var Params = (function () {
             if (el) el.value = def;
             _updateParamRow(k);
         }
-        _onPreviewRequest && _onPreviewRequest();
+        _onParamsDirty && _onParamsDirty();
     }
 
     function clearDirty() {
@@ -317,18 +330,18 @@ var Params = (function () {
 
     function setButtonsDisabled(disabled) {
         var saveBtn = document.getElementById("save_btn");
-        var renderBtn = document.getElementById("render_btn");
+        var renderBtn = document.getElementById("viewer_render_btn");
         if (saveBtn) saveBtn.disabled = !!disabled;
         if (renderBtn) renderBtn.disabled = !!disabled;
     }
 
     function setRenderDisabled(disabled) {
-        var renderBtn = document.getElementById("render_btn");
+        var renderBtn = document.getElementById("viewer_render_btn");
         if (renderBtn) renderBtn.disabled = !!disabled;
     }
 
     function setRenderButtonLabel(label) {
-        var renderBtn = document.getElementById("render_btn");
+        var renderBtn = document.getElementById("viewer_render_btn");
         if (renderBtn) renderBtn.textContent = label || "Render";
     }
 
@@ -348,6 +361,17 @@ var Params = (function () {
         });
     }
 
+    function submitHighQualityRender() {
+        _onHighQualityRequested && _onHighQualityRequested();
+    }
+
+    function updateHqButtonVisibility() {
+        var btn = document.getElementById("hq_render_btn");
+        if (btn) btn.style.display = _username ? "" : "none";
+    }
+
+    var PARTS_DEFAULT_OFF = { "stand": true };
+
     function buildPartToggles(partList) {
         var container = document.getElementById("part-toggles");
         if (!container) return;
@@ -355,14 +379,15 @@ var Params = (function () {
         partList.forEach(function (part) {
             var id = part.id;
             var label = part.label || id;
-            _partVisibility[id] = true;
+            var defaultOn = !PARTS_DEFAULT_OFF[id];
+            _partVisibility[id] = defaultOn;
             var wrapper = document.createElement("div");
             wrapper.className = "form-check form-check-inline mr-3";
             var cb = document.createElement("input");
             cb.type = "checkbox";
             cb.className = "form-check-input";
             cb.id = "toggle_" + id;
-            cb.checked = true;
+            cb.checked = defaultOn;
             cb.onchange = (function (partId) {
                 return function () {
                     _partVisibility[partId] = cb.checked;
@@ -396,6 +421,7 @@ var Params = (function () {
         clearDirty: clearDirty,
         submitSave: submitSave,
         submitRender: submitRender,
+        submitHighQualityRender: submitHighQualityRender,
         buildPartToggles: buildPartToggles,
         setButtonsDisabled: setButtonsDisabled,
         setRenderDisabled: setRenderDisabled,

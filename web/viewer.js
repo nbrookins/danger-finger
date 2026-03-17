@@ -5,6 +5,7 @@ var Viewer = (function () {
     var _stlViewer = null;
     var _parts = {};           // id -> {name, pos, exp, rotf}
     var _plugPositions = {};   // id -> [x,y,z]  (IDs 100-103)
+    var _plugBaseRots = {};    // id -> [rx,ry,rz] in radians (rest rotation per plug instance)
     var _lastStlUrls = {};     // partName -> url
     var _previewConfig = null;
     var _partNameToId = {};
@@ -13,9 +14,13 @@ var Viewer = (function () {
     var _onStatus = null;      // callback(msg, isError)
     var PLUG_BASE_ID = 100;
     var EXPL_FACTOR = 25;
+    var FLEX_MAX_DEG = 90;
     // Parts excluded from the 3D preview: pins is a composite STL with both hinge pins at
     // hardcoded relative positions that can't be correctly placed by a single offset.
     var PREVIEW_SKIP_PARTS = { "pins": true };
+    // Parts that move at each hinge during flex
+    var PROXIMAL_FLEX_PARTS = { "middle": true, "tip": true, "tipcover": true, "bumper": true };
+    var DISTAL_FLEX_PARTS = { "tip": true, "tipcover": true };
 
     function degtorad(deg) { return deg === 0 ? 0 : deg / 57.3; }
 
@@ -61,8 +66,9 @@ var Viewer = (function () {
                 _stlViewer.set_position(parseInt(pid), pp[0], pp[1], pp[2]);
             }
         }
-        // Reapply current explode state
+        // Reapply current explode + flex state
         slideChange();
+        flexChange();
         _onModLoaded && _onModLoaded();
     }
 
@@ -86,6 +92,9 @@ var Viewer = (function () {
                     }).join("");
                 }
             }
+        }
+        if (_parts[id]) {
+            _parts[id].rotf = [opts.rotationx || 0, opts.rotationy || 0, opts.rotationz || 0];
         }
         try { _stlViewer.add_model(opts); } catch (e) { console.warn("addModel error", id, e); }
     }
@@ -134,12 +143,16 @@ var Viewer = (function () {
         _previewConfig.plugInstances.forEach(function (inst, i) {
             var instId = PLUG_BASE_ID + i;
             _plugPositions[instId] = inst.position;
+            var rx = degtorad(inst.rotation[0]);
+            var ry = degtorad(inst.rotation[1]);
+            var rz = degtorad(inst.rotation[2]);
+            _plugBaseRots[instId] = [rx, ry, rz];
             var opts = {
                 id: instId,
                 filename: plugUrl,
-                rotationx: degtorad(inst.rotation[0]),
-                rotationy: degtorad(inst.rotation[1]),
-                rotationz: degtorad(inst.rotation[2])
+                rotationx: rx,
+                rotationy: ry,
+                rotationz: rz
             };
             if (colorHex) opts.color = colorHex;
             try { _stlViewer.add_model(opts); } catch (e) { console.warn("plug instance error", instId, e); }
@@ -177,6 +190,13 @@ var Viewer = (function () {
     }
 
     function slideChange() {
+        var flexSlider = document.getElementById("flex");
+        var hasFlex = flexSlider && parseFloat(flexSlider.value) > 0;
+        if (hasFlex) {
+            flexChange();
+            return;
+        }
+
         var slider = document.getElementById("explode");
         if (!slider) return;
         var explode = parseFloat(slider.value) * EXPL_FACTOR / 100.0;
@@ -203,6 +223,89 @@ var Viewer = (function () {
                     pp[0] + plugExp[0] * explode,
                     pp[1] + plugExp[1] * explode,
                     pp[2] + plugExp[2] * explode * zSign);
+            } catch (e) {}
+        }
+    }
+
+    function _rotateXY(pos, pivot, angle) {
+        var dx = pos[0] - pivot[0];
+        var dy = pos[1] - pivot[1];
+        var c = Math.cos(angle);
+        var s = Math.sin(angle);
+        return [pivot[0] + dx * c - dy * s, pivot[1] + dx * s + dy * c, pos[2]];
+    }
+
+    function flexChange() {
+        var slider = document.getElementById("flex");
+        if (!slider) return;
+        var t = parseFloat(slider.value) / 100.0;
+        var flexAngle = t * FLEX_MAX_DEG * Math.PI / 180.0;
+
+        var pivots = (_previewConfig && _previewConfig.hingePivots) || {};
+        var proxPivot = pivots.proximal || [0, 0, 0];
+        var distPivot = pivots.distal || [0, 24, 0];
+
+        var explode = 0;
+        var explSlider = document.getElementById("explode");
+        if (explSlider) explode = parseFloat(explSlider.value) * EXPL_FACTOR / 100.0;
+
+        var movedDistPivot = _rotateXY(distPivot, proxPivot, flexAngle);
+
+        for (var id in _parts) {
+            if (!_parts.hasOwnProperty(id)) continue;
+            var p = _parts[id];
+            var name = p.name;
+            var basePos = [p.pos[0] + p.exp[0] * explode,
+                           p.pos[1] + p.exp[1] * explode,
+                           p.pos[2] + p.exp[2] * explode];
+            var baseRot = p.rotf || [0, 0, 0];
+            var totalFlex = 0;
+
+            if (PROXIMAL_FLEX_PARTS[name]) {
+                basePos = _rotateXY(basePos, proxPivot, flexAngle);
+                totalFlex += flexAngle;
+            }
+            if (DISTAL_FLEX_PARTS[name]) {
+                basePos = _rotateXY(basePos, movedDistPivot, flexAngle);
+                totalFlex += flexAngle;
+            }
+
+            try {
+                _stlViewer.set_position(parseInt(id), basePos[0], basePos[1], basePos[2]);
+                if (totalFlex !== 0) {
+                    _stlViewer.set_rotation(parseInt(id), baseRot[0], baseRot[1], baseRot[2] + totalFlex);
+                } else {
+                    _stlViewer.set_rotation(parseInt(id), baseRot[0], baseRot[1], baseRot[2]);
+                }
+            } catch (e) {}
+        }
+
+        // Plug instances: distal pair (indices 2,3 = IDs 102,103) move with both hinges
+        var plugExp = (_previewConfig && _previewConfig.explodeOffsets && _previewConfig.explodeOffsets["plug"]) || [0, 0, 1];
+        for (var pid in _plugPositions) {
+            if (!_plugPositions.hasOwnProperty(pid)) continue;
+            var pp = _plugPositions[pid];
+            var plugIdx = parseInt(pid) - PLUG_BASE_ID;
+            var isDistal = (plugIdx >= 2);
+            var zSign = pp[2] < 0 ? -1 : 1;
+            var plugPos = [pp[0] + plugExp[0] * explode,
+                           pp[1] + plugExp[1] * explode,
+                           pp[2] + plugExp[2] * explode * zSign];
+            var plugTotalFlex = 0;
+            var pRot = _plugBaseRots[pid] || [0, 0, 0];
+
+            if (isDistal) {
+                plugPos = _rotateXY(plugPos, proxPivot, flexAngle);
+                plugTotalFlex += flexAngle;
+                plugPos = _rotateXY(plugPos, movedDistPivot, flexAngle);
+                plugTotalFlex += flexAngle;
+            }
+
+            try {
+                _stlViewer.set_position(parseInt(pid), plugPos[0], plugPos[1], plugPos[2]);
+                if (plugTotalFlex !== 0) {
+                    _stlViewer.set_rotation(parseInt(pid), pRot[0], pRot[1], pRot[2] + plugTotalFlex);
+                }
             } catch (e) {}
         }
     }
@@ -307,6 +410,7 @@ var Viewer = (function () {
         updateFromStlUrls: updateFromStlUrls,
         applyPreviewConfig: applyPreviewConfig,
         slideChange: slideChange,
+        flexChange: flexChange,
         setPlugVisibility: setPlugVisibility,
         setStatus: setStatus,
         getLastStlUrls: getLastStlUrls,
