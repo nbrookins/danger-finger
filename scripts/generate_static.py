@@ -54,6 +54,7 @@ def generate_parts_json():
         "wpAuthUrl": os.environ.get("WP_AUTH_URL", "https://dangercreations.com"),
         "appBaseUrl": os.environ.get("APP_BASE_URL", ""),
         "staticSiteUrl": os.environ.get("STATIC_SITE_URL", ""),
+        "configurePageUrl": os.environ.get("WP_AUTH_URL", "https://dangercreations.com").rstrip("/") + "/prosthetics/configure/",
     }
     out = os.path.join(STATIC_DIR, "api", "parts.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -93,6 +94,7 @@ def generate_bootstrap_js():
         "wpAuthUrl": os.environ.get("WP_AUTH_URL", "https://dangercreations.com"),
         "appBaseUrl": os.environ.get("APP_BASE_URL", ""),
         "staticSiteUrl": os.environ.get("STATIC_SITE_URL", ""),
+        "configurePageUrl": os.environ.get("WP_AUTH_URL", "https://dangercreations.com").rstrip("/") + "/prosthetics/configure/",
     }
     params_data = DangerFinger().get_params(adv=False, allv=True, extended=True)
 

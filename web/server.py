@@ -377,6 +377,7 @@ class ApiPartsHandler(tornado.web.RequestHandler):
             "wpAuthUrl": WP_AUTH_URL or "",
             "appBaseUrl": APP_BASE_URL or "",
             "staticSiteUrl": STATIC_SITE_URL or "",
+            "configurePageUrl": (WP_AUTH_URL + "/prosthetics/configure/") if WP_AUTH_URL else "",
         }))
 
 

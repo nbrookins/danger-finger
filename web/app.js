@@ -24,6 +24,7 @@
     var _appVersion = "";
     var _defaultCfghash = "";
     var _configSaved = false;
+    var _configurePageUrl = "";
     var DRAFT_KEY = "df_guest_draft";
     var DRAFT_TTL_MS = 10 * 60 * 1000;
 
@@ -249,6 +250,7 @@
         if (json.wpAuthUrl) _wpAuthUrl = json.wpAuthUrl;
         if (json.version) _appVersion = json.version;
         if (json.defaultCfghash) _defaultCfghash = json.defaultCfghash;
+        if (json.configurePageUrl) _configurePageUrl = json.configurePageUrl;
         if (json.version) {
             var title = "DangerFinger v" + json.version + " - Configure and Preview";
             document.title = title;
@@ -282,6 +284,17 @@
         setPreviewStatus("", false);
         showDefaultDownloadButton();
         updateConfigIndicator();
+        initSiteBar();
+    }
+
+    function initSiteBar() {
+        if (isInIframe() || !_configurePageUrl) return;
+        var bar = document.getElementById("site-bar");
+        var backBtn = document.getElementById("site_back_btn");
+        var crumb = document.getElementById("site_breadcrumb");
+        if (bar) bar.style.display = "flex";
+        if (backBtn) backBtn.href = _configurePageUrl;
+        if (crumb) crumb.textContent = "dangercreations.com \u203a Prosthetics \u203a Configure";
     }
 
     function showDefaultDownloadButton() {
@@ -673,8 +686,10 @@
     function launchFullPage() {
         var state = { params: Params.getCurrentParams(), configName: Params.getConfigName() };
         var hash = "#config=" + encodeURIComponent(JSON.stringify(state));
-        var url = window.location.origin + window.location.pathname + hash;
-        window.open(url, "_blank");
+        var base = _configurePageUrl
+            ? _configurePageUrl.replace(/\/?$/, "/") + "?fullscreen=1"
+            : window.location.origin + window.location.pathname;
+        window.open(base + hash, "_blank");
     }
 
     function copyShareLink() {

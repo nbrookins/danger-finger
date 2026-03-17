@@ -89,3 +89,53 @@ add_shortcode('dangerfinger_configurator', function ($atts) {
          . '</iframe>'
          . '</div>';
 });
+
+// ---------------------------------------------------------------------------
+// 4. Fullscreen wrapper: ?fullscreen=1 on the configure page renders a
+//    full-viewport iframe with a thin breadcrumb/back bar, keeping the user
+//    on the dangercreations.com domain.
+// ---------------------------------------------------------------------------
+add_action('template_redirect', function () {
+    if (!isset($_GET['fullscreen']) || !defined('DANGERFINGER_APP_URL')) return;
+    if (!is_page('configure')) return;
+
+    $app_url = esc_url(trailingslashit(DANGERFINGER_APP_URL));
+    $wp_url  = home_url('/prosthetics/');
+    $cfg_url = home_url('/prosthetics/configure/');
+
+    header('Content-Type: text/html; charset=utf-8');
+    ?><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DangerFinger Configurator &ndash; Danger Creations</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:#343a40}
+    #df-topbar{display:flex;align-items:center;gap:10px;padding:6px 14px;background:#343a40;color:#adb5bd;font:13px/1.4 system-ui,sans-serif;flex-shrink:0}
+    #df-topbar a{color:#adb5bd;text-decoration:none}
+    #df-topbar a:hover{color:#fff}
+    #df-topbar .sep{opacity:.4}
+    iframe{flex:1;border:none;display:block;width:100%}
+  </style>
+</head>
+<body>
+  <div id="df-topbar">
+    <a href="<?= esc_url($wp_url) ?>">&#8592; Danger Creations</a>
+    <span class="sep">|</span>
+    <a href="<?= esc_url($cfg_url) ?>">Prosthetics</a>
+    <span class="sep">&rsaquo;</span>
+    <span>Configure</span>
+  </div>
+  <iframe id="df-frame" src="<?= esc_url($app_url) ?>" allow="fullscreen" allowfullscreen></iframe>
+  <script>
+    (function(){
+      var h = window.location.hash;
+      if (h) document.getElementById('df-frame').src = <?= json_encode($app_url) ?> + h;
+    })();
+  </script>
+</body>
+</html><?php
+    exit;
+});
