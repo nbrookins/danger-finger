@@ -10,6 +10,8 @@ Run from project root: python3 scripts/generate_static.py
 import json
 import os
 import sys
+from collections import OrderedDict
+from hashlib import sha256
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
@@ -48,8 +50,7 @@ def generate_parts_json():
         "version": DangerFinger.VERSION,
         "build": "static",
         "previewConfig": _preview_config(),
-        # Auth URLs injected at deploy time via env vars so the static site can drive
-        # the WP login flow and know its own origin for CORS purposes.
+        "defaultCfghash": _default_cfghash(),
         "wpAuthUrl": os.environ.get("WP_AUTH_URL", "https://dangercreations.com"),
         "appBaseUrl": os.environ.get("APP_BASE_URL", ""),
         "staticSiteUrl": os.environ.get("STATIC_SITE_URL", ""),
@@ -70,6 +71,12 @@ def generate_params_json():
     print(f"  Wrote {out} ({os.path.getsize(out)} bytes)")
 
 
+def _default_cfghash():
+    """Compute the cfghash for the default (empty) config, matching server.py's package_config_json."""
+    config = OrderedDict(sorted({}.items(), key=lambda t: t[0]))
+    return sha256(json.dumps(config, skipkeys=True).encode("utf-8")).hexdigest()
+
+
 def generate_bootstrap_js():
     """Write a JS file that embeds parts + params data as globals.
 
@@ -82,6 +89,7 @@ def generate_bootstrap_js():
         "version": DangerFinger.VERSION,
         "build": "static",
         "previewConfig": _preview_config(),
+        "defaultCfghash": _default_cfghash(),
         "wpAuthUrl": os.environ.get("WP_AUTH_URL", "https://dangercreations.com"),
         "appBaseUrl": os.environ.get("APP_BASE_URL", ""),
         "staticSiteUrl": os.environ.get("STATIC_SITE_URL", ""),

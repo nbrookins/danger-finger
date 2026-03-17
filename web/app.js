@@ -21,11 +21,18 @@
     var _restoredDraft = false;
     var _paramsDirty = false;
     var _initialRenderDone = false;
+    var _appVersion = "";
+    var _defaultCfghash = "";
     var DRAFT_KEY = "df_guest_draft";
     var DRAFT_TTL_MS = 10 * 60 * 1000;
 
     function isAuthenticated() { return !!_authToken; }
     function getUsername() { return _authUser || ""; }
+
+    function _downloadName(suffix) {
+        var v = _appVersion || "0";
+        return "DangerFinger_v" + v + "_" + suffix + ".zip";
+    }
 
     function setAuthState(token, nicename, displayName) {
         _authToken = token;
@@ -223,6 +230,8 @@
 
     function onPartsLoaded(json) {
         if (json.wpAuthUrl) _wpAuthUrl = json.wpAuthUrl;
+        if (json.version) _appVersion = json.version;
+        if (json.defaultCfghash) _defaultCfghash = json.defaultCfghash;
         if (json.version) {
             var title = "DangerFinger v" + json.version + " - Configure and Preview";
             document.title = title;
@@ -259,8 +268,10 @@
     function showDefaultDownloadButton() {
         var btn = document.getElementById("download_btn");
         if (!btn) return;
-        btn.href = "/defaults/bundle.zip";
-        btn.download = "danger_finger_default.zip";
+        var hash8 = _defaultCfghash ? _defaultCfghash.substring(0, 8) : "default";
+        var fname = _downloadName(hash8);
+        btn.href = "/defaults/" + fname;
+        btn.download = fname;
         btn.style.display = "";
     }
 
@@ -444,7 +455,7 @@
         if (!btn) return;
         if (cachedBundleBlob && cachedBundleCfghash === cfghash) btn.href = URL.createObjectURL(cachedBundleBlob);
         else btn.href = Api.getBundleUrl(cfghash);
-        btn.download = "danger_finger_" + cfghash.substring(0, 8) + ".zip";
+        btn.download = _downloadName(cfghash.substring(0, 8));
         btn.style.display = "";
     }
 
@@ -486,7 +497,7 @@
             dlLink.href = Api.getBundleUrl(cfghash);
             dlLink.className = "btn btn-sm btn-outline-success";
             dlLink.textContent = "Download";
-            dlLink.download = "danger_finger_" + cfghash.substring(0, 8) + ".zip";
+            dlLink.download = _downloadName(cfghash.substring(0, 8));
             dlCell.appendChild(dlLink);
             var delBtn = document.createElement("button");
             delBtn.type = "button";

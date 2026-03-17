@@ -16,6 +16,8 @@ import sys
 import subprocess
 import time
 import zipfile
+from collections import OrderedDict
+from hashlib import sha256
 from io import BytesIO
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -109,20 +111,38 @@ def main():
     stl_files = {f: open(os.path.join(OUTPUT_DIR, f), "rb").read()
                  for f in os.listdir(OUTPUT_DIR) if f.endswith(".stl")}
     if stl_files:
-        config = {p.name: p.val for p in finger.params() if hasattr(p, "val")}
+        # cfghash for default config: server.py's package_config_json removes
+        # defaults then hashes, so the default config hashes as empty "{}".
+        default_config = OrderedDict(sorted({}.items(), key=lambda t: t[0]))
+        cfgbytes = json.dumps(default_config, skipkeys=True).encode("utf-8")
+        cfghash = sha256(cfgbytes).hexdigest()
+        version = DangerFinger.VERSION
+        bundle_name = "DangerFinger_v%s_%s.zip" % (version, cfghash[:8])
+
+        # Include all default param values in config.json so the download is
+        # self-documenting (the hash uses the stripped version, not this).
+        full_defaults = {k: v for k, v in finger.params.items()}
+
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for name, data in stl_files.items():
                 zf.writestr(name, data)
-            zf.writestr("config.json", json.dumps(config, indent=2, default=str))
+            zf.writestr("config.json", json.dumps(full_defaults, indent=2, default=str))
             for extra in ("LICENSE", "README.md"):
                 path = os.path.join(PROJECT_ROOT, extra)
                 if os.path.isfile(path):
                     zf.write(path, extra)
-        bundle_path = os.path.join(OUTPUT_DIR, "bundle.zip")
+
+        # Remove any old bundles before writing the new one
+        for old in os.listdir(OUTPUT_DIR):
+            if old.endswith(".zip"):
+                os.remove(os.path.join(OUTPUT_DIR, old))
+
+        bundle_path = os.path.join(OUTPUT_DIR, bundle_name)
         with open(bundle_path, "wb") as f:
             f.write(buf.getvalue())
         print(f"  Wrote {bundle_path} ({os.path.getsize(bundle_path)} bytes)")
+        print(f"  cfghash={cfghash[:8]} version={version}")
 
 
 if __name__ == "__main__":
