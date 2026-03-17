@@ -10,10 +10,13 @@ Run from project root:
 
 Output: web/static/render/default/{part}.stl
 """
+import json
 import os
 import sys
 import subprocess
 import time
+import zipfile
+from io import BytesIO
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
@@ -102,6 +105,24 @@ def main():
     print(f"\nDone: {ok} rendered, {fail} failed")
     if fail:
         sys.exit(1)
+
+    stl_files = {f: open(os.path.join(OUTPUT_DIR, f), "rb").read()
+                 for f in os.listdir(OUTPUT_DIR) if f.endswith(".stl")}
+    if stl_files:
+        config = {p.name: p.val for p in finger.params() if hasattr(p, "val")}
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, data in stl_files.items():
+                zf.writestr(name, data)
+            zf.writestr("config.json", json.dumps(config, indent=2, default=str))
+            for extra in ("LICENSE", "README.md"):
+                path = os.path.join(PROJECT_ROOT, extra)
+                if os.path.isfile(path):
+                    zf.write(path, extra)
+        bundle_path = os.path.join(OUTPUT_DIR, "bundle.zip")
+        with open(bundle_path, "wb") as f:
+            f.write(buf.getvalue())
+        print(f"  Wrote {bundle_path} ({os.path.getsize(bundle_path)} bytes)")
 
 
 if __name__ == "__main__":

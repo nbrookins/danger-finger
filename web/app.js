@@ -253,6 +253,15 @@
         _initialRenderDone = true;
         _paramsDirty = false;
         setPreviewStatus("", false);
+        showDefaultDownloadButton();
+    }
+
+    function showDefaultDownloadButton() {
+        var btn = document.getElementById("download_btn");
+        if (!btn) return;
+        btn.href = "/defaults/bundle.zip";
+        btn.download = "danger_finger_default.zip";
+        btn.style.display = "";
     }
 
     function maybeRestoreDraft() {
