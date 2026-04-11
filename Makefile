@@ -295,3 +295,15 @@ validate-formula:
 # Validate formula with multi-view PNG generation
 validate-formula-png:
 	@$(or $(PYTHON),python3) scripts/validate_formula.py --part $(PART) --params $(PARAMS) --steps $(STEPS) --render-png
+
+# Run curated multi-profile param audit without STL rendering (works without OpenSCAD)
+param-audit-scad:
+	@$(or $(PYTHON),python3) scripts/param_audit.py --profiles all --parts all --quality STUPIDFAST --skip-stl
+
+# Run curated multi-profile param audit (SCAD + STL + bbox checks)
+param-audit:
+	@$(or $(PYTHON),python3) scripts/param_audit.py --profiles all --parts all --quality STUPIDFAST
+
+# Run param audit plus multi-view PNG rendering for review
+param-audit-visual:
+	@$(or $(PYTHON),python3) scripts/param_audit.py --profiles all --parts all --quality STUPIDFAST --render-png

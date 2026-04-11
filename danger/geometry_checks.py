@@ -58,6 +58,34 @@ def bbox_dimensions(bbox):
     return (Mx - mx, My - my, Mz - mz)
 
 
+def check_zero_dimension(dims, min_dimension=0.1):
+    """Fail when any bbox axis is effectively collapsed."""
+    if dims is None:
+        return (False, "No bbox dimensions available")
+    bad_axes = []
+    for axis_name, value in zip(("x", "y", "z"), dims):
+        if value < min_dimension:
+            bad_axes.append("%s=%.4f" % (axis_name, value))
+    if bad_axes:
+        return (False, "Collapsed dimension(s): %s" % ", ".join(bad_axes))
+    return (True, "OK")
+
+
+def check_reasonable_size(dims, min_dimension=1.0, max_dimension=200.0):
+    """Fail when any bbox axis is implausibly small or large for this model."""
+    if dims is None:
+        return (False, "No bbox dimensions available")
+    issues = []
+    for axis_name, value in zip(("x", "y", "z"), dims):
+        if value < min_dimension:
+            issues.append("%s too small (%.4f < %.4f)" % (axis_name, value, min_dimension))
+        elif value > max_dimension:
+            issues.append("%s too large (%.4f > %.4f)" % (axis_name, value, max_dimension))
+    if issues:
+        return (False, "; ".join(issues))
+    return (True, "OK")
+
+
 def check_no_degenerate(scad_str, min_scad_length=100):
     """Verify SCAD output is non-trivial.
     Returns (passed: bool, message: str)."""

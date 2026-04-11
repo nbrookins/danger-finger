@@ -4,6 +4,7 @@ objectdb
 config.py
 __pycache__
 .vscode
+.venv/
 .DS_Store
 output/*
 *.env

@@ -18,6 +18,8 @@ For more information about how to build or have a prosthetic finger built, visit
 
 **Web tests**: `make test-web` runs e2e against a fresh server. `make verify-web-ui` starts the server (Docker or local); the server builds SCAD + preview PNGs to `output/` at startup, then captures `output/viewer-screenshot.png`. Use `make build` first for Docker (avoids macOS OpenSCAD issues). For inspect only with an already-running app: `make inspect-ui` (writes `output/ui-inspect.txt`). Requires `pip install -r requirements-dev.txt`, `python -m playwright install chromium`, and OpenSCAD.
 
+**Parametric QA loop**: Create a local env with `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt`. The curated first-wave profile matrix lives in `tests/profiles.py`. `make param-audit-scad` runs the multi-profile audit without STL rendering (useful on macOS when local OpenSCAD is broken). `make param-audit` adds STL + bbox checks, and `make param-audit-visual` also renders multi-view PNGs. The audit writes `output/param_audit/report.json` and `output/param_audit/report.md`.
+
 **Auto-run on commit** (optional): To run web tests automatically when you commit changes under `web/`, install the hook: `cp scripts/pre-commit-web-test.sh .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`.
 
 **OpenSCAD troubleshooting (macOS Apple Silicon)**:

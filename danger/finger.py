@@ -285,20 +285,21 @@ class DangerFinger(DangerFingerBase):
         mod_hole = cylinder(r=self.tendon_hole_radius, h=link_hole).rotate((90, 90, 0)).translate((0, (self.linkage_length/3)*1.5+.01, 0)).resize((self.linkage_height/2.4, 0, 0))#.mod("%")
 
         cross_hole_dist = self.linkage_hole_spacing
+        linkage_holes = max(0, int(round(self.linkage_holes)))
         mod_cut = cube((0))
         mod_cross = cylinder(r=self.tendon_hole_radius, h=self.linkage_width+1, center=True).resize((self.linkage_height/2.8, 0, 0))
 
-        for i in range (0, self.linkage_holes):
-            if i == self.linkage_holes-2:
+        for i in range(0, linkage_holes):
+            if i == linkage_holes - 2:
                 mod_cut += hull()(mod_cross.translate((0, self.linkage_length/3 + cross_hole_dist -cross_hole_dist*i, 0))+\
                     mod_cross.translate((0, self.linkage_length/3 + cross_hole_dist -cross_hole_dist*i -.8, 0)))
-            elif i == self.linkage_holes-1:
+            elif i == linkage_holes - 1:
                 mod_cut += mod_cross.translate((0, self.linkage_length/3 + cross_hole_dist -cross_hole_dist*i - .4, 0))
             else:
                 mod_cut += mod_cross.translate((0, self.linkage_length/3 + cross_hole_dist -cross_hole_dist*i, 0))
         #slit
-        if self.linkage_holes > 1:
-            mod_slit = cylinder(r=self.linkage_height/2.8/2, h=cross_hole_dist * (self.linkage_holes-1)).rotate((90, 90, 0))#.debug()
+        if linkage_holes > 1:
+            mod_slit = cylinder(r=self.linkage_height/2.8/2, h=cross_hole_dist * (linkage_holes-1)).rotate((90, 90, 0))#.debug()
             mod_cut += mod_slit.translate((0, self.linkage_length/3 + cross_hole_dist, -self.linkage_width/1.85)) + \
                  mod_slit.translate((0, self.linkage_length/3 + cross_hole_dist, self.linkage_width/1.85))#.debug()
 
@@ -366,11 +367,15 @@ class DangerFinger(DangerFingerBase):
                                          sr/2 -self.distal_base_length*2+self.tip_print_offset*1.2,0))#.debug()
         bot_sp2 = sphere(r=sr+self.tip_print_depth) \
              .translate((+sr - self.tip_radius*1.0250, sr/2 -self.distal_base_length*2+2 + self.tip_print_depth,0))#.debug()
-        for i in range(1, round(self.distal_length/self.tip_print_width)):
-            if i % 2 == 0: continue
-            bot_sp2 -= cube((20,self.tip_print_width,20), center=True).translate((0,(i+1)*self.tip_print_width -.1,0))#.debug()
-        prints = intersection()(mod_core - d- mod_int, bot_sp2) \
-            - cube((30,30,30), center=True).translate((15 - self.tip_radius/2+.5,15,0)).translate((0,0,0))#.debug()
+        if self.tip_print_width > 0:
+            for i in range(1, round(self.distal_length / self.tip_print_width)):
+                if i % 2 == 0:
+                    continue
+                bot_sp2 -= cube((20, self.tip_print_width, 20), center=True).translate((0, (i + 1) * self.tip_print_width - .1, 0))#.debug()
+            prints = intersection()(mod_core - d- mod_int, bot_sp2) \
+                - cube((30,30,30), center=True).translate((15 - self.tip_radius/2+.5,15,0)).translate((0,0,0))#.debug()
+        else:
+            prints = cube((0))
 
         #TODO better fist bottom cut
         final = intersection()(mod_core - d- mod_int, bot_sp) + (prints)
@@ -392,10 +397,8 @@ class DangerFinger(DangerFingerBase):
         return (mod_plug_pl, mod_plug_pr, mod_plug_dl, mod_plug_dr)
 
     def part_peg(self, fs=10, hollow=True):
-        # local default for hollow peg radius
-        peg_hollow_radius = 0.5
         peg = cylinder(r1=self.tendon_hole_radius*2.0,r2=self.tendon_hole_radius*1.3, h= self.distal_base_length+2, center=True, _fn=fs)
-        if (hollow): peg -= cylinder(r=peg_hollow_radius, h=self.distal_base_length+.5).translate((0,0,-1.5))
+        if (hollow): peg -= cylinder(r=self.peg_hollow_radius, h=self.distal_base_length+.5).translate((0,0,-1.5))
         return peg.rotate((90, 0, 0)).translate((0, self.intermediate_distal_height-self.distal_base_length/2.5, 0)).color(PART_COLORS["peg"])
 
     def part_pins(self):
