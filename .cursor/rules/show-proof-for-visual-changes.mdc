@@ -1,0 +1,42 @@
+---
+description: "Use make test-parametric for autonomous validation; show report to user only when ready"
+alwaysApply: true
+---
+# Autonomous parametric validation loop
+
+## The feedback loop
+
+When making parametric model changes, iterate autonomously:
+
+```
+1. Make a code change
+2. Run: PYTHON=/usr/bin/python3 make test-parametric
+   (use working_directory param, NOT cd — no special permissions needed)
+3. Read: output/parametric-report.md
+4. If failures → fix and go to 2
+5. If SCAD baseline shows CHANGED → run: make update-scad-baseline (only if the change is intentional)
+6. When all pass → present the report to the user for accept/reject
+```
+
+No human interaction until step 6.
+
+## What the report covers
+
+- **Tier 1** (always runs): 261 pytest tests, SCAD hash baseline comparison, SCAD-only param audit across 7 profiles
+- **Tier 2** (Docker required): full STL render + bbox checks
+- **Tier 3** (Docker required): web viewer screenshot via verify-web-ui
+
+## When SCAD baseline shows CHANGED
+
+This means your code change altered the SCAD output for one or more parts at default params. This is expected for intentional geometry changes. The workflow:
+
+1. Read the report to see which parts changed
+2. If the change is intentional: `make update-scad-baseline` then re-run
+3. If the change is unintentional: you have a regression — fix it
+
+## Do NOT
+
+- Do NOT list items for the user to verify later
+- Do NOT say "needs visual review" without first running the validation loop
+- Do NOT present partial results — run the full pipeline and present the clean report
+- Do NOT skip the loop for "small" changes — every geometry change goes through it

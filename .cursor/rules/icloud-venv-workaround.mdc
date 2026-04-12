@@ -1,0 +1,28 @@
+---
+description: "Use working_directory param + /usr/bin/python3 for shell commands; venv is broken"
+alwaysApply: true
+globs:
+  - "tests/**"
+  - "Makefile"
+---
+# iCloud workspace: shell command rules
+
+The workspace lives under `~/Library/Mobile Documents/com~apple~CloudDocs/...` (iCloud path with spaces).
+
+## Shell commands: use working_directory, NOT cd
+
+The path has spaces. `cd "path"` in the sandbox fails. Instead, use the Shell tool's `working_directory` parameter:
+
+```
+working_directory: "/Users/nicholas.brookins/Library/Mobile Documents/com~apple~CloudDocs/Documents/code/danger-finger"
+command: PYTHON=/usr/bin/python3 make test-parametric
+```
+
+This works in the **default sandbox** — no `required_permissions: ["all"]` needed, no user approval prompt.
+
+**NEVER** use `cd "/path/with spaces" && ...` — it causes sandbox quoting failures.
+**NEVER** use `required_permissions: ["all"]` unless truly needed — it forces a user approval prompt.
+
+## Broken venv
+
+`.venv/` shebangs point to `/Users/nbrookins/...` (stale). Use `/usr/bin/python3` or `PYTHON=/usr/bin/python3 make ...` instead.

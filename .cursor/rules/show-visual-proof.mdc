@@ -1,0 +1,43 @@
+---
+description: "After running the parametric pipeline, always display output artifacts to the user"
+alwaysApply: false
+globs:
+  - "scripts/parametric_report.py"
+  - "scripts/visual_review.py"
+  - "Makefile"
+---
+# Always show visual proof after pipeline runs
+
+After running `make test-parametric` or any pipeline that produces visual artifacts:
+
+## Required steps (in the SAME response as the "done" summary)
+
+1. **Read the summary JSON** (`output/visual-review/summary.json`) and report image count, console errors.
+2. **Read the parametric report** (`output/parametric-report.md`) and show the tier pass/fail summary (includes the trimesh metrics table).
+3. **Check for empty/broken outputs**: If total_images < 30 or any assembled PNG is < 5KB, flag it.
+4. **Tell the user** the interactive report is available via `make view-report` (serves over HTTP with 3D STL viewers).
+
+**Do NOT** bundle `lsof`, `kill`, `python3 -m http.server`, or other server management
+into the proof step — those require `["all"]` permissions and interrupt the unattended flow.
+
+**Do** run `open http://localhost:8093/report.html` as a standalone command with
+`required_permissions: ["all"]` — `open` is allowlisted and won't prompt.
+The dev-server or a prior `make view-report` keeps the HTTP server running.
+
+**In-chat proof is text-based**: the trimesh table (verts, faces, watertight, volume, extents) from the parametric report. The Read tool on image files collapses into "Explored N files" — the user does NOT see inline images.
+
+## Never trust exit code alone
+
+A pipeline can exit 0 with:
+- Zero actual PNG files on disk
+- Blank screenshots (viewer didn't load models)
+- Summary JSON claiming images that don't exist
+
+The screenshot IS the source of truth, not the exit code.
+
+## If proof is missing or blank
+
+Stop and investigate before declaring success. Common causes:
+- STL models didn't finish loading (async timing)
+- Web server not reachable from CDP browser (sandbox isolation)
+- Preview API returned cached vs async format mismatch

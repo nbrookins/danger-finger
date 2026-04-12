@@ -1,0 +1,41 @@
+---
+description: "Use trimesh-based STL inspection (Tier 2b) as primary geometry validation, not screenshots"
+alwaysApply: false
+globs:
+  - "scripts/stl_inspect.py"
+  - "scripts/parametric_report.py"
+  - "danger/geometry_checks.py"
+---
+# STL inspection tier (Tier 2b)
+
+## What it does
+
+`scripts/stl_inspect.py` loads STL files with trimesh and checks:
+- Loadable, non-empty mesh
+- Watertight (manifold) — warn, don't fail
+- Volume in expected range per part
+- Face count in expected range
+- No collapsed axis (min extent > 0.1mm)
+- No oversized axis (max extent within limit)
+- Positive volume (normals not inverted)
+
+## When to use
+
+- **Primary geometry validation** — runs in <1s, pure Python, no browser/server
+- After any geometry change, run `make stl-inspect` or the full pipeline
+- The JSON report (`output/stl-inspection.json`) has per-part metrics the agent can read directly
+
+## Expected ranges
+
+Defined in `PART_EXPECTATIONS` dict in `stl_inspect.py`. Generous enough for
+parameter sweeps. Update if adding new parts or significantly changing geometry.
+
+## Relationship to other tiers
+
+| Tier | Purpose | Needs |
+|------|---------|-------|
+| 2 | Render STLs + basic bbox | OpenSCAD |
+| **2b** | **Deep geometry analysis** | **trimesh (pure Python)** |
+| 3 | UI/viewer regression | Browser + server |
+
+Tier 2b runs between 2 and 3. It validates geometry; Tier 3 validates the UI.

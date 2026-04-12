@@ -191,7 +191,10 @@ class Scad_Renderer(Borg):
             if self.openscad_exec is None:
                 self._try_executable('openscad-nightly')
         elif platfm == 'Darwin':
-            self._try_executable('/Applications/OpenSCAD.app/Contents/MacOS/OpenSCAD')
+            if self.openscad_exec is None:
+                self._try_executable('/Applications/OpenSCAD.app/Contents/MacOS/OpenSCAD')
         elif platfm == 'Windows':
-            self._try_executable(os.path.join(os.environ.get('Programfiles(x86)', 'C:'), 'OpenSCAD\\openscad.exe'))
-            self._try_executable(os.path.join(os.environ.get('Programfiles', 'C:'), 'OpenSCAD\\openscad.exe'))
+            if self.openscad_exec is None:
+                self._try_executable(os.path.join(os.environ.get('Programfiles(x86)', 'C:'), 'OpenSCAD\\openscad.exe'))
+            if self.openscad_exec is None:
+                self._try_executable(os.path.join(os.environ.get('Programfiles', 'C:'), 'OpenSCAD\\openscad.exe'))

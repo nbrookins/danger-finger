@@ -1,0 +1,30 @@
+---
+description: "CDP browser is outside sandbox — servers must be reachable from outside"
+alwaysApply: false
+globs:
+  - "scripts/visual_review.py"
+  - "scripts/inspect_ui.py"
+  - "bin/dev-server"
+---
+# Sandbox network isolation
+
+The CDP browser launched by `bin/dev-server` runs OUTSIDE the Cursor sandbox.
+Web servers started inside the sandbox (`python web/server.py`) listen on localhost
+but are NOT reachable from the external browser due to sandbox network isolation.
+
+## Solution
+
+The dev-server runs three services, all outside the sandbox:
+- OpenSCAD render server (:9876)
+- Chromium CDP (:9222)  
+- Web app server (:8092)
+
+`.dev-server.json` advertises `web_port` so scripts auto-discover it.
+
+## Preview API response format
+
+The `/api/preview` endpoint returns TWO possible formats:
+- **Cached**: `{stl_urls: {...}, previewConfig: {...}, ...}` — immediate result
+- **Async**: `{job_id: "..."}` — must poll `/api/jobs/{job_id}`
+
+Always check for `stl_urls` first, then fall back to `job_id` polling.

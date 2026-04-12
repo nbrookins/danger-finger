@@ -134,6 +134,9 @@ class Prop(object):
         self._max = maxv
         self.__doc__ = doc
         self._getter = getter
+        # In Python <3.10 staticmethod descriptors aren't callable; unwrap to raw function
+        if setter is not None and isinstance(setter, staticmethod):
+            setter = setter.__func__
         self._setter = setter
         self._adv = adv
         self._default = val

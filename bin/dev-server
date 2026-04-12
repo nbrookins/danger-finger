@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""Combined dev services: OpenSCAD render server + Chromium CDP server.
+
+Start once in a regular terminal (outside any sandbox):
+    make start-dev
+    # or: python3 bin/dev-server
+
+The pipeline connects to both via localhost — fully sandbox-compatible.
+"""
+
+import argparse
+import glob
+import json
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+OPENSCAD_BIN = os.environ.get("OPENSCAD_BIN", "/opt/homebrew/bin/openscad")
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATE_FILE = os.path.join(REPO_ROOT, ".dev-server.json")
+CDP_PORT = 9222
+
+
+class OpenSCADHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        if self.path == "/render":
+            self._handle_render()
+        elif self.path == "/health":
+            self._json_response(200, {"ok": True})
+        else:
+            self._json_response(404, {"error": "not found"})
+
+    def do_GET(self):
+        if self.path == "/health":
+            state = {"ok": True, "openscad": OPENSCAD_BIN}
+            if hasattr(self.server, "cdp_url"):
+                state["cdp_url"] = self.server.cdp_url
+            self._json_response(200, state)
+        else:
+            self._json_response(404, {"error": "not found"})
+
+    def _handle_render(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length))
+        except Exception as e:
+            self._json_response(400, {"error": "bad request: %s" % e})
+            return
+
+        scad_path = body.get("scad_path")
+        output_path = body.get("output_path")
+        extra_args = body.get("extra_args", [])
+
+        if not scad_path or not output_path:
+            self._json_response(400, {"error": "scad_path and output_path required"})
+            return
+        if not os.path.exists(scad_path):
+            self._json_response(400, {"error": "scad_path not found: %s" % scad_path})
+            return
+
+        cmd = [OPENSCAD_BIN] + extra_args + ["-o", output_path, scad_path]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            ok = r.returncode == 0 and os.path.exists(output_path)
+            self._json_response(200 if ok else 500, {
+                "ok": ok, "returncode": r.returncode,
+                "stdout": r.stdout[-2000:] if r.stdout else "",
+                "stderr": r.stderr[-2000:] if r.stderr else "",
+            })
+        except subprocess.TimeoutExpired:
+            self._json_response(500, {"ok": False, "error": "timeout (300s)"})
+        except Exception as e:
+            self._json_response(500, {"ok": False, "error": str(e)})
+
+    def _json_response(self, code, obj):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write("[openscad] %s\n" % (fmt % args))
+
+
+def find_chromium():
+    """Find the Playwright-installed Chromium headless shell binary."""
+    home = os.path.expanduser("~")
+    cache_dir = os.path.join(home, "Library", "Caches", "ms-playwright")
+    patterns = [
+        os.path.join(cache_dir, "chromium_headless_shell-*", "chrome-headless-shell-mac-arm64", "chrome-headless-shell"),
+        os.path.join(cache_dir, "chromium_headless_shell-*", "chrome-headless-shell-mac-x64", "chrome-headless-shell"),
+        os.path.join(cache_dir, "chromium-*", "chrome-mac-arm64", "Chromium.app", "Contents", "MacOS", "Chromium"),
+        os.path.join(cache_dir, "chromium-*", "chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"),
+    ]
+    for pattern in patterns:
+        matches = sorted(glob.glob(pattern), reverse=True)
+        if matches:
+            return matches[0]
+    return None
+
+
+def start_chromium(port):
+    """Launch Chromium with remote debugging port, return process."""
+    chrome = find_chromium()
+    if not chrome:
+        print("dev-server: Chromium not found in Playwright cache", flush=True)
+        return None
+
+    print("dev-server: Chromium = %s" % chrome, flush=True)
+    cmd = [
+        chrome,
+        "--headless",
+        "--no-sandbox",
+        "--remote-debugging-port=%d" % port,
+        "--remote-debugging-address=127.0.0.1",
+        "--enable-unsafe-swiftshader",
+        "--use-gl=angle",
+        "--use-angle=swiftshader",
+        "--disable-background-networking",
+        "--disable-default-apps",
+        "--disable-extensions",
+        "--disable-sync",
+        "--mute-audio",
+        "--no-first-run",
+        "--disable-dev-shm-usage",
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    time.sleep(2)
+    if proc.poll() is not None:
+        stderr = proc.stderr.read().decode()
+        print("dev-server: Chromium failed to start: %s" % stderr[:500], flush=True)
+        return None
+    return proc
+
+
+WEB_PORT = 8092
+
+
+def start_web_server(port):
+    """Start the DangerFinger web server as a subprocess."""
+    env = os.environ.copy()
+    env["OPENSCAD_EXEC"] = OPENSCAD_BIN
+    cmd = [sys.executable, os.path.join(REPO_ROOT, "web", "server.py"),
+           "--http_port=%d" % port]
+    proc = subprocess.Popen(cmd, env=env, cwd=REPO_ROOT)
+    time.sleep(3)
+    if proc.poll() is not None:
+        print("dev-server: web server failed to start", flush=True)
+        return None
+    return proc
+
+
+def write_state(port, cdp_url, web_port=None):
+    state = {"openscad_port": port, "cdp_url": cdp_url, "web_port": web_port, "pid": os.getpid()}
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f, indent=2)
+
+
+def cleanup(*_):
+    try:
+        os.remove(STATE_FILE)
+    except OSError:
+        pass
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Dev services (OpenSCAD + Chromium + Web)")
+    parser.add_argument("--port", type=int, default=9876, help="OpenSCAD server port")
+    parser.add_argument("--cdp-port", type=int, default=CDP_PORT, help="Chromium CDP port")
+    parser.add_argument("--web-port", type=int, default=WEB_PORT, help="Web app server port")
+    parser.add_argument("--no-browser", action="store_true", help="Skip Chromium")
+    parser.add_argument("--no-web", action="store_true", help="Skip web server")
+    args = parser.parse_args()
+
+    # OpenSCAD version check
+    r = subprocess.run([OPENSCAD_BIN, "--version"], capture_output=True, text=True)
+    version = (r.stdout + r.stderr).strip()
+    print("dev-server: OpenSCAD %s" % version, flush=True)
+
+    # Web app server
+    web_proc = None
+    if not args.no_web:
+        print("dev-server: starting web server (port %d)..." % args.web_port, flush=True)
+        web_proc = start_web_server(args.web_port)
+        if web_proc:
+            print("dev-server: web app = http://127.0.0.1:%d" % args.web_port, flush=True)
+
+    # Chromium
+    chrome_proc = None
+    cdp_url = None
+    if not args.no_browser:
+        print("dev-server: starting Chromium (CDP port %d)..." % args.cdp_port, flush=True)
+        chrome_proc = start_chromium(args.cdp_port)
+        if chrome_proc:
+            cdp_url = "http://127.0.0.1:%d" % args.cdp_port
+            print("dev-server: Chromium CDP = %s" % cdp_url, flush=True)
+
+    # OpenSCAD HTTP server
+    httpd = HTTPServer(("127.0.0.1", args.port), OpenSCADHandler)
+    httpd.cdp_url = cdp_url
+    print("dev-server: OpenSCAD on http://127.0.0.1:%d" % args.port, flush=True)
+
+    web_port = args.web_port if web_proc else None
+    write_state(args.port, cdp_url, web_port)
+    signal.signal(signal.SIGTERM, lambda *_: cleanup())
+    signal.signal(signal.SIGINT, lambda *_: cleanup())
+
+    print("dev-server: ready (Ctrl-C to stop)", flush=True)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        cleanup()
+        if web_proc:
+            web_proc.terminate()
+            web_proc.wait()
+        if chrome_proc:
+            chrome_proc.terminate()
+            chrome_proc.wait()
+        httpd.server_close()
+        print("\ndev-server: stopped", flush=True)
+
+
+if __name__ == "__main__":
+    main()

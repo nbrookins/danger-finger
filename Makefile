@@ -111,13 +111,36 @@ kbr-test:
 # Tighter feedback loop: after UI changes run this and check output/ui-inspect.txt; exit 1 = UI error.
 # Requires: pip install -r requirements-dev.txt && python -m playwright install chromium
 inspect-ui:
-	@BASE_URL=http://127.0.0.1:8081 UI_INSPECT_OUTPUT=output/ui-inspect.txt $(or $(PYTHON),python3) scripts/inspect_ui.py
+	@BASE_URL=http://127.0.0.1:8081 UI_INSPECT_OUTPUT=output/ui-inspect.txt $(PYTHON) scripts/inspect_ui.py
 
-# Single verify run: start server (builds SCAD + PNGs at startup) + viewer screenshot (output/viewer-screenshot.png).
-# Server creates output/ SCAD+PNGs as part of normal workflow. Use Docker (make build first) to avoid macOS OpenSCAD issues.
-# Requires: make build (for Docker), pip install -r requirements-dev.txt, python -m playwright install chromium
+# --- Local development variables ---
+PYTHON ?= .venv/bin/python3
+REPO_ROOT := $(shell pwd)
+OPENSCAD_EXEC ?= $(REPO_ROOT)/bin/openscad-local
+VERIFY_PORT ?= 8092
+PLAYWRIGHT_BROWSERS_PATH ?= $(HOME)/Library/Caches/ms-playwright
+export OPENSCAD_EXEC
+export PLAYWRIGHT_BROWSERS_PATH
+
+# Start dev services: OpenSCAD render server + Playwright browser (run once in a terminal)
+start-dev:
+	@python3 bin/dev-server
+
+# Start local web server for testing (Ctrl-C to stop)
+serve-local:
+	@OPENSCAD_EXEC="$(OPENSCAD_EXEC)" $(PYTHON) web/server.py --http_port=$(VERIFY_PORT)
+
+# Visual verification: start local server, run inspection + visual review, stop server
 verify-web-ui:
-	@export DOCKER_TAG="$(DOCKER_TAG)" && ./scripts/verify_web_ui.sh
+	@./scripts/verify_web_ui.sh
+
+# Docker-based verify (for CI or deploy checks)
+verify-web-ui-docker:
+	@export DOCKER_TAG="$(DOCKER_TAG)" USE_DOCKER=1 && ./scripts/verify_web_ui.sh
+
+# Multi-angle visual review only (assumes server already running, or pass BASE_URL)
+visual-review:
+	@$(PYTHON) scripts/visual_review.py
 
 # --- AWS deployment targets ---
 
@@ -306,4 +329,38 @@ param-audit:
 
 # Run param audit plus multi-view PNG rendering for review
 param-audit-visual:
-	@$(or $(PYTHON),python3) scripts/param_audit.py --profiles all --parts all --quality STUPIDFAST --render-png
+	@$(PYTHON) scripts/param_audit.py --profiles all --parts all --quality STUPIDFAST --render-png
+
+# Full parametric validation: all 3 tiers, runs locally (OpenSCAD via Docker wrapper)
+test-parametric:
+	@$(PYTHON) scripts/parametric_report.py
+
+# Tier 1 only: pytest + SCAD baseline + audit (no OpenSCAD needed)
+test-parametric-fast:
+	@SKIP_OPENSCAD=1 $(PYTHON) scripts/parametric_report.py
+
+# Direct STL inspection (trimesh, no browser — run after preview exists)
+stl-inspect:
+	@$(PYTHON) scripts/stl_inspect.py
+
+# Open visual review report with interactive 3D viewers (serves over HTTP)
+view-report:
+	@echo "Serving report at http://localhost:8093/report.html"
+	@cd output/visual-review && python3 -m http.server 8093 &
+	@sleep 1 && open http://localhost:8093/report.html
+
+# Regenerate SCAD baseline hashes after intentional geometry changes
+update-scad-baseline:
+	@$(PYTHON) -c "\
+	import json, hashlib, sys, os; \
+	sys.path.insert(0, '.'); \
+	from danger.finger import DangerFinger; \
+	from danger.constants import RenderQuality; \
+	from danger.tools import iterable; \
+	f = DangerFinger(); f.render_quality = RenderQuality.STUPIDFAST; \
+	sys.stdout = open(os.devnull, 'w'); f.build(); sys.stdout = sys.__stdout__; \
+	bl = {}; \
+	[bl.update({n: {'sha256': hashlib.sha256((m[0].scad if iterable(m) else m.scad).encode()).hexdigest(), 'length': len(m[0].scad if iterable(m) else m.scad), 'lines': (m[0].scad if iterable(m) else m.scad).count(chr(10))+1}}) for n, m in f.models.items() if hasattr(m[0] if iterable(m) else m, 'scad')]; \
+	os.makedirs('output', exist_ok=True); \
+	json.dump(bl, open('output/scad_baseline.json','w'), indent=2, sort_keys=True); \
+	print('Updated %d parts in output/scad_baseline.json' % len(bl))"

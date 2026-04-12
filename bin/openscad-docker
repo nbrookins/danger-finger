@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# OpenSCAD CLI wrapper — runs OpenSCAD inside Docker with automatic path mapping.
+# Mounts the repo root into the container and rewrites file paths accordingly.
+set -euo pipefail
+
+IMAGE="${OPENSCAD_DOCKER_IMAGE:-openscad/openscad:trixie.2025-12-15}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CONTAINER_WORK="/work"
+
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        /*|./*|../*)
+            # Absolute or relative path — make absolute then rewrite to container path
+            if [[ "$arg" == /* ]]; then
+                abs="$arg"
+            else
+                abs="$(cd "$(dirname "$arg")" 2>/dev/null && pwd)/$(basename "$arg")"
+            fi
+            # If inside repo root, rewrite
+            if [[ "$abs" == "$REPO_ROOT"* ]]; then
+                args+=("${CONTAINER_WORK}${abs#$REPO_ROOT}")
+            else
+                args+=("$arg")
+            fi
+            ;;
+        *.scad|*.stl|*.png|*.csg|*.off|*.amf|*.3mf)
+            # Bare filename that looks like a CAD file — resolve relative to cwd
+            abs="$(pwd)/$arg"
+            if [[ "$abs" == "$REPO_ROOT"* ]]; then
+                args+=("${CONTAINER_WORK}${abs#$REPO_ROOT}")
+            else
+                args+=("$arg")
+            fi
+            ;;
+        *)
+            args+=("$arg")
+            ;;
+    esac
+done
+
+exec docker run --rm \
+    --mount "type=bind,source=${REPO_ROOT},target=${CONTAINER_WORK}" \
+    -w "${CONTAINER_WORK}" \
+    "$IMAGE" openscad "${args[@]}"

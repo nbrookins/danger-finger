@@ -14,9 +14,13 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pw_connect import get_browser
+
 
 def main():
-    base_url = os.environ.get("BASE_URL", "http://127.0.0.1:8081")
+    from pw_connect import get_web_base_url
+    base_url = os.environ.get("BASE_URL") or get_web_base_url() or "http://127.0.0.1:8092"
     ui_output = os.environ.get("UI_INSPECT_OUTPUT", "output/ui-inspect.txt")
     screenshot_output = os.environ.get("SCREENSHOT_OUTPUT", "output/viewer-screenshot.png")
 
@@ -25,7 +29,7 @@ def main():
     console_logs = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser, is_remote = get_browser(p)
         context = browser.new_context()
 
         def on_console(msg):
@@ -41,6 +45,9 @@ def main():
             browser.close()
             sys.exit(1)
 
+        import time as _time
+
+        # Wait for preview_status or trigger manually
         try:
             page.wait_for_function(
                 """() => {
@@ -49,13 +56,53 @@ def main():
                     const t = el.textContent.toLowerCase();
                     return t.includes('ready') || t.includes('error');
                 }""",
-                timeout=90000,
+                timeout=15000,
             )
         except Exception:
             pass
 
-        import time as _time
-        _time.sleep(3)
+        # Check if models loaded; if not, trigger preview and load manually
+        mc = page.evaluate(
+            "typeof Viewer !== 'undefined' ? Object.keys(Viewer.getStlViewer()._models).length : 0"
+        )
+        if mc < 7:
+            try:
+                result = page.evaluate("""
+                    fetch('/api/preview', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({params: {}})
+                    }).then(r => r.json())
+                """)
+                stl_urls = None
+                if isinstance(result, dict):
+                    if result.get("stl_urls"):
+                        stl_urls = result
+                    elif result.get("job_id"):
+                        for _ in range(90):
+                            jr = page.evaluate(
+                                "fetch('/api/jobs/%s').then(r=>r.json())" % result["job_id"]
+                            )
+                            if jr.get("status") == "complete":
+                                stl_urls = jr.get("result")
+                                break
+                            _time.sleep(2)
+                if stl_urls and stl_urls.get("stl_urls"):
+                    page.evaluate("""(res) => {
+                        Viewer.applyPreviewConfig(res, null);
+                        Viewer.updateFromStlUrls(res.stl_urls, null);
+                    }""", stl_urls)
+                    for _ in range(30):
+                        mc = page.evaluate(
+                            "Object.keys(Viewer.getStlViewer()._models).length"
+                        )
+                        if mc >= 7:
+                            break
+                        _time.sleep(1)
+            except Exception:
+                pass
+
+        _time.sleep(2)
 
         preview_status_text = (page.locator("#preview_status").first.text_content() or "")
 
@@ -95,7 +142,14 @@ def main():
             }
         """)
 
-        page.screenshot(path=screenshot_output)
+        # Capture the 3D viewer area, not the parameter table
+        viewer_el = page.locator("#stl_viewer_container, #stl_cont, canvas").first
+        if viewer_el.count() > 0 and viewer_el.is_visible():
+            viewer_el.screenshot(path=screenshot_output)
+        else:
+            page.evaluate("window.scrollTo(0, 0)")
+            page.wait_for_timeout(500)
+            page.screenshot(path=screenshot_output)
         browser.close()
 
     report = _build_report(

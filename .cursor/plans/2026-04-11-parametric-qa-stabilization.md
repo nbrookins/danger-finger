@@ -44,3 +44,11 @@ Progress so far:
 - Added `tests/profiles.py` and `tests/test_profiles.py` for the first-wave common-plus-fit profile matrix; local param/profile suites now pass in a workspace `.venv`.
 - Added `scripts/param_audit.py` plus `make param-audit-scad`, `make param-audit`, and `make param-audit-visual`. Verified the SCAD-only audit path and report generation locally.
 - Render-backed audit remains blocked on this machine until either Docker Desktop is running or a working local OpenSCAD path is available; local native OpenSCAD still fails with the documented macOS Qt incompatibility.
+
+**Pass 2 (2026-04-11):**
+- 261 tests pass (Python 3.9), covering all 8 geometry parts, 10 param interaction pairs, and 7 profiles with full validation.
+- `validate_params()` expanded with 10 new constraints (tunnel, linkage, bumper, socket interface, bottom strut, tip print).
+- `SCALLOP_HEIGHT` derived as `socket_bottom_cut` property — needs visual review at socket_bottom_cut extremes.
+- 9 remaining constants + 9 inline literals documented with candidate formulas in `docs/CODEBASE_NOTES.md`.
+- Fixed `Prop` Python 3.9 `staticmethod` descriptor compatibility.
+- See `2026-04-11-parametric-pass2-automated.md` for full details.

@@ -1,0 +1,36 @@
+---
+description: "How OPENSCAD_EXEC and bin/openscad-docker work for local STL rendering"
+alwaysApply: false
+globs:
+  - "bin/openscad-docker"
+  - "danger/Scad_Renderer.py"
+---
+# OpenSCAD Docker wrapper
+
+## How it works
+
+`bin/openscad-docker` is a bash script that translates local `openscad` CLI calls into `docker run --rm` commands. It mounts the repo root at `/work` inside the container and rewrites file paths in the arguments.
+
+## Usage
+
+Set `OPENSCAD_EXEC` to the absolute path of the wrapper:
+```bash
+export OPENSCAD_EXEC="$(pwd)/bin/openscad-docker"
+```
+
+The Makefile does this automatically. `Scad_Renderer` reads `OPENSCAD_EXEC` from env.
+
+## Path handling
+
+- The wrapper detects file arguments by extension (.scad, .stl, .png) or path separators
+- Host paths inside the repo root are rewritten to `/work/...`
+- The repo root is bind-mounted via `--mount type=bind,source=...,target=/work`
+- This handles the iCloud path with spaces correctly (--mount syntax, not -v)
+
+## Scad_Renderer priority fix
+
+Darwin `_try_detect_openscad_exec` now has `if self.openscad_exec is None` guard before trying `/Applications/OpenSCAD.app/...`, so `OPENSCAD_EXEC` env var always takes priority.
+
+## Image
+
+Default: `openscad/openscad:trixie.2025-12-15`. Override with `OPENSCAD_DOCKER_IMAGE` env var.

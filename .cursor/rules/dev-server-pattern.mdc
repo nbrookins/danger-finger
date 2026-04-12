@@ -1,0 +1,53 @@
+---
+description: "Dev-server pattern: OpenSCAD + Chromium servers run outside sandbox, pipeline connects via localhost"
+alwaysApply: false
+globs:
+  - "bin/dev-server"
+  - "bin/openscad-local"
+  - "scripts/pw_connect.py"
+  - "scripts/visual_review.py"
+  - "scripts/inspect_ui.py"
+---
+# Dev-server pattern
+
+## Why
+
+Cursor's sandbox blocks Docker socket, Qt sysctl (for OpenSCAD), and Chrome process creation.
+The solution: run these services in a terminal OUTSIDE the sandbox, pipeline connects via localhost.
+
+## Architecture
+
+```
+Terminal (outside sandbox)          Sandbox (agent)
+┌─ make start-dev ──────────┐     ┌─ make test-parametric ─────────┐
+│  OpenSCAD HTTP :9876       │◀────│  bin/openscad-local (curl)     │
+│  Chromium CDP  :9222       │◀────│  pw_connect.py (CDP connect)   │
+│  Web app       :8092       │◀────│  visual_review.py (via CDP)    │
+│  .dev-server.json written  │     │  reads .dev-server.json        │
+└────────────────────────────┘     └────────────────────────────────┘
+```
+
+**Critical**: The web server MUST run outside the sandbox because the CDP browser
+(also outside) needs to reach it. A server inside the sandbox is unreachable from
+the external Chromium process.
+
+## User setup (one-time)
+
+```bash
+make start-dev   # starts OpenSCAD render server + headless Chromium
+```
+Leave it running. Pipeline discovers services via `.dev-server.json`.
+
+## How it works
+
+- `bin/openscad-local` matches the OpenSCAD CLI interface (`-o out.stl in.scad`).
+  Translates args to a POST to `http://127.0.0.1:9876/render`.
+- `scripts/pw_connect.py` reads `.dev-server.json` for the CDP URL.
+  Connects via `playwright.chromium.connect_over_cdp()`.
+- Both scripts fall back to local execution if dev-server is unreachable.
+
+## Chromium requirements
+
+- Must launch with `--enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader`
+  for WebGL support (needed for Three.js viewer)
+- headless_shell binary from Playwright cache: `~/Library/Caches/ms-playwright/`

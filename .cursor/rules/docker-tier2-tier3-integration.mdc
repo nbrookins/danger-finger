@@ -1,0 +1,12 @@
+---
+description: "SUPERSEDED — see local-first-testing.mdc and openscad-docker-wrapper.mdc"
+alwaysApply: false
+---
+# Docker tier integration (SUPERSEDED)
+
+This rule is superseded by the local-first testing architecture:
+- `.cursor/rules/local-first-testing.mdc` — testing philosophy and make targets
+- `.cursor/rules/openscad-docker-wrapper.mdc` — how OPENSCAD_EXEC works
+
+Tiers 2 and 3 no longer run inside Docker containers. They run locally using
+`bin/openscad-docker` as a transparent OpenSCAD CLI wrapper.

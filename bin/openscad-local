@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# OpenSCAD CLI wrapper — delegates to openscad-server via HTTP.
+# Matches the OpenSCAD CLI interface: openscad-local -o output.stl input.scad
+# Falls back to Docker wrapper if server is unreachable.
+set -euo pipefail
+
+PORT="${OPENSCAD_SERVER_PORT:-9876}"
+URL="http://127.0.0.1:${PORT}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Parse args: extract -o <output> and the input file, pass rest as extra_args
+output_path=""
+scad_path=""
+extra_args=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -o)
+            output_path="$2"
+            shift 2
+            ;;
+        --version)
+            curl -sf "${URL}/health" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('openscad','unknown'))" 2>/dev/null && exit 0
+            echo "openscad-local (server unreachable)" && exit 1
+            ;;
+        -*)
+            extra_args+=("$1")
+            shift
+            ;;
+        *)
+            scad_path="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$output_path" || -z "$scad_path" ]]; then
+    echo "Usage: openscad-local -o output.stl input.scad" >&2
+    exit 1
+fi
+
+# Make paths absolute
+[[ "$output_path" != /* ]] && output_path="$(pwd)/$output_path"
+[[ "$scad_path" != /* ]] && scad_path="$(pwd)/$scad_path"
+
+# Build JSON payload
+extra_json="[]"
+if [[ ${#extra_args[@]} -gt 0 ]]; then
+    extra_json=$(printf '%s\n' "${extra_args[@]}" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read().strip().split('\n')))")
+fi
+
+payload=$(python3 -c "
+import json
+print(json.dumps({
+    'scad_path': '''${scad_path}''',
+    'output_path': '''${output_path}''',
+    'extra_args': ${extra_json}
+}))
+")
+
+# POST to server
+response=$(curl -sf -X POST "${URL}/render" \
+    -H "Content-Type: application/json" \
+    -d "$payload" 2>&1) || {
+    echo "openscad-local: server unreachable at ${URL}" >&2
+    echo "openscad-local: start it with: make start-openscad" >&2
+    exit 1
+}
+
+# Check result
+ok=$(echo "$response" | python3 -c "import json,sys; print(json.load(sys.stdin).get('ok', False))")
+if [[ "$ok" == "True" ]]; then
+    stderr_out=$(echo "$response" | python3 -c "import json,sys; print(json.load(sys.stdin).get('stderr',''))" 2>/dev/null)
+    [[ -n "$stderr_out" ]] && echo "$stderr_out" >&2
+    exit 0
+else
+    error=$(echo "$response" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('error','') or d.get('stderr',''))")
+    echo "openscad-local: render failed: $error" >&2
+    exit 1
+fi

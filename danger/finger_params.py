@@ -200,7 +200,7 @@ class DangerFingerParams:
         sock_iface_len = self.socket_interface_length
         distal_base_len = self.distal_base_length
         flange_h = self.distal_flange_height
-        scallop_h = getattr(self, 'SCALLOP_HEIGHT', 9)
+        scallop_h = self.SCALLOP_HEIGHT if hasattr(self, 'SCALLOP_HEIGHT') else 9
 
         base_y = -(prox_len + prox_h / 2) / 2
         middle_y = int_len / 2
@@ -367,6 +367,65 @@ class DangerFingerParams:
         # socket_bottom_cut should not exceed socket_depth
         if self.socket_bottom_cut > self.socket_depth:
             warnings.append(f"socket_bottom_cut ({self.socket_bottom_cut}) > socket_depth ({self.socket_depth})")
+
+        # --- Pass 2: tunnel, linkage, bumper, and interface constraints ---
+
+        # tunnel_height must leave room for the strut between tunnel top and hinge edge
+        for orient_name, height in [("distal", self.intermediate_distal_height), ("proximal", self.intermediate_proximal_height)]:
+            tunnel_top = height / 2 + self.tunnel_height
+            if tunnel_top > height:
+                warnings.append(f"tunnel extends above {orient_name} hinge ({tunnel_top:.2f} > {height}): tunnel_height too large")
+
+        # tunnel_inner_width must be positive (strut_width * 2 must not consume all intermediate width)
+        for orient_name, orient_key in [("distal", Orient.DISTAL), ("proximal", Orient.PROXIMAL)]:
+            tiw = self.intermediate_width_[orient_key] - self.strut_width * 2 + self.tunnel_radius / 2
+            if tiw <= 0:
+                warnings.append(f"tunnel_inner_width {orient_name} ({tiw:.2f}) <= 0: strut_width too large for intermediate width")
+
+        # knuckle_inset_border should not consume all intermediate width
+        for orient_name, width in [("distal", self.intermediate_distal_width_), ("proximal", self.intermediate_proximal_width_)]:
+            if self.knuckle_inset_border * 2 >= width:
+                warnings.append(f"knuckle_inset_border ({self.knuckle_inset_border}) x2 >= {orient_name} intermediate width ({width:.1f})")
+
+        # knuckle_inset_depth should not exceed hinge radius
+        for orient_name, height in [("distal", self.intermediate_distal_height), ("proximal", self.intermediate_proximal_height)]:
+            hinge_r = height / 2
+            if self.knuckle_inset_depth >= hinge_r:
+                warnings.append(f"knuckle_inset_depth ({self.knuckle_inset_depth}) >= {orient_name} hinge radius ({hinge_r})")
+
+        # linkage hook must fit within linkage body
+        if self.linkage_hook_height > self.linkage_height * 3:
+            warnings.append(f"linkage_hook_height ({self.linkage_hook_height}) > 3x linkage_height ({self.linkage_height}): hook disproportionate to body")
+        if self.linkage_hook_length > self.linkage_length / 2:
+            warnings.append(f"linkage_hook_length ({self.linkage_hook_length}) > half linkage_length ({self.linkage_length / 2}): hook too long")
+        if self.linkage_hook_thickness * 2 >= self.linkage_hook_length:
+            warnings.append(f"linkage_hook_thickness ({self.linkage_hook_thickness}) x2 >= linkage_hook_length ({self.linkage_hook_length}): no opening")
+
+        # bumper width should not exceed knuckle width
+        if self.intermediate_bumper_width > 0:
+            max_bumper = max(self.knuckle_proximal_width, self.knuckle_distal_width)
+            if self.intermediate_bumper_width > max_bumper:
+                warnings.append(f"intermediate_bumper_width ({self.intermediate_bumper_width}) > max knuckle width ({max_bumper})")
+
+        # socket_interface_radius should be positive after clearance subtraction
+        for orient_name, orient_key in [("distal", Orient.DISTAL), ("proximal", Orient.PROXIMAL)]:
+            net_r = self.socket_interface_radius_[orient_key] - self.socket_interface_clearance - self.socket_interface_thickness
+            if net_r <= 0:
+                warnings.append(f"socket_interface effective radius {orient_name} ({net_r:.2f}) <= 0: clearance + thickness exceeds radius")
+
+        # bottom_strut_width must be positive when intermediate_bottom_width_factor > 0
+        if self.intermediate_bottom_width_factor > 0:
+            for orient_name, orient_key in [("distal", Orient.DISTAL), ("proximal", Orient.PROXIMAL)]:
+                bsw = self.intermediate_bottom_width_factor * (self.intermediate_width_[orient_key] - self.strut_width * 2)
+                if bsw <= 0:
+                    warnings.append(f"bottom_strut_width {orient_name} ({bsw:.2f}) <= 0: strut_width consumes all width at factor {self.intermediate_bottom_width_factor}")
+
+        # tip_print_factor should produce a sphere that covers the tip
+        if self.tip_print_factor > 0 and self.tip_print_width > 0:
+            print_sphere_r = self.tip_radius * self.tip_print_factor
+            if print_sphere_r < self.tip_radius:
+                warnings.append(f"tip fingerprint sphere radius ({print_sphere_r:.2f}) < tip_radius ({self.tip_radius:.2f}): prints won't cover surface")
+
         return warnings
 
     def get_params(self, adv=False, allv=True, extended=False):

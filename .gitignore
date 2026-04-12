@@ -24,3 +24,4 @@ infra/.build/
 *.tfstate
 *.tfstate.backup
 .terraform.lock.hcl
+.dev-server.json

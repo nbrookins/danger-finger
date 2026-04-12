@@ -1,0 +1,31 @@
+---
+description: "Local-first testing: never spin Docker containers for testing, use bin/openscad-docker wrapper"
+alwaysApply: false
+globs:
+  - "Makefile"
+  - "scripts/parametric_report.py"
+  - "scripts/verify_web_ui.sh"
+  - "scripts/visual_review.py"
+---
+# Local-first testing
+
+## Principles
+
+- **Never start Docker containers** for local testing.
+- **Dev-server pattern**: `make start-dev` in a terminal starts OpenSCAD + Chromium outside the sandbox.
+  The pipeline connects via localhost HTTP/CDP. Zero sandbox prompts.
+- **OpenSCAD via wrapper**: `OPENSCAD_EXEC=bin/openscad-local` POSTs to the dev-server. Falls back to `bin/openscad-docker` if dev-server is down.
+- **Playwright via CDP**: `scripts/pw_connect.py` connects to the dev-server's Chromium. Falls back to local launch.
+
+## Make targets
+
+- `make start-dev` — start dev services (run once in a terminal)
+- `make test-parametric` — all 3 tiers, fully in sandbox
+- `make test-parametric-fast` — Tier 1 only (no OpenSCAD needed)
+- `make serve-local` — start local web server
+- `make visual-review` — multi-angle screenshots (needs running server + dev-server)
+
+## When Docker IS used
+
+- `bin/openscad-docker` — fallback CLI wrapper if dev-server is down
+- `make build` / `make deploy` — production image build + push

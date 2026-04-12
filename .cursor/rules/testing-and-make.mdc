@@ -10,6 +10,8 @@ Use the existing make targets. Do not create ad-hoc test scripts.
 
 | Goal | Command |
 |------|---------|
+| **Parametric validation (autonomous loop)** | `PYTHON=/usr/bin/python3 make test-parametric` |
+| Update SCAD baseline after intentional changes | `PYTHON=/usr/bin/python3 make update-scad-baseline` |
 | Verify SCAD + viewer | `make verify-web-ui` |
 | API + e2e test | `make test-web` |
 | Full Docker stack | `make kbr-test` |

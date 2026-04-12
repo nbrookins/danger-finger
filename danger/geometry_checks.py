@@ -12,32 +12,69 @@ _GEOMETRY_KEYWORDS = frozenset(
 )
 
 
+def _bbox_from_binary_stl(f):
+    """Parse a binary STL starting after 'rb' open."""
+    header = f.read(80)
+    if len(header) < 80:
+        return None
+    count_bytes = f.read(4)
+    if len(count_bytes) < 4:
+        return None
+    num_triangles = struct.unpack('<I', count_bytes)[0]
+    if num_triangles == 0 or num_triangles > 50_000_000:
+        return None
+    min_xyz = [float('inf')] * 3
+    max_xyz = [float('-inf')] * 3
+    for _ in range(num_triangles):
+        tri_data = f.read(12 + 3 * 12 + 2)
+        if len(tri_data) < 50:
+            return None
+        for i in range(3):
+            v = struct.unpack_from('<fff', tri_data, 12 + i * 12)
+            for j in range(3):
+                min_xyz[j] = min(min_xyz[j], v[j])
+                max_xyz[j] = max(max_xyz[j], v[j])
+    return ((min_xyz[0], min_xyz[1], min_xyz[2]), (max_xyz[0], max_xyz[1], max_xyz[2]))
+
+
+def _bbox_from_ascii_stl(f):
+    """Parse an ASCII STL."""
+    import re
+    vertex_re = re.compile(r'vertex\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)')
+    min_xyz = [float('inf')] * 3
+    max_xyz = [float('-inf')] * 3
+    count = 0
+    for line in f:
+        m = vertex_re.search(line)
+        if m:
+            for j in range(3):
+                val = float(m.group(j + 1))
+                min_xyz[j] = min(min_xyz[j], val)
+                max_xyz[j] = max(max_xyz[j], val)
+            count += 1
+    if count == 0:
+        return None
+    return ((min_xyz[0], min_xyz[1], min_xyz[2]), (max_xyz[0], max_xyz[1], max_xyz[2]))
+
+
 def bbox_from_stl(stl_path):
-    """Extract bounding box from a binary STL file.
+    """Extract bounding box from an STL file (binary or ASCII).
     Returns ((min_x, min_y, min_z), (max_x, max_y, max_z)) or None if file is invalid."""
     try:
         with open(stl_path, 'rb') as f:
-            header = f.read(80)
-            if len(header) < 80:
+            first_bytes = f.read(80)
+            if len(first_bytes) < 80:
                 return None
-            count_bytes = f.read(4)
-            if len(count_bytes) < 4:
-                return None
-            num_triangles = struct.unpack('<I', count_bytes)[0]
-            min_xyz = [float('inf')] * 3
-            max_xyz = [float('-inf')] * 3
-            for _ in range(num_triangles):
-                # 12 bytes normal (3 floats), 3 vertices * 12 bytes each, 2 bytes attribute
-                tri_data = f.read(12 + 3 * 12 + 2)
-                if len(tri_data) < 50:
-                    return None
-                # Skip normal, read vertices
-                for i in range(3):
-                    v = struct.unpack_from('<fff', tri_data, 12 + i * 12)
-                    for j in range(3):
-                        min_xyz[j] = min(min_xyz[j], v[j])
-                        max_xyz[j] = max(max_xyz[j], v[j])
-        return ((min_xyz[0], min_xyz[1], min_xyz[2]), (max_xyz[0], max_xyz[1], max_xyz[2]))
+        is_ascii = first_bytes.lstrip(b'\x00').lower().startswith(b'solid')
+        if is_ascii:
+            # Confirm it's truly ASCII by checking for 'facet' or 'vertex' text
+            with open(stl_path, 'r', encoding='ascii', errors='replace') as f:
+                sample = f.read(300)
+                if 'facet' in sample or 'vertex' in sample:
+                    f.seek(0)
+                    return _bbox_from_ascii_stl(f)
+        with open(stl_path, 'rb') as f:
+            return _bbox_from_binary_stl(f)
     except (OSError, struct.error, ValueError):
         return None
 

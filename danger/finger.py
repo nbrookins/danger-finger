@@ -35,8 +35,10 @@ class DangerFinger(DangerFingerBase):
     # #**************************************** finger bits ****************************************
     VERSION = 5.4
 
-    # Knuckle inner anchor offsets
-    ANCHOR_OFFSET_DISTAL = -0.485  # TODO: derive from strut_height_ratio, knuckle_clearance
+    # Knuckle inner anchor offsets — VISUAL REVIEW candidate:
+    #   No clean formula found; closest: -(knuckle_clearance * 0.5 + knuckle_side_clearance) = -0.42
+    #   Actual value -0.485 doesn't match simple combinations of clearance params
+    ANCHOR_OFFSET_DISTAL = -0.485
 
     # Socket tendon cut
     TENDON_CUT_ROTATE = -80
@@ -47,12 +49,21 @@ class DangerFinger(DangerFingerBase):
 
     # Socket scallop
     SCALLOP_RADIUS_ADJ = 1
-    SCALLOP_HEIGHT = 9  # TODO: may be derivable from socket_bottom_cut
+
+    @property
+    def SCALLOP_HEIGHT(self):
+        """Height of scallop cutout on socket sides. Tracks socket_bottom_cut so the
+        side and bottom cutouts scale together. Was hardcoded as 9 (= default socket_bottom_cut).
+        VISUAL REVIEW needed at extreme socket_bottom_cut values (min=0, max=60)."""
+        return self.socket_bottom_cut
 
     # Tip fist trim
     TIP_FIST_TRIM_ROTATE = -25
 
-    # Peg support  # TODO: derive from tendon_hole_radius, distal_base_length
+    # Peg support — VISUAL REVIEW candidates:
+    #   PEG_SUPPORT_RADIUS: candidate = tendon_hole_radius + 0.1 (1.1 + 0.1 = 1.2 at defaults)
+    #   PEG_SUPPORT_SIDE_X_OFFSET: candidate = tendon_hole_radius * 1.5 (1.1 * 1.5 = 1.65 at defaults)
+    #   PEG_SUPPORT_TRANSLATE_Z: no clean formula found (3.4 ≈ tendon_hole_width * 1.545)
     PEG_SUPPORT_RADIUS = 1.2
     PEG_SUPPORT_TRANSLATE_Z = 3.4
     PEG_SUPPORT_SIDE_X_OFFSET = 1.65
